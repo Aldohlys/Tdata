@@ -28,9 +28,10 @@ getAllTrades = function() {
 #'@param v_instrument String on IBKR format, or vector of strings. Such as "SPY 15DEC23 400 P"
 #'@param account_type one of the string values ("Live", "Simu", or NA), specifies with which account type trades are to be retrieved.
 #'Default value is NA, which means no filtering done on account_type
+#'@param unique Boolean - if TRUE then will return only unique trade number values otherwise will return one trade number per instrument
 #'@return Integer or a vector of integers
 #'@export
-getTradeNr = function(v_instrument,account_type=NA) {
+getTradeNr = function(v_instrument,account_type=NA,unique=T) {
   if(length(v_instrument)==0) {
     display_error_message("No instrument to be searched!")
     return(NA)
@@ -46,6 +47,11 @@ getTradeNr = function(v_instrument,account_type=NA) {
   if (!is.na(account_type)) trades = dplyr::filter(trades, Account == account_type)
   trades = dplyr::select(trades, Instrument,TradeNr)
 
+  ### There may be duplicate lines in case the same instrument has been traded multiple times in the same trade
+  ### In this case duplicated trades are removed as the same instrument will otherwise appear more than one time
+  ### for one trade, and therefore the trade number will be listed more than one time due to the join
+  trades=trades[!duplicated(trades),]
+
   ### Retrieve trade_nr in trades.csv corresponding to instruments of dt
   ### Suppress join message by suppresswMessages
   trade_nr=suppressMessages(dplyr::pull(
@@ -58,8 +64,8 @@ getTradeNr = function(v_instrument,account_type=NA) {
     return(NA)
   }
 
-  ### Retrieve the common Trade Nr - there may be several trade_nr
-  trade_nr=unique(trade_nr)
+  ### Retrieve the common Trade Nr - there may be several trade_nr if requested by unique argument
+  if (unique) trade_nr=unique(trade_nr)
 
   ### If at least one then retrieve corresponding trade nr
   # ### And get the original trade date of the trade nr
@@ -80,7 +86,10 @@ getTradeNr = function(v_instrument,account_type=NA) {
 #' Then the oldest date per trade is returned.
 #'
 #'@param trade_nr an integer or a vector of integers
-#'@return a data frame giving for each trade number an expiration date \code{expdate} and the original trade date \code{orig_date}
+#'@return a data frame giving for each trade number:
+#'* `active_open_date` the opening date of the instrument corresponding to `expdate`
+#'* `expdate` the first still active expiration date
+#'* `orig_date`  the original opening trade date (even if corresponding instrument part of the trade has been closed since)
 #'@export
 getOpenDate = function(trade_nr) {
 
@@ -101,12 +110,35 @@ getOpenDate = function(trade_nr) {
     return(NA)
   }
 
-  ### Remove closed trades
+  ### Remove closed trades - this makes sense for vectorized input only
   trades = dplyr::filter(trades, Statut != "Ferm\u00e9")
 
-  ## If there are several dates for the trade nr (adjusted case), take the oldest one (min)
-  ### same thing for expiration date
-  dplyr::summarize(trades,orig_date=min(lubridate::dmy(TradeDate)),expdate=min(lubridate::dmy(Exp.Date)))
+  ### Retrieve initial opening date for each trade - trades are grouped by trade_nr
+  ### orig_date is the oldest date recorded for the trade -
+  orig_date = dplyr::summarize(trades,orig_date=min(lubridate::dmy(TradeDate)))
+
+  ### Remove all instrument that have been closed - keep only active ones
+  trades = dplyr::filter(
+              dplyr::summarize(
+                dplyr::group_by(trades,TradeNr,Instrument),
+                ### Exp.Date is expiration date associated to Instrument - unique by definition
+                Exp.Date=dplyr::first(lubridate::dmy(Exp.Date)),
+                ### TradeDate is the date where Instrument has been traded within the trade for the first time
+                TradeDate=min(lubridate::dmy(TradeDate)),
+                ### Pos gives the current position of the instrument - may be 0 if instrument has been sold in the trade (ex: roll out)
+                Pos=sum(Pos)),
+              Pos !=0)
+
+  ### Retrieve first expiration date to come (still active) for each trade number
+  exp_date = dplyr::summarize(trades, Exp.Date=min(Exp.Date))
+
+  ### Keep only for each trade number the first expiration date data
+  trades = dplyr::inner_join(trades,exp_date,by=c(TradeNr,Exp.Date))
+  ### Include also original trade date for each trade
+  trades = dplyr::left_join(trades,orig_date,by=TradeNr)
+
+  ### This tibble is grouped by TradeNr for future handling
+  dplyr::select(trades,TradeNr,active_open_date=TradeDate, expdate=Exp.Date,orig_date)
 }
 
 #' getRnR

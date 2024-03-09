@@ -12,13 +12,17 @@ getDTE(c_datetime, expdate)
 \item{expdate}{is the expiration date (at 4:00pm)}
 }
 \description{
-Given a list of numbers or dates,
-The aim is to find the nearest within the list
-The list does not need to be ordered
-This function will proceed by looking at all list elements
+getDTE returns the number of days (in decimal format) between a given datetime and a list (or one) of
+expiration dates.
+}
+\details{
+Expiration dates will all be converted into a datetime by appending 4:00pm EST to them.
+The interval between both is then converted to a duration (seconds) and converted back in days
+by dividing by 24*3600
 }
 \examples{
 getDTE(as.Date("2023-12-10"),as.Date("2023-12-15"))
+getDTE(as.Date("2023-12-10"),c(as.Date("2023-12-10"),as.Date("2023-12-15")))
 }
 \keyword{Black-Scholes}
 \keyword{date}

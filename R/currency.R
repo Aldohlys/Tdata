@@ -20,9 +20,8 @@ getAllCurrencyPairs = function() {
 #'
 #' Otherwise tries to connect to IBKR TWS API and retrieve pairs value.
 #'
-#' If this task does not work, it will then ask the end-user at console using getVal function
+#' If it does not succeed, it will then ask the end-user using enter_numerical_data  function
 #' Once new data is obtained, then write it to CurrencyPairs file
-
 #'@keywords currency trading
 #'@export
 #'@examples
@@ -42,18 +41,22 @@ getCurrencyPairs = function() {
     return(last_usd)
   }
 
+  ### No EUR or CHF values for today => to be retrieved from IBKR
+  display_message("Retrieving EUR/USD !")
   EUR = reticulate::py$getCurrencyPairValue("EURUSD",reqType=2)
-  if (is.null(EUR)) EUR=getVal("EUR/USD")
-  else if (is.na(EUR)) EUR=getVal("EUR/USD")
+  if (is.null(EUR)) EUR=enter_numerical_data("EUR/USD")
+  else if (is.na(EUR)) EUR=enter_numerical_data("EUR/USD")
 
+  display_message("Retrieving CHF/USD !")
   CHF = reticulate::py$getCurrencyPairValue("CHFUSD",reqType=2)
-  if (is.null(CHF)) CHF=getVal("CHF/USD")
-  else if (is.na(CHF)) CHF=getVal("CHF/USD")
+  if (is.null(CHF)) CHF=enter_numerical_data("CHF/USD")
+  else if (is.na(CHF)) CHF=enter_numerical_data("CHF/USD")
 
   usd = data.frame(date=lubridate::today(),EUR=EUR,CHF=CHF)
   #print(usd)
 
-  ### write.table seems to be the only one working simply - to be revisited as utils package is not the most current and efficient
+  ### write.table seems to be the only one working simply -
+  ### to be revisited as utils package is not the most current and efficient
   utils::write.table(usd,config::get("CurrencyPairs"),sep=";",dec=".",row.names=F,append=T,col.names=F)
   return(usd)
 }

@@ -4,13 +4,15 @@
 \alias{getTradeNr}
 \title{getTradeNr}
 \usage{
-getTradeNr(v_instrument, account_type = NA)
+getTradeNr(v_instrument, account_type = NA, unique = T)
 }
 \arguments{
 \item{v_instrument}{String on IBKR format, or vector of strings. Such as "SPY 15DEC23 400 P"}
 
 \item{account_type}{one of the string values ("Live", "Simu", or NA), specifies with which account type trades are to be retrieved.
 Default value is NA, which means no filtering done on account_type}
+
+\item{unique}{Boolean - if TRUE then will return only unique trade number values otherwise will return one trade number per instrument}
 }
 \value{
 Integer or a vector of integers

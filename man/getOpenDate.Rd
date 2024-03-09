@@ -10,7 +10,12 @@ getOpenDate(trade_nr)
 \item{trade_nr}{an integer or a vector of integers}
 }
 \value{
-a data frame giving for each trade number an expiration date \code{expdate} and the original trade date \code{orig_date}
+a data frame giving for each trade number:
+\itemize{
+\item \code{active_open_date} the opening date of the instrument corresponding to \code{expdate}
+\item \code{expdate} the first still active expiration date
+\item \code{orig_date}  the original opening trade date (even if corresponding instrument part of the trade has been closed since)
+}
 }
 \description{
 This function retrieves one or a vector of dates, all pertaining to open/adjusted trades

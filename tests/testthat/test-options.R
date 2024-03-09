@@ -99,3 +99,10 @@ test_that("getImpliedVolOpt runs correctly with a second set of parameters",{
     0.35
   )
 })
+
+test_that("getImpliedIROpt runs correctly with a set of parameters",{
+  expect_equal(
+    round(getImpliedIROpt("Call",S=100,K=100,DTE=5,sig=0.25,div=0,price=1.19455),2),
+    0.04
+  )
+})

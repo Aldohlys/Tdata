@@ -33,6 +33,26 @@ getSym = function(sym){
   getSymFromDate(sym,lubridate::ymd(config::get("CurrentTradesInitialDate")))
 }
 
+
+#' getSymPriceFromDate
+#'
+#' This function retrieves all values from Yahoo starting from CurrentTradesInitialDate - see config.yml file at user level directory
+#' This function calls \code{getSymFromDate} with one or a vector of tickers.
+#'@param sym_list one or a vector of symbols
+#'@param date a start date from which to retrieve symbols
+#'@returns a xts matrix: each column of data contains the adjusted prices - column name is the symbol name
+#'@examples getSymPriceAllDates(sym_list=c("SPY","FNV","USO"))
+#'@export
+getSymPriceFromDate = function(sym_list,date){
+  sym_OHLC=getSymFromDate(sym_list,date)
+  sym_all=purrr::reduce(sym_OHLC,\(acc,x) cbind(acc,x) )
+  adj_sym=sym_all[,grepl("Adjusted",names(sym_all))]
+  colnames(adj_sym)=sub(".Adjusted","",colnames(adj_sym))
+  adj_sym
+}
+
+
+
 # getAdjReturns = function(sym) {
 #   returns=data.frame(date=as.Date(index(sym)),
 #                      return=c('NA',round(diff(log(coredata(coredata(sym[,6])))),3)))
@@ -76,7 +96,7 @@ getPriceAllDates= function(sym_list) {
 #'@export
 getsymPrice = function(sym,currency,report_date){
 
-  ### First case - requested date is an holiday
+  ### First case - requested date is an holiday or requested date is not today
   ### Get last close price in this case
   if ((!RQuantLib::isBusinessDay("UnitedStates",report_date)) | report_date < lubridate::today()) {
     prices_list=getPriceAllDates(getSymFromDate(sym,lubridate::ymd("2023-01-03")))
@@ -88,10 +108,7 @@ getsymPrice = function(sym,currency,report_date){
   #### If report_date is today and is not an holiday
   ####  then tries to retrieve current market price and finally asks the user
   ####
-  ### SMART works fine in all cases except for SPX and XSP cases
-  exchange = switch(sym, ESTX50= "EUREX", SPX =, XSP = "CBOE", "SMART")
-  sec=switch(sym, SPX=,XSP=,ESTX50="IND","STK")
-  return(stock_price(sec,sym,currency,exchange,reqType=4))
+  return(stock_price(sym=sym,currency=currency))
 
 }
 
@@ -156,6 +173,7 @@ getLastPriceDate = function(ticker) {
 #'@export
 getLastTickerData = function(ticker) {
   if (is.null(ticker) |
+      ### NA shall work as a numeric for future computations like round(x,2)
       ticker %in% c("","All","STOCK")) return(list(last=NA,change=NA))
   tryCatch({
     ticks=getSymFromDate(ticker,lubridate::today()-5)[[1]] ## Case Tuesday morning and US market not yet opened + Monday and Friday were off -> Get Wed and THur data
@@ -168,31 +186,8 @@ getLastTickerData = function(ticker) {
     ))
   }, error = function(e) {
     print(paste("Error:", e))
-    return(list(last="Non disponible",change=NA))
+    return(list(last=NA,change=NA))
   })
-}
-
-### The following will not work in a package:
-### lastSPY will namely be called at package build and be associated with SPY value at that time
-### lastSPY value will never change thereafter
-####lastSPY=getLastTickerData("SPY")  ### Mkt value
-
-getVal=function(sym) {
-  display_message(paste0("No value for ",sym,"\n Enter new price: "))
-  if (interactive()) {
-    ## display_error_message(paste0("No value for",sym," You need to enter a new price"))
-    # showModal(modalDialog(
-    #   tags$h2('No value for Please enter your personal information'),
-    #   numericInput('val', 'Value'),
-    #   footer=tagList(
-    #     actionButton('submit', 'Submit'),
-    #     modalButton('cancel')
-    #   )
-    # ))
-    val=readline(prompt="(interactive) ")
-  }
-  else val= readLines(con="stdin", n=1)[[1]]
-  as.double(val)
 }
 
 #### Used by Gonet.R script and RAnalysis
@@ -210,21 +205,32 @@ getVal=function(sym) {
 #'@param currency string with possibles values "USD", "CHF", "EUR".
 #'@param exchange string - default value is "SMART". Can be also "EUREX", "CBOE",...
 #'@param reqType default value for IBKR ticker request.
+#'@param close Boolean TRUE/FALSE if true then retrieve last close price if true then retrieve active price
 #'@returns a value
-#'@examples stock_price(sym="SPY",currency="USD")
+#'@examples
+#'\dontrun{
+#'stock_price(sym="SPY",currency="USD")
+#'stock_price(sym="ESTX50",currency="EUR")
+#'stock_price(sec="IND", sym="SOFR3", exchange="CME", currency="USD",close=TRUE)
+#'}
 #'@export
-stock_price = function(sec="STK",sym,currency,exchange="SMART",reqType=4) {
+stock_price = function(sec="STK",sym,currency,exchange="SMART",reqType=4,close=FALSE) {
   #### Default value for security type is Stock
   #### Default value for exchange is SMART
   message("stock_price")
-  ### Special case for CSBGU0 stock I won in Gonet portfolio
-  if (sym == "CSBGU0") reqType=3
+  # ### Special case for CSBGU0 stock I own in Gonet portfolio
+  # if (sym == "CSBGU0") reqType=3
+
+  ### SMART works fine in many cases but not for ESTX50, SPX and XSP cases
+  exchange = switch(sym, ESTX50= "EUREX", SPX =, XSP = "CBOE", exchange)
+  sec=switch(sym, SPX=,XSP=,ESTX50="IND",sec)
 
   ### getStockValue will either get a price from "C:/Users/aldoh/Documents/NewTrading/prices.csv" if one exists younger than 1 hour
   ### Or requests a price from IBKR
   ### Or returns null if IBKR is not available or price cannot be retrieved
   ### It shall return -1 if the ticker is unknown by IBKR
-  line=reticulate::py$getStockValue(sec=sec,sym=sym,currency=currency,exchange=exchange,reqType=reqType)
+
+  line = reticulate::py$getStockValue(sec=sec,sym=sym,currency=currency,exchange=exchange,reqType=reqType,close=close)
 
   #### readline works only in interactive mode,
   #### readLines works only in non-interactive mode
@@ -232,9 +238,10 @@ stock_price = function(sec="STK",sym,currency,exchange="SMART",reqType=4) {
   ### isTRUE let is.na test works also if val=NULL
   ### length(val) is TRUE when val=numeric(0)
   if (is.null(line)) {
-    val=getVal(sym)
+    val=enter_numerical_data(sym)
+
     #### Write data to CSV file as data input by end user or Yahoo
-    line=tibble::tibble(datetime=format(lubridate::now(),"%e %b %Y %Hh%M"),sym=sym)
+    line=dplyr::tibble(datetime=format(lubridate::now(),"%e %b %Y %Hh%M"),sym=sym)
     line$price=val
     utils::write.table(line,paste0(config::get("DirNewTrading"),"prices.csv"),sep=";",
                        row.names = FALSE,quote=F,col.names = FALSE,append=TRUE)
@@ -245,4 +252,99 @@ stock_price = function(sec="STK",sym,currency,exchange="SMART",reqType=4) {
     print(paste0("DateTime:",line[["datetime"]], " Value: ",val))
     return(val)
   }
+}
+
+#### Used by RAnalysis
+###
+#'getStockPriceServer
+#'
+#'For a given ticker this function returns the last known value from IBKR. It first looks for last value stored in prices.csv file.
+#'If one exists that is no older than 1 hour, then this value is returned. Otherwise it looks for IBKR service to retrieve a new data.
+#'If IBKR service is not available, it will request it from end-user on console.In the end the new price is stored in prices.csv file.
+#'
+#'This function is not vectorized and accepts only one ticker at a time.
+#'@param id module id
+#'@param sec security type, equals \code{STK} by default.
+#'Other values are \code{IND} (for index), or \code{FUT} (for future)
+#'@param sym string - IBKR style of ticker, if unknown then function returns -1
+#'@param currency string with possibles values "USD", "CHF", "EUR".
+#'@param exchange string - default value is "SMART". Can be also "EUREX", "CBOE",...
+#'@param reqType default value for IBKR ticker request.
+#'@param close Boolean TRUE/FALSE if true then retrieve last close price if true then retrieve active price
+#'@returns a value
+#'@export
+getStockPriceServer = function(id, sec=shiny::reactive("STK"),sym,
+                               currency,exchange=shiny::reactive("SMART"),reqType=4,close=shiny::reactive(FALSE)) {
+
+  shiny::moduleServer(id,
+                      function(input,output,session) {
+                        ############  Action to be defined #########
+                        ns=shiny::NS(id)
+
+  #### Default value for security type is Stock
+  #### Default value for exchange is SMART
+  message("getStockPriceServer")
+  # ### Special case for CSBGU0 stock I own in Gonet portfolio
+  # if (sym == "CSBGU0") reqType=3
+
+  ### SMART works fine in many cases but not for ESTX50, SPX and XSP cases
+  exch = switch(sym(), ESTX50= "EUREX", SPX =, XSP = "CBOE", exchange())
+  security = switch(sym(), SPX=,XSP=,ESTX50="IND",sec())
+
+  ### getStockValue will either get a price from "C:/Users/aldoh/Documents/NewTrading/prices.csv" if one exists younger than 1 hour
+  ### Or requests a price from IBKR
+  ### Or returns null if IBKR is not available or price cannot be retrieved
+  ### It shall return -1 if the ticker is unknown by IBKR
+
+  line = reticulate::py$getStockValue(sec=security,sym=sym(),currency=currency(),exchange=exch,
+                                      reqType=reqType,close=close())
+
+  ### Case where no IBKR connection exists (NULL) or no value returned
+  if (is.null(line)) {
+    val=enter_numerical_data(sym())
+    print(val)
+
+    #### Write data to CSV file as data input by end user
+    line=dplyr::tibble(datetime=format(lubridate::now(),"%e %b %Y %Hh%M"),sym=sym())
+    line$price=val
+    utils::write.table(line,paste0(config::get("DirNewTrading"),"prices.csv"),sep=";",
+                       row.names = FALSE,quote=F,col.names = FALSE,append=TRUE)
+  }
+  else val=line[["price"]]
+
+  if (val== -1) return(shiny::reactive(-1))
+  else {
+    print(paste0("DateTime:",line[["datetime"]], " Value: ",val))
+    return(shiny::reactive(val))
+  }
+  })
+}
+
+
+
+priceApp = function() {
+  ui = shiny::fluidPage(
+    shiny::fluidRow(
+      shiny::column(width=4, shiny::selectInput("sec","Security: ",choices=c("STK","IND"),selected="STK")),
+      shiny::column(width=4, shiny::textInput("sym","Symbol: ",value="")),
+      shiny::column(width=4, shiny::selectInput("currency","Currency: ",choices=c("USD","EUR","CHF","JPY"),selected="USD")),
+    ),
+    shiny::fluidRow(
+      shiny::column(width=4, shiny::selectInput("close","Close price?: ",choices=c(TRUE,FALSE),selected=FALSE)),
+      shiny::column(width=4, shiny::selectInput("exchange","Exchange: ",choices=c("SMART","EUREX","CBOE","LSEETF"),selected="SMART"))
+    ),
+    shiny::h3(shiny::textOutput("price"))
+  )
+
+  server = function(input,output,session) {
+    output$price=shiny::renderText({
+      shiny::validate(shiny::need(input$sym != "", "Enter sym name!"))
+      #browser()
+      price = getStockPriceServer(id="price",sec=shiny::reactive(input$sec),sym=shiny::reactive(input$sym),
+                          currency=shiny::reactive(input$currency),exchange=shiny::reactive(input$exchange),
+                          close=shiny::reactive(input$close))
+      paste0("Sym: ",input$sym," current price= ", price())
+    })
+  }
+  shiny::shinyApp(ui,server)
 }

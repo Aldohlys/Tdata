@@ -69,6 +69,27 @@ display_error_message = function(error_msg) {
   else message("Error message: ",error_msg)
 }
 
+###' Enter numerical data
+###'
+###' This very simple code piece is intended to enter one numerical value and then returns it.
+###' This is to be used whenever additional data must be entered that was not initially foreseen to be entered
+###' (e.g. due to lack of IBKR connection).
+###'
+###' There are 2 cases:
+###' * R is in interactive mode (e.g. from console)
+###' * R is called from batch.
+###' These 2 sub-cases are handled with different function calls (\code{readline} vs \code{readLines})
+###' @param sym This is the name data to be filled in by end user
+###' @returns numerical input by end user, if cannot be coerced to a number then NA
+###' @export
+enter_numerical_data = function(sym) {
+    print(paste0("Enter value for ",sym))
+
+    if (interactive()) val=readline(prompt="(interactive) ")
+    else val= readLines(con="stdin", n=1)[[1]]
+    return(suppressWarnings(as.double(val)))
+}
+
 #'   pgcd
 #'
 #'"plus grand commun diviseur"
@@ -95,6 +116,33 @@ pgcd = function(x) {
   }
   else return(DescTools::GCD(as.numeric(x)))
 }
+
+#'   change
+#'
+#'Computes the relative change between x and y, x is start value, y end value.
+#'
+#'x and y may be negative, but if x = 0, then change returns NA (float)
+#'x and y may be vectors of numbers
+#'@param x is a vector of integers, cannot include NA
+#'@param y is a vector of integers, cannot include NA#
+#'@return numeric number
+#'@export
+#'@examples
+#'change(1,1.1)  ### Should be equal to 0.1
+#'change(1,1)  ### Should be equal to 0
+#'change(-1,-1.1)  ### Should be equal to -0.1
+#'change(0,1) ## NA
+#'change(-1,-0.9)  ### Should be equal to 0.1
+
+change = function(x,y) {
+  stopifnot(is.numeric(x),is.numeric(y))
+  dplyr::if_else (
+    x==0,
+    NA_real_,
+    sign(x)*(y-x)/x
+  )
+}
+
 
 
 #'   reformat
@@ -148,16 +196,19 @@ findNearestNumberOrDate = function(values_list, target) {
 
 #'   getDTE
 #'
-#' Given a list of numbers or dates,
-#' The aim is to find the nearest within the list
-#' The list does not need to be ordered
-#' This function will proceed by looking at all list elements
+#' getDTE returns the number of days (in decimal format) between a given datetime and a list (or one) of
+#' expiration dates.
+#'
+#' Expiration dates will all be converted into a datetime by appending 4:00pm EST to them.
+#' The interval between both is then converted to a duration (seconds) and converted back in days
+#' by dividing by 24*3600
 #'@param c_datetime is the current date&time
 #'@param expdate is the expiration date (at 4:00pm)
 #'@keywords date options Black-Scholes
 #'@export
 #'@examples
 #'getDTE(as.Date("2023-12-10"),as.Date("2023-12-15"))
+#'getDTE(as.Date("2023-12-10"),c(as.Date("2023-12-10"),as.Date("2023-12-15")))
 
 
 getDTE = function(c_datetime,expdate) {

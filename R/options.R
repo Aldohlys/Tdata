@@ -300,8 +300,8 @@ getBSOptDelta <- function(type,S,K,DTE,sig,r=as.numeric(config::get("interest_ra
     dplyr::if_else (DTE<=0, 0, {
       T=DTE/365
       ##print(paste("getBSOptDelta: argts S:",S," K:",K," sig:",sig," r:",r," T:",T," div:",div))
-      dplyr::if_else(type=="Put", derivmkts::bsopt(S,K,sig,r,T,div)$Put["Delta",],
-               derivmkts::bsopt(S,K,sig,r,T,div)$Call["Delta",])
+      as.numeric(dplyr::if_else(type=="Put", derivmkts::bsopt(S,K,sig,r,T,div)$Put["Delta",],
+               derivmkts::bsopt(S,K,sig,r,T,div)$Call["Delta",]))
     })
   })
 }
@@ -443,6 +443,30 @@ getVol = function(price,min_vol=0,max_vol=2,iter=0,fPrice,...) {
   }
 }
 
+
+#### getIR Implied interest rate computation #########################
+#### Also valid for different combo options
+### getIR deduces interest rate from an option price (called price)
+
+### TO do this it computes option prices with a series of interest rates (between 0 and 10%)
+#### Then dochotomia algorithm : this works ONLY if fPrice is monotonous
+getIR = function(price,min_ir=0,max_ir=0.1,iter=0,fPrice,...) {
+  if (missing(price)) return(NA)
+  if (iter>20) return(NA)
+  ir=(min_ir+max_ir)/2
+  cur_price=fPrice(...,r=ir)
+  ##message("Iter: ",iter," cur_price: ",cur_price, " min_vol: ",min_vol," max_vol: ",max_vol)
+  if (is.na(cur_price)) return(NA)
+  if (abs(ir-max_ir)<0.0001) {
+    #  message("Iter: ",iter,"cur_price: ",cur_price, "min_vol: ",min_vol,"max_vol: ",max_vol)
+    round(ir,3)
+  }
+  else {
+    if (sign(price*(cur_price-price))<0)  getIR(price=price,min_ir=ir,max_ir=max_ir,iter=iter+1,fPrice,...)
+    else getIR(price=price,min_ir=min_ir,max_ir=ir,iter=iter+1,fPrice,...)
+  }
+}
+
 #######  getImpliedVolOpt ###############
 #'  getImpliedVolOpt
 #'
@@ -472,6 +496,36 @@ getImpliedVolOpt = function(type,S,K,r=as.numeric(config::get("interest_rate")),
   ))
 }
 
+
+#######  getImpliedIROpt ###############
+#'  getImpliedIROpt
+#'
+#' This function computes the implied interest rate of a given price, based upon Black-Scholes-Merton model
+#'
+#' It performs the computation using dichotomia algorithm.
+#' As such this requires that the price function is monotonous. Otherwise a brute force algorithm must be used.
+#'
+#'This function cannot be vectorized.
+#'@param type a string, if equal to "Put" then getBSPutPrice is called, if equal to "Call" getBSCallPrice is called, if equal to "Stock" returns 1, else returns NA
+#'@param S Spot price or current underlying price
+#'@param K Strike price
+#'@param sig Implied Volatility
+#'@param DTE Number of days to expiration (may be a decimal number - useful as expiration may happen at 4:00pm or in the morning (index case))
+#'@param div annualized dividend yield (i.e. sum of present values of upcoming dividends over 1 year divided by current spot price). Default value is 0.
+#'@param price option price
+#'@keywords Black-Scholes volatility trading
+#'@examples
+#'getImpliedIROpt("Call",S=100,K=100,DTE=5,sig=0.25,div=0,price=1.19455)
+#'getImpliedIROpt(type="Put",S=22,K=22.5,sig=0.4,DTE=5,price=1.1)
+#'@export
+getImpliedIROpt = function(type,S,K,sig,DTE,div=0,price) {
+  dplyr::if_else(is.na(price),NA,
+                 switch(type,
+                        "Stock" = NA,
+                        "Put" = getIR(price=price,fPrice=getBSPutPrice,S=S,K=K,sig=sig,DTE=DTE,div=div),
+                        "Call"=getIR(price=price,fPrice=getBSCallPrice,S=S,K=K,sig=sig,DTE=DTE,div=div)
+                 ))
+}
 
 #######  getImpliedVolStraddle ###############
 #'  getImpliedVolStraddle

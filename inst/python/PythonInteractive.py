@@ -23,7 +23,9 @@ strikes=[19,20,21,22,23]
 strike=21
 
 ib.reqMarketDataType(4)
+ib.reqPnL("U1804173")
 
+sec="IND"
 sec="STK"
 secType="STK"
 secType="IND"
@@ -37,7 +39,7 @@ sym="MC"
 sym="AI"
 sym="OR"
 sym="TTE"
-
+sym="SOFR3"
 sym="NESN"
 sym="ABBN"
 sym="SLHN"
@@ -51,7 +53,9 @@ exchange='SMART'
 exchange='EUREX'
 exchange="LSEETF"
 exchange="EBS"
+exchange="CME"
 exchangeSec='CBOE'
+exchangeSec="CME"
 exchangeSec='EUREX'
 exchangeOpt="EUREX"
 exchangeOpt="SMART"

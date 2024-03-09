@@ -67,7 +67,7 @@ def determine_sym(sym):
 # 
 
 
-def getStockValue(sec,sym,currency,exchange,reqType):
+def getStockValue(sec,sym,currency,exchange,reqType,close):
   ### This function returns either:
   ### -1 if contract does not exist or
   ### NULL if no connection to IBKR and sym does not exist in prices.csv or
@@ -79,7 +79,7 @@ def getStockValue(sec,sym,currency,exchange,reqType):
   locale.setlocale(locale.LC_ALL, '')
   
   ### Retrieve last prices for 'sym' if any
-  print("getStockValue")
+  #print("getStockValue")
   stored_prices=pd.read_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv",sep=';')
   line=stored_prices.loc[stored_prices['sym'] == sym]
   
@@ -110,7 +110,8 @@ def getStockValue(sec,sym,currency,exchange,reqType):
     ib.reqMarketDataType(int(reqType)) ### Request type - Should be 2 or 4
     [ticker] = ib.reqTickers(contract)
     #print("\nTicker:",ticker)
-    value= ticker.marketPrice()
+    if (close): value= ticker.close
+    else:  value= ticker.marketPrice()
     ib.sleep(1)
     ib.disconnect()
     ### If no value is returned (no market price available)
@@ -141,7 +142,7 @@ def getStockValue(sec,sym,currency,exchange,reqType):
   return(df)
 
 def getCurrencyPairValue(currency_pair,reqType):
-  print("\ngetCurrencyPairValue")
+  #print("\ngetCurrencyPairValue")
   ib = IB()
   try:
     ib.connect('127.0.0.1', 7496, clientId=getPort())    # use this one for TWS (Traders Workstation) acct mgt
@@ -166,7 +167,7 @@ def getCurrencyPairValue(currency_pair,reqType):
   
 
 def getOptValue(sym,expiration,strike,right,currency,exchange,tradingClass):
-  print("\ngetOptValue")
+  #print("\ngetOptValue")
   ib = IB()
   try:
     ib.connect('127.0.0.1', 7496, clientId=getPort())    # use this one for TWS (Traders Workstation) acct mgt
@@ -198,7 +199,7 @@ def getOptValue(sym,expiration,strike,right,currency,exchange,tradingClass):
   return(value)
 
 def getStraddleValue(sym,expiration,strike,currency,exchange,tradingClass):
-  print("\ngetStraddleValue")
+  #print("\ngetStraddleValue")
   ib = IB()
   try:
     ib.connect('127.0.0.1', 7496, clientId=getPort())    # use this one for TWS (Traders Workstation) acct mgt
@@ -325,9 +326,18 @@ def getChains(sym,secType,currency,exchangeSec):
   
 def getChain(sym,secType,currency,exchangeSec,exchangeOpt,tradingClass):
   chains = getChains(sym,secType,currency,exchangeSec)
-  chain=[chain for chain in chains if chain[0]==exchangeOpt and chain[2]==tradingClass]
-  if chain : return chain[0]
-  return None
+  
+  ### No access to IBKR API
+  if chains is None : return None
+  
+  #### Test if getChains has returned a list of chains
+  if (isinstance(chains, list)):
+    ### Test if there is one chain that has requested exchangeOpt and tradingClass
+    chain=[chain for chain in chains if chain[0]==exchangeOpt and chain[2]==tradingClass]
+    if chain : return chain[0]
+  
+  ### IN all other cases return NaN
+  return(float('NaN'))
   
 # def getExpDates(sym,secType,currency,exchange,tradingClass):
 #   ib = IB()

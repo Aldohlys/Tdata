@@ -32,7 +32,8 @@ NBBO = function(sym,right,strike,expiration,currency,exchange,tradingClass) {
 
 #'  build_line function
 #'
-#'This utility transforms a set of arguments into a dataframe. Any missing argument gets a default value,
+#'This utility transforms a set of arguments into a dataframe. Any missing argument gets a default value.
+#'All data is rounded to 2 digits (dollar value) or 3 digits (percentage)
 #'
 #'@param type Put Call or Stock
 #'@param sym ticker name Empty default value
@@ -41,35 +42,58 @@ NBBO = function(sym,right,strike,expiration,currency,exchange,tradingClass) {
 #'@param DTE number of days to expiration -NA is default
 #'@param startPrice initial price - 0 is default
 #'@param endPrice final price - 0 is default
-#'@param p_u_price projected underlying price - 0 is default
 #'@param startPriceIV implied vol for initial price - 0 is default
 #'@param endPriceIV implied vol for final price - 0 is default
 #'@param pos position  - 0 is default
 #'@param mul multiplier - NA is default
 #'@param delta delta value  - NA is default
-#'@param deltanotional delta notional value (delta dollars)  - NA is default
-#'@returns a data frame with the following arguments: instrument,type,strike,mul,pos,startPrice,startPriceIV,
-#'endPrice,endPriceIV, change= (endPrice-startPrice)/startPrice, startValue=mul*pos*startPrice,
-#'endValue=mul*pos*endPrice, unrealizedPnL=mul*pos*(endPrice-startPrice), DTE, delta, deltanotional.
+#'@param deltanotional delta notional (delta dollars or euros) equals `mul*pos*delta*underlying price` or simply `deltanet*underlying price`
+#'@param gamma gamma value  - NA is default
+#'@param theta theta value  - NA is default
+#'@param vega vega value  - NA is default
+#'@return a data frame with the following arguments:
+#' * `instrument`,
+#' * `type`,
+#' * `strike`,
+#' * `mul`,
+#' * `pos`
+#' * `startPrice`,
+#' * `startPriceIV`,
+#' * `endPrice`,
+#' * `endPriceIV`,
+#' * `change`= (endPrice-startPrice)/startPrice, Division is done only if endPrice differs from startPrice.
+#' Equals to NA if both startPrice and endPrice are equal to NA.
+#' * `startValue`=mul`*`pos`*`startPrice,
+#' * `endValue`=mul`*`pos`*`endPrice,
+#' * `unrealizedPnL`=mul`*`pos`*`(endPrice-startPrice),
+#' * `DTE`,
+#' * `delta`,
+#' * `deltanet`=mul`*`pos`*`delta,
+#' * `deltanotional`
+#' * `gamma`,
+#' * `theta`,
+#' * `vega`,
+#'
 #'NB: If mul is NA then startValue, endValue, unPnL are all equal to NA.
 #'@examples build_line()
-#'@examples build_line(type="Stock",startPrice=100,endPrice=110,mul=1,pos=5,delta=5,deltanotional = 5*110)
+#'@examples build_line(sym="STOCK",type="Stock",startPrice=100,endPrice=110,
+#'mul=1,pos=5,delta=1)
+#'@examples build_line(type="Put", pos=2,strike=95,expdate = 20240209,
+#'startPrice=0.74,mul=100,endPrice=0.19,delta=-0.08,deltanotional=100*(-0.08)*2*102)
 #'@export
-build_line = function(type="", sym="", strike=0, expdate="", DTE=NA, startPrice=0, endPrice=0, p_u_price=0,
-                      startPriceIV=0, endPriceIV=0, pos=0, mul=NA, delta=NA, deltanotional=NA) {
-  # print(paste("build_line input type=",type, "sym=",sym, "strike=",strike, "expdate=",expdate, "DTE=",DTE,
-  #             "startPrice=",startPrice,"endPrice=",endPrice, "p_u_price=",p_u_price,
-  #             "startPriceIV=",startPriceIV, "endPriceIV=",endPriceIV, "pos=",pos, "mul=",mul, "delta=",delta,
-  #             "deltanotional=",deltanotional))
+build_line = function(type="", sym="", strike=NA, expdate="", DTE=NA, startPrice=0, endPrice=0,
+                      startPriceIV=NA, endPriceIV=NA, pos=0, mul=NA, delta=NA, deltanotional=NA,
+                      gamma=NA, theta=NA, vega=NA) {
 
-  default_line=data.frame(instrument="", type="", strike=0, mul=NA, pos=0, startPrice=0, startPriceIV=0,
-                          endPrice=0, endPriceIV=0, change=0,
-                          startValue=NA, endValue=NA, unrealizedPnL=NA, DTE=NA, delta=NA, deltanotional=NA)
+  default_line=data.frame(instrument="", type=type, strike=strike, mul=mul, pos=pos, startPrice=startPrice,
+                          startPriceIV=startPriceIV,  endPrice=endPrice, endPriceIV=endPriceIV,  change=0,
+                          startValue=NA, endValue=NA, unrealizedPnL=NA, DTE=DTE, delta=delta, deltanet=NA,
+                          deltanotional=NA, gamma=gamma,  theta=theta,  vega=vega)
 
-  stopifnot(is.numeric(c(strike,pos,p_u_price,mul,startPrice,startPriceIV,endPrice,endPriceIV,
-                         DTE, delta)) & is.character(c(type, sym, expdate)))
-  # mul=if_else(mul==0,{display_error_message("Multiplier must be different from 0!")
-  #                     0},mul)
+  stopifnot(is.numeric(c(strike,pos,mul,startPrice,startPriceIV,endPrice,endPriceIV,
+                         DTE, delta, deltanotional, gamma, theta, vega))
+            & is.character(c(type, sym, expdate)))
+
   line=dplyr::if_else (type=="", default_line,
                 data.frame(
                   instrument= dplyr::case_match (type,
@@ -83,23 +107,18 @@ build_line = function(type="", sym="", strike=0, expdate="", DTE=NA, startPrice=
                   startPriceIV= startPriceIV,
                   endPrice=endPrice,
                   endPriceIV= endPriceIV,
-                  change= (endPrice-startPrice)/startPrice,
+                  change= change(startPrice,endPrice),
                   startValue=mul*pos*startPrice, ##equals NA if multiplier=NA
                   endValue=mul*pos*endPrice, ##equals NA if multiplier=NA
                   unrealizedPnL=mul*pos*(endPrice-startPrice), ##equals NA if multiplier=NA
                   DTE= DTE,
-                  delta=delta,
-                  deltanotional= deltanotional ##equals NA if multiplier or delta=NA
+                  delta=round(delta,2),
+                  deltanet=round(pos*mul*delta,3),
+                  deltanotional= round(deltanotional,3), ##equals NA if multiplier or delta=NA - needs underlying price to be computed
+                  gamma=round(gamma,3),
+                  theta=round(theta,3),
+                  vega=round(vega,3)
                 ))
-
-  # print(paste("build_line output ",
-  #             "instrument=",line$instrument, "type=",line$type,  "strike=",line$strike,
-  #             "mul=",line$mul,"pos=",line$pos,
-  #               "startPrice=",line$startPrice,"startPriceIV=",line$startPriceIV,
-  #             "endPrice=",line$endPrice,  "endPriceIV=",line$endPriceIV,
-  #             "change=",line$change, "startValue=",line$startValue,"endValue=",line$endValue,
-  #             "unrealizedPnL=",line$unrealizedPnL,
-  #             "DTE=",line$DTE,"delta=",line$delta,"deltanotional=",line$deltanotional))
   return(line)
 }
 
@@ -123,15 +142,23 @@ ligneUI = function(id) {
                 selected="Select"),
     shiny::numericInput(ns("Qty"),label="Quantity:",value=0),
     shiny::uiOutput(ns("Controls1")),
-    shiny::uiOutput(ns("Controls2"))
-  )
+    shiny::uiOutput(ns("Controls2")),
+    shiny::actionButton(ns("Reset"),"Reset!",shiny::icon("trash"),
+                        style="color: #fff; background-color: #E98088; border-color: #2e6da4"))
 }
 
-#'   Journal ligne server
+#'   Ligne server
 #'
-#'This module provides the ability to write log entries into a journal and to retrieve them
+#'This module server function returns expected value of a specific option in the future using BS model.
+#'
+#'For computing option start price, it is possible either to retrieve current value from IBKR (NBBO option),
+#'or to enter it manually (Manual option) or by giving a start IV so that a BS option value can be computed.
+#'
+#'For the end value, BS will be used in all cases for computation.
+#'Therefore all input data necessary for BS computation
+#'-including risk free interest rate, dividend yield- are expected.
 #'@param id this is used by caller to identify line and have the link with server piece
-#'@param sym this is to filter only log entries corresponding to \code{sym}
+#'@param sym symbol string - may be used to retrieved value from IBKR
 #'@param mul multiplier - usually 100, but also 10 (ESTX50)
 #'@param s_datetime start date time- currently now
 #'@param i_rate value for interest rate (options BS computation)
@@ -144,11 +171,17 @@ ligneUI = function(id) {
 #'@param tradingClass string necessary to get option price from IBKR
 #'@param exp_dates a vector of dates
 #'@param strikes a vector of strikes
+#'@return a data frame built by `build_line` function
 #'@export
 ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
                        p_days, p_u_price,currency,exchange,tradingClass,
                        exp_dates,strikes
                        ) {
+  stopifnot(shiny::is.reactive(sym),shiny::is.reactive(mul),shiny::is.reactive(s_datetime),shiny::is.reactive(i_rate),
+            shiny::is.reactive(u_price), shiny::is.reactive(div),shiny::is.reactive(p_days),shiny::is.reactive(p_u_price),
+            shiny::is.reactive(currency),shiny::is.reactive(exchange),shiny::is.reactive(tradingClass),
+            shiny::is.reactive(exp_dates),shiny::is.reactive(strikes))
+
   shiny::moduleServer(id, function(input,output,session) {
     ############  Action to be defined #########
     ns=shiny::NS(id)
@@ -161,7 +194,8 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
             {if (length(strikes())>1) shiny::selectInput(ns("Strike"),label="Strike:",choices=strikes(),selected=strikes()[1])
              else shiny::numericInput(ns("Strike"),label="Strike:",value=0)
               },
-            shiny::selectInput(ns("Pricing"),label="Pricing: ",choices=c("Select","Black-Scholes","NBBO","Manual"),selected="Select")
+            shiny::selectInput(ns("Pricing"),label="Pricing: ",choices=c("Select","Black-Scholes","NBBO","Manual"),selected="Select"),
+            shiny::textOutput(ns("start_price"))
             )
         })
       }
@@ -179,14 +213,17 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
       if (shiny::req(input$Pricing) == "Manual") {
           output$Controls2=shiny::renderUI(shiny::tagList(
             shiny::numericInput(ns("startPrice"),label=" ",value=""),
-            shiny::numericInput(ns("p_vol"),label="End Implied Vol (%):",value="")))
+            shiny::numericInput(ns("p_vol"),label="End Implied Vol (%):",value=""),
+            shiny::textOutput(ns("end_price"))))
         }
         else if (input$Pricing == "Black-Scholes") {
           output$Controls2=shiny::renderUI(shiny::tagList(shiny::numericInput(ns("startIV"),label="Start Implied Vol (%): ",value=""),
-                                                          shiny::numericInput(ns("p_vol"),label="End Implied Vol (%):",value="")))
+                                                          shiny::numericInput(ns("p_vol"),label="End Implied Vol (%):",value=""),
+                                                          shiny::textOutput(ns("end_price"))))
         }
         else if (input$Pricing == "NBBO") {
-          output$Controls2=shiny::renderUI(shiny::tagList(shiny::numericInput(ns("p_vol"),label="End Implied Vol (%):",value="")))
+          output$Controls2=shiny::renderUI(shiny::tagList(shiny::numericInput(ns("p_vol"),label="End Implied Vol (%):",value=""),
+                                                          shiny::textOutput(ns("end_price"))))
 
         }
         else output$Controls2=shiny::renderUI({})
@@ -212,6 +249,11 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
       shiny::updateNumericInput(session=session,inputId="p_vol",value=input$startIV)
     },once=TRUE)
 
+    shiny::observeEvent(input$Reset,{
+      shiny::updateNumericInput(session, "Type", value="Select")
+      shiny::updateNumericInput(session, "Qty", value=0)
+    })
+
     ### Compute line elements:
     ### By default every field set to 0 or empty
     ### Stock: take start price and end price given as inputs to server function
@@ -219,14 +261,14 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
     ###           compute vol for start price - vol for BS is already known
 
      expDate=shiny::reactive({
-       message("expdate: ",input$ExpDate)
+       #message("expdate: ",input$ExpDate)
        shiny::req(input$ExpDate)
        as.Date(input$ExpDate,"%d %b %Y")
      })
 
      strike=shiny::reactive({
        shiny::req(input$Strike)
-       message("strike: ",input$Strike)
+       #message("strike: ",input$Strike)
        as.numeric(input$Strike)
      })
 
@@ -258,14 +300,14 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
      sDTE =shiny:: reactive({
        shiny::req(expDate)
        sdte=getDTE(s_datetime(),expDate())
-       message("sDTE: ",sdte)
+       #message("sDTE: ",sdte)
        sdte
      })
 
      eDTE = shiny::reactive({
        shiny::req(expDate)
        edte=getDTE(s_datetime()+lubridate::ddays(as.numeric(p_days())),expDate())
-       message("eDTE: ",edte)
+       #message("eDTE: ",edte)
        edte
      })
 
@@ -277,7 +319,7 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
         } else
          startiv=getImpliedVolOpt(type=input$Type,S=u_price(),K=strike(),r=i_rate(),
                         DTE=sDTE(),price=startPrice(),div=div())
-       message("startPriceIV: ",startiv)
+       #message("startPriceIV: ",startiv)
        startiv
      })
 
@@ -289,13 +331,13 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
          endp=getBSOptPrice(type=input$Type,S=p_u_price(),K=strike(),r=i_rate(),
                        DTE=eDTE(),sig=endPriceIV(), div=div())
        }
-       print(paste("endPrice:",endp))
+       #print(paste("endPrice:",endp))
        endp
      })
 
      endPriceIV = shiny::reactive({
        shiny::req(input$p_vol)
-       print(paste("endPriceIV:",input$p_vol/100))
+       #print(paste("endPriceIV:",input$p_vol/100))
        input$p_vol/100
      })
 
@@ -304,16 +346,71 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
        if (input$Type != "Stock") {
          shiny::req(input$Strike)
          if ((p_u_price() != "") & (p_days() != "")) {
-           print(paste("Delta BS Computation:",input$Type,"S:",p_u_price(),"K:",strike(),
-                       "eDTE:",eDTE(),"Vol:",endPriceIV(),"r:",i_rate()))
+           # print(paste("Delta BS Computation:",input$Type,"S:",p_u_price(),"K:",strike(),
+           #             "eDTE:",eDTE(),"Vol:",endPriceIV(),"r:",i_rate()))
            delta=getBSOptDelta(type=input$Type,S=p_u_price(),K=strike(),
                                DTE=eDTE(),sig=endPriceIV(),r=i_rate(),div=div())
          }
        }
-       print(paste("Delta:",delta))
+       # print(paste("Delta:",delta))
        delta
      })
 
+     gamma = shiny::reactive({
+       gamma=0
+       if (input$Type != "Stock") {
+         shiny::req(input$Strike)
+         if ((p_u_price() != "") & (p_days() != "")) {
+           # print(paste("Gamma BS Computation:",input$Type,"S:",p_u_price(),"K:",strike(),
+           #             "eDTE:",eDTE(),"Vol:",endPriceIV(),"r:",i_rate()))
+           gamma=getBSOptGamma(type=input$Type,S=p_u_price(),K=strike(),
+                               DTE=eDTE(),sig=endPriceIV(),r=i_rate(),div=div())
+         }
+       }
+       # print(paste("Gamma:",gamma))
+       gamma
+     })
+
+
+     theta = shiny::reactive({
+       theta=0
+       if (input$Type != "Stock") {
+         shiny::req(input$Strike)
+         if ((p_u_price() != "") & (p_days() != "")) {
+           # print(paste("theta BS Computation:",input$Type,"S:",p_u_price(),"K:",strike(),
+           #             "eDTE:",eDTE(),"Vol:",endPriceIV(),"r:",i_rate()))
+           theta=getBSOptTheta(type=input$Type,S=p_u_price(),K=strike(),
+                               DTE=eDTE(),sig=endPriceIV(),r=i_rate(),div=div())
+         }
+       }
+       # print(paste("theta:",theta))
+       theta
+     })
+
+
+     vega = shiny::reactive({
+       vega=0
+       if (input$Type != "Stock") {
+         shiny::req(input$Strike)
+         if ((p_u_price() != "") & (p_days() != "")) {
+           # print(paste("vega BS Computation:",input$Type,"S:",p_u_price(),"K:",strike(),
+           #             "eDTE:",eDTE(),"Vol:",endPriceIV(),"r:",i_rate()))
+           vega=getBSOptVega(type=input$Type,S=p_u_price(),K=strike(),
+                               DTE=eDTE(),sig=endPriceIV(),r=i_rate(),div=div())
+         }
+       }
+       # print(paste("vega:",vega))
+       vega
+     })
+
+     output$start_price = shiny::renderText({
+       shiny::req(input$Pricing)
+       if (input$Pricing == "Black-Scholes") paste0("Start Price: ", round(startPrice(),2))
+       else if (input$Pricing == "Manual")  paste0("Start Price IV: ",round(startPriceIV()*100,2),"%")
+       else paste0("Start Price: ", round(startPrice(),2),"  Start Price IV: ",round(startPriceIV()*100,2),"%")
+     })
+
+     output$end_price = shiny::renderText(paste0("End Price: ", round(endPrice(),2)))
 
     return(shiny::reactive({
       stopifnot(is.numeric(c(mul(),i_rate(),u_price(),p_days(),p_u_price())))
@@ -325,14 +422,20 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
 
       switch(input$Type,
              "Stock" = build_line(type="Stock", sym=shiny::req(sym()), startPrice=u_price(), endPrice=p_u_price(),
-                                  pos=shiny::req(input$Qty), mul=1, delta=input$Qty,deltanotional=input$Qty*p_u_price()),
+                                  pos=shiny::req(input$Qty), mul=1, delta=input$Qty,
+                                  deltanotional=input$Qty*p_u_price()),
              "Put"=,
              "Call"= {
-                        delta=delta()*input$Qty*mul()
-                        build_line(type=input$Type, sym=shiny::req(sym()), strike=shiny::req(strike()),expdate=format(shiny::req(expDate()),"%d-%b-%Y"),
-                        DTE=eDTE(), startPrice=startPrice(), endPrice=endPrice(), p_u_price=p_u_price(),
+                        build_line(type=input$Type, sym=shiny::req(sym()), strike=shiny::req(strike()),
+                                   expdate=format(shiny::req(expDate()),"%d-%b-%Y"),
+                        DTE=eDTE(), startPrice=startPrice(), endPrice=endPrice(),
                         startPriceIV=startPriceIV(), endPriceIV=endPriceIV(),
-                        pos=shiny::req(input$Qty), mul=mul(), delta=delta,deltanotional=delta*p_u_price())
+                        pos=shiny::req(input$Qty), mul=mul(),
+                        delta=delta(), deltanotional=mul()*delta()*input$Qty*p_u_price(),
+                        gamma=gamma(),
+                        theta=theta(),
+                        vega=vega()
+                        )
                       },
              build_line()) ## Default value
     }))
@@ -341,11 +444,9 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
 
 ##print("Ligne module loaded!")
 
-
 ligneDemoApp <- function() {
   ##### List of  default expiration dates values
-  weekly_dates=c(lubridate::ymd("2023-12-15"),lubridate::ymd("2023-12-22"),lubridate::ymd("2023-12-29"),
-                 lubridate::ymd("2024-01-05"),lubridate::ymd("2024-01-12"),lubridate::ymd("2024-01-19"),lubridate::ymd("2024-01-26"),
+  weekly_dates=c(lubridate::ymd("2024-01-19"),lubridate::ymd("2024-01-26"),
                  lubridate::ymd("2024-02-02"),lubridate::ymd("2024-02-09"),lubridate::ymd("2024-02-16"),lubridate::ymd("2024-02-23")
   )
 
@@ -357,32 +458,43 @@ ligneDemoApp <- function() {
   dates_list=c(weekly_dates, monthly_dates)
 
   ui = shiny::fluidPage(
-    shiny::h1("AI Demo"),
+    shiny::h1("Ligne Demo"),
     shiny::h3(shiny::textOutput("title")),
+    shiny::textInput("sym","Symbol: ",value=""),
+    shiny::numericInput("mul","Multiplier: ",value=100),
+    shiny::selectInput("currency","Currency: ",choices=c("USD","EUR","CHF"),selected="USD"),
+    shiny::selectInput("exchange","Exchange: ",choices=c("SMART","EUREX","CBOE"),selected="SMART"),
+    shiny::textInput("tradingClass","Trading Class: ",value=""),
+    shiny::numericInput("strikes","Strike: ",value=100),
+    shiny::numericInput("u_price","Current underlying price:",value=100),
+    shiny::numericInput("p_u_price","Projected price:",value=100),
+    #shiny::numericInput("div","Dividend yield (%):",value=0),
+    shiny::numericInput("p_days","Number of days for projected price:",value=10),
+    shiny::hr(),
     ligneUI("Ligne"),
-    shiny::tableOutput("table"),
-    shiny::numericInput("u_price","Current underlying price:",value=159.4),
-    shiny::numericInput("p_u_price","Projected price:",value=160.5),
-    shiny::numericInput("div","Dividend yield (%):",value=0),
-    shiny::numericInput("p_days","Number of days for projected price:",value=10))
+    shiny::tableOutput("table")
+  )
 
   server = function(input, output, session) {
-    ligne=ligneServer(id="Ligne",sym=shiny::reactive("AI"),mul=shiny::reactive(100),
-                      s_datetime=shiny::reactive(lubridate::now()),i_rate=shiny::reactive(0.05),
+    ligne=ligneServer(id="Ligne",sym=shiny::reactive(input$sym),mul=shiny::reactive(input$mul),
+                      s_datetime=shiny::reactive(lubridate::now()),
+                      i_rate=shiny::reactive(0.04),
                       u_price=shiny::reactive(input$u_price),
-                      div=shiny::reactive(input$div/100),
+                      div=shiny::reactive(0),
                       p_days=shiny::reactive(input$p_days),
                       p_u_price=shiny::reactive(input$p_u_price),
-                      currency=shiny::reactive("EUR"),exchange=shiny::reactive("EUREX"),
-                      tradingClass=shiny::reactive("AIR"),
+                      currency=shiny::reactive(input$currency),
+                      exchange=shiny::reactive(input$exchange),
+                      tradingClass = shiny::reactive(input$tradingClass),
                       exp_dates=shiny::reactive(format(dates_list,"%d %b %Y")),
-                      strikes=shiny::reactive(160)
+                      strikes=shiny::reactive(input$strikes)
                       #strikes=reactive(seq(150,170,2))
                       )
 
     output$table=shiny::renderTable(ligne())
-    output$title=shiny::renderText({paste0("AI current price=",input$u_price,", projected price=",input$p_u_price," in ",
-                                    input$p_days," days, div yield=",input$div,"%")})
+    output$title=shiny::renderText({paste0(input$sym," current price=",input$u_price,",
+                                           projected price=",input$p_u_price," in ",
+                                    input$p_days," days, div yield= 0 interest_rate=4%")})
 
   }
   shiny::shinyApp(ui, server)
@@ -391,4 +503,56 @@ ligneDemoApp <- function() {
 
 ##ligneDemoApp()
 
+ligneApp = function(interest_rate) {
+  weekly_dates=c(lubridate::ymd("2024-01-19"),lubridate::ymd("2024-01-26"),
+                 lubridate::ymd("2024-02-02"),lubridate::ymd("2024-02-09"),lubridate::ymd("2024-02-16"),lubridate::ymd("2024-02-23")
+  )
 
+
+  monthly_dates=c(lubridate::ymd("2024-03-15"),lubridate::ymd("2024-04-19"),lubridate::ymd("2024-05-17"),lubridate::ymd("2024-06-21"),lubridate::ymd("2024-07-19"),
+                  lubridate::ymd("2024-08-16"),lubridate::ymd("2024-09-20"),lubridate::ymd("2024-10-18"),lubridate::ymd("2024-11-15"),lubridate::ymd("2024-12-20"),
+                  lubridate::ymd("2025-01-17"), lubridate::ymd("2025-03-21"), lubridate::ymd("2025-06-20"), lubridate::ymd("2025-09-19"), lubridate::ymd("2025-12-19"),
+                  lubridate::ymd("2026-01-16"))
+  dates_list=c(weekly_dates, monthly_dates)
+
+  ui = shiny::fluidPage(
+    shiny::h1("Ligne Demo"),
+    shiny::h3(shiny::textOutput("title")),
+    shiny::textInput("sym","Symbol: ",value=""),
+    shiny::numericInput("mul","Multiplier: ",value=100),
+    shiny::selectInput("currency","Currency: ",choices=c("USD","EUR","CHF"),selected="USD"),
+    shiny::selectInput("exchange","Exchange: ",choices=c("SMART","EUREX","CBOE"),selected="SMART"),
+    shiny::textInput("tradingClass","Trading Class: ",value=""),
+    shiny::numericInput("strikes","Strike: ",value=100),
+    shiny::numericInput("u_price","Current underlying price:",value=100),
+    #shiny::numericInput("div","Dividend yield (%):",value=0),
+    shiny::hr(),
+    ligneUI("Ligne"),
+    shiny::tableOutput("table")
+  )
+
+  server = function(input, output, session) {
+    ligne=ligneServer(id="Ligne",sym=shiny::reactive(input$sym),
+                      mul=shiny::reactive(input$mul),
+                      s_datetime=shiny::reactive(lubridate::now()),
+                      i_rate=shiny::reactive(interest_rate),
+                      u_price=shiny::reactive(input$u_price),
+                      div=shiny::reactive(0),
+                      p_days=shiny::reactive(0),
+                      p_u_price=u_price,
+                      currency=shiny::reactive(input$currency),
+                      exchange=shiny::reactive(input$exchange),
+                      tradingClass = shiny::reactive(input$tradingClass),
+                      exp_dates=shiny::reactive(format(dates_list,"%d %b %Y")),
+                      strikes=shiny::reactive(input$strikes)
+                      #strikes=reactive(seq(150,170,2))
+    )
+
+    output$table=shiny::renderTable(ligne())
+    output$title=shiny::renderText({paste0(input$sym," current price=",input$u_price,",
+                                           projected price=",input$p_u_price," in ",
+                                           input$p_days," days, div yield= 0 interest_rate=4%")})
+
+  }
+  shiny::shinyApp(ui, server)
+}

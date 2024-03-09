@@ -17,7 +17,7 @@ If last record date is today then returns it.
 
 Otherwise tries to connect to IBKR TWS API and retrieve pairs value.
 
-If this task does not work, it will then ask the end-user at console using getVal function
+If it does not succeed, it will then ask the end-user using enter_numerical_data  function
 Once new data is obtained, then write it to CurrencyPairs file
 }
 \examples{

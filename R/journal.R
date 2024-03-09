@@ -167,7 +167,7 @@ journalEntry= function(sym, theme, text) {
 
 
 
-#journalDemoApp()
+#journalApp()
 
 #### TESTS
 # library(dplyr)

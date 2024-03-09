@@ -7,18 +7,20 @@
 build_line(
   type = "",
   sym = "",
-  strike = 0,
+  strike = NA,
   expdate = "",
   DTE = NA,
   startPrice = 0,
   endPrice = 0,
-  p_u_price = 0,
-  startPriceIV = 0,
-  endPriceIV = 0,
+  startPriceIV = NA,
+  endPriceIV = NA,
   pos = 0,
   mul = NA,
   delta = NA,
-  deltanotional = NA
+  deltanotional = NA,
+  gamma = NA,
+  theta = NA,
+  vega = NA
 )
 }
 \arguments{
@@ -36,8 +38,6 @@ build_line(
 
 \item{endPrice}{final price - 0 is default}
 
-\item{p_u_price}{projected underlying price - 0 is default}
-
 \item{startPriceIV}{implied vol for initial price - 0 is default}
 
 \item{endPriceIV}{implied vol for final price - 0 is default}
@@ -48,18 +48,50 @@ build_line(
 
 \item{delta}{delta value  - NA is default}
 
-\item{deltanotional}{delta notional value (delta dollars)  - NA is default}
+\item{deltanotional}{delta notional (delta dollars or euros) equals \verb{mul*pos*delta*underlying price} or simply \verb{deltanet*underlying price}}
+
+\item{gamma}{gamma value  - NA is default}
+
+\item{theta}{theta value  - NA is default}
+
+\item{vega}{vega value  - NA is default}
 }
 \value{
-a data frame with the following arguments: instrument,type,strike,mul,pos,startPrice,startPriceIV,
-endPrice,endPriceIV, change= (endPrice-startPrice)/startPrice, startValue=mul\emph{pos}startPrice,
-endValue=mul\emph{pos}endPrice, unrealizedPnL=mul\emph{pos}(endPrice-startPrice), DTE, delta, deltanotional.
+a data frame with the following arguments:
+\itemize{
+\item \code{instrument},
+\item \code{type},
+\item \code{strike},
+\item \code{mul},
+\item \code{pos}
+\item \code{startPrice},
+\item \code{startPriceIV},
+\item \code{endPrice},
+\item \code{endPriceIV},
+\item \code{change}= (endPrice-startPrice)/startPrice, Division is done only if endPrice differs from startPrice.
+Equals to NA if both startPrice and endPrice are equal to NA.
+\item \code{startValue}=mul\code{*}pos\code{*}startPrice,
+\item \code{endValue}=mul\code{*}pos\code{*}endPrice,
+\item \code{unrealizedPnL}=mul\code{*}pos\code{*}(endPrice-startPrice),
+\item \code{DTE},
+\item \code{delta},
+\item \code{deltanet}=mul\code{*}pos\code{*}delta,
+\item \code{deltanotional}
+\item \code{gamma},
+\item \code{theta},
+\item \code{vega},
+}
+
 NB: If mul is NA then startValue, endValue, unPnL are all equal to NA.
 }
 \description{
-This utility transforms a set of arguments into a dataframe. Any missing argument gets a default value,
+This utility transforms a set of arguments into a dataframe. Any missing argument gets a default value.
+All data is rounded to 2 digits (dollar value) or 3 digits (percentage)
 }
 \examples{
 build_line()
-build_line(type="Stock",startPrice=100,endPrice=110,mul=1,pos=5,delta=5,deltanotional = 5*110)
+build_line(sym="STOCK",type="Stock",startPrice=100,endPrice=110,
+mul=1,pos=5,delta=1)
+build_line(type="Put", pos=2,strike=95,expdate = 20240209,
+startPrice=0.74,mul=100,endPrice=0.19,delta=-0.08,deltanotional=100*(-0.08)*2*102)
 }
