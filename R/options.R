@@ -40,6 +40,8 @@
 #' - DTE=0 and S=K -> option price = 0
 #' - DTE < 0 -> option price = 0
 #' - S=K=0 -> option price = 0
+#'
+#' #' Notice that results are rounded to 3 digits after decimal point.
 #'@param S Spot price or current underlying price
 #'@param K Strike price
 #'@param r Interest rate - default value is defined in config.yml file
@@ -64,7 +66,7 @@ getBSCallPrice <- function(S, K, r=as.numeric(config::get("interest_rate")), DTE
   dplyr::if_else( ((DTE==0)&(S==K) | (DTE<0) | ((S==0)&(K==0))), 0,
            {
         T=DTE/365
-        derivmkts::bscall(s=S, k=K, v=sig, r=r, tt=T, d=div)})
+        round(derivmkts::bscall(s=S, k=K, v=sig, r=r, tt=T, d=div),3)})
 }
 
 ########### getBSPutPrice ###########
@@ -84,6 +86,8 @@ getBSCallPrice <- function(S, K, r=as.numeric(config::get("interest_rate")), DTE
 #' - DTE=0 and S=K -> option price = 0
 #' - DTE < 0 -> option price = 0
 #' - S=K=0 -> option price = 0
+#'
+#' Notice that results are rounded to 3 digits after decimal point.
 #'@param S Spot price or current underlying price
 #'@param K Strike price
 #'@param r Interest rate - default value is defined in config.yml file
@@ -103,8 +107,78 @@ getBSPutPrice <- function(S, K, r=as.numeric(config::get("interest_rate")), DTE,
   dplyr::if_else( ((DTE==0)&(S==K) | (DTE<0) | ((S==0)&(K==0))), 0,
            {
              T=DTE/365
-             derivmkts::bsput(s=S, k=K, v=sig, r=r, tt=T, d=div)})
+             round(derivmkts::bsput(s=S, k=K, v=sig, r=r, tt=T, d=div),3)})
 }
+
+
+### Navigating Binomial Trees with the Bjerksund Stensland Model
+#' getBjSCallPrice
+#'
+#' This function provides a Bjerksund Stensland approximation of option call price by iterating 100 times, assuming that current price is risk neutral price.
+#'
+#' Approximation is done using a binomial tree. There is a given probability of going up or down, using an up multiplier of 1.5 and down multiplier of 0.5
+#'  and having a risk neutral hypothesis - i.e. the current price does not allow any bias towards high or low option price
+#' It is assumed that option are American style
+#' If dividend exists, option may therefore be exercised.
+#'
+#' Notice that results are rounded to 3 digits after decimal point.
+
+#'@param S Spot price or current underlying price
+#'@param K Strike price
+#'@param r Interest rate - default value is defined in config.yml file
+#'@param DTE Number of days to expiration (may be a decimal number - useful as expiration may happen at 4:00pm or in the morning (index case))
+#'@param sig annualized volatility
+#'@param div annualized dividend yield (i.e. sum of present values of upcoming dividends over 1 year divided by current spot price). Default value is 0.
+#'@examples
+#'getBjSCallPrice(S=100,K=100,r=0.04,DTE=5,sig=0.25,div=0)
+#'getBjSCallPrice(S=22,K=22.5,r=0.04,DTE=5,sig=0.3,div=0)
+#'@export
+
+getBjSCallPrice <- function(S, K, r=as.numeric(config::get("interest_rate")), DTE, sig, div=0){
+  if(any(missing(S), missing(K), missing(DTE),missing(sig))) stop("getBSPutPrice: one of arguments missing!!")
+
+  ## Handle special cases not handled correctly by bsput/bscall
+  dplyr::if_else( ((DTE==0)&(S==K) | (DTE<0) | ((S==0)&(K==0))), 0,
+                  {
+                    T=DTE/365
+                    round(as.numeric(derivmkts::binomopt(s=S, k=K, v=sig, r=r, tt=T, d=div,
+                    nstep=100, american = TRUE, putopt=FALSE)),3) })
+}
+
+### Navigating Binomial Trees with the Bjerksund Stensland Model
+#' getBjSPutPrice
+#'
+#' This function provides a Bjerksund Stensland approximation of option put price by iterating 100 times, assuming that current price is risk neutral price.
+#'
+#' Approximation is done using a binomial tree. There is a given probability of going up or down, using an up multiplier of 1.5 and down multiplier of 0.5
+#'  and having a risk neutral hypothesis - i.e. the current price does not allow any bias towards high or low option price
+#' It is assumed that option are American style
+#' If dividend exists, option may therefore be exercised.
+#'
+#' Notice that results are rounded to 3 digits after decimal point.
+
+#'@param S Spot price or current underlying price
+#'@param K Strike price
+#'@param r Interest rate - default value is defined in config.yml file
+#'@param DTE Number of days to expiration (may be a decimal number - useful as expiration may happen at 4:00pm or in the morning (index case))
+#'@param sig annualized volatility
+#'@param div annualized dividend yield (i.e. sum of present values of upcoming dividends over 1 year divided by current spot price). Default value is 0.
+#'@examples
+#'getBjSPutPrice(S=100,K=100,r=0.04,DTE=5,sig=0.25,div=0)
+#'getBjSPutPrice(S=22,K=22.5,r=0.04,DTE=5,sig=0.3,div=0)
+#'@export
+
+getBjSPutPrice <- function(S, K, r=as.numeric(config::get("interest_rate")), DTE, sig, div=0){
+  if(any(missing(S), missing(K), missing(DTE),missing(sig))) stop("getBSPutPrice: one of arguments missing!!")
+
+  ## Handle special cases not handled correctly by bsput/bscall
+  dplyr::if_else( ((DTE==0)&(S==K) | (DTE<0) | ((S==0)&(K==0))), 0,
+                  {
+                    T=DTE/365
+                    round(as.numeric(derivmkts::binomopt(s=S, k=K, v=sig, r=r, tt=T, d=div,
+                                        nstep=100, american = TRUE, putopt=TRUE)),3) })
+}
+
 
 ########### Straddle Price Put + Call
 #'  getBSStraddlePrice
@@ -163,6 +237,35 @@ getBSOptPrice = function(type,S,K,r=as.numeric(config::get("interest_rate")),DTE
                  dplyr::if_else(type=="Call", getBSCallPrice(S, K, r, DTE, sig, div), NA))
 }
 
+### getBjSOptPrice ##############
+#'  getBjSOptPrice
+#'
+#' This function supplies an option price based upon binomial tree model and risk neutral hypothesis.
+#'
+#' It is a wrapper that calls getBjSPutPrice or getBjSCalPrice depending upon type value.
+#'
+#'This function can be vectorized. It handles also special cases not handled correctly by derivmkts, such as:
+#' - DTE=0 and S=K -> option price = 0
+#' - DTE < 0 -> option price = 0
+#' - S=K=0 -> option price = 0
+#'@param type a string, if equal to "Put" then getBjSPutPrice is called, if equal to "Call" getBjSCallPrice is called, else NA is returned.
+#'@param S Spot price or current underlying price
+#'@param K Strike price
+#'@param r Interest rate - default value is defined in config.yml file
+#'@param DTE Number of days to expiration (may be a decimal number - useful as expiration may happen at 4:00pm or in the morning (index case))
+#'@param sig annualized volatility
+#'@param div  annualized dividend yield (i.e. sum of present values of upcoming dividends over 1 year divided by current spot price). Default value is 0.
+#'@keywords Black-Scholes trading
+#'@examples
+#'getBSPutPrice(S=100,K=100,r=0.04,DTE=5,sig=0.25,div=0)
+#'getBSPutPrice(S=22,K=22.5,r=0.04,DTE=5,sig=0.3,div=0)
+#'@export
+
+getBjSOptPrice = function(type,S,K,r=as.numeric(config::get("interest_rate")),DTE,sig,div=0) {
+  ##print(paste("getBSOptPrice Type:",type," S:",S," K:",K," r:",r," DTE:",DTE," sig:",sig, "div:",div))
+  dplyr::if_else(type=="Put", getBjSPutPrice(S, K, r, DTE, sig, div),
+                 dplyr::if_else(type=="Call", getBjSCallPrice(S, K, r, DTE, sig, div), NA))
+}
 ### getBSPrice ##############
 #'  getBSPrice
 #'
@@ -183,10 +286,41 @@ getBSOptPrice = function(type,S,K,r=as.numeric(config::get("interest_rate")),DTE
 #'@param div  annualized dividend yield (i.e. sum of present values of upcoming dividends over 1 year divided by current spot price). Default value is 0.
 #'@keywords Black-Scholes trading
 #'@examples
-#'getBSPutPrice(S=100,K=100,r=0.04,DTE=5,sig=0.25,div=0)
-#'getBSPutPrice(S=22,K=22.5,r=0.04,DTE=5,sig=0.3,div=0)
+#'getBSPrice(type="Put",S=100,K=100,r=0.04,DTE=5,sig=0.25,mul=100)
+#'getBSPrice(type="Call",S=22,K=22.5,r=0.04,DTE=5,sig=0.3,mul=100,div=0.4)
+#'getBSPrice(type="Stock",S=100,K=NA,DTE=NA,sig=NA,mul=1)
 #'@export
 getBSPrice = function(type,S,K,r=as.numeric(config::get("interest_rate")),DTE,sig,mul,div=0) {
+  ##print(paste("getBSOptPrice Type:",type," S:",S," K:",K," r:",r," DTE:",DTE," sig:",sig, "div:",div))
+  dplyr::if_else(type=="Put", mul*getBSPutPrice(S, K, r, DTE, sig, div),
+                 dplyr::if_else(type=="Call", mul*getBSCallPrice(S, K, r, DTE, sig, div),
+                                dplyr::if_else(type=="Stock", S, NA)))
+}
+
+### getBjSPrice ##############
+#'  getBjSPrice
+#'
+#' This function supplies a contract price, i.e. either an option price x multiplier
+#' or a stock price. The option price is based upon binomial tree model or a stock price.
+#'
+#' This function can be vectorized. It handles also special cases not handled correctly by derivmkts, such as:
+#' - DTE=0 and S=K -> option price = 0
+#' - DTE < 0 -> option price = 0
+#' - S=K=0 -> option price = 0
+#'@param type a string, if equal to "Put" then getBjSPutPrice is called, if equal to "Call" getBjSCallPrice is called, if equal to "Stock" returns underlying price, else returns NA
+#'@param S Spot price or current underlying price
+#'@param K Strike price
+#'@param r Interest rate - default value is defined in config.yml file
+#'@param DTE Number of days to expiration (may be a decimal number - useful as expiration may happen at 4:00pm or in the morning (index case))
+#'@param sig annualized volatility
+#'@param mul contract multiplier - generally 100 - but equal to 10 for ESTX OESX option chains
+#'@param div  annualized dividend yield (i.e. sum of present values of upcoming dividends over 1 year divided by current spot price). Default value is 0.
+#'@examples
+#'getBjSPrice(type="Put",S=100,K=100,r=0.04,DTE=5,sig=0.25,mul=100)
+#'getBjSPrice(type="Call",S=22,K=22.5,r=0.04,DTE=5,sig=0.3,mul=100,div=0.4)
+#'getBjSPrice(type="Stock",S=100,K=NA,DTE=NA,sig=NA,mul=1)
+#'@export
+getBjSPrice = function(type,S,K,r=as.numeric(config::get("interest_rate")),DTE,sig,mul,div=0) {
   ##print(paste("getBSOptPrice Type:",type," S:",S," K:",K," r:",r," DTE:",DTE," sig:",sig, "div:",div))
   dplyr::if_else(type=="Put", mul*getBSPutPrice(S, K, r, DTE, sig, div),
                  dplyr::if_else(type=="Call", mul*getBSCallPrice(S, K, r, DTE, sig, div),

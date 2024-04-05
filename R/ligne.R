@@ -194,7 +194,7 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
             {if (length(strikes())>1) shiny::selectInput(ns("Strike"),label="Strike:",choices=strikes(),selected=strikes()[1])
              else shiny::numericInput(ns("Strike"),label="Strike:",value=0)
               },
-            shiny::selectInput(ns("Pricing"),label="Pricing: ",choices=c("Select","Black-Scholes","NBBO","Manual"),selected="Select"),
+            shiny::selectInput(ns("Pricing"),label="Pricing: ",choices=c("Select","Black-Scholes","Bjerksund-Stensland","NBBO","Manual"),selected="Select"),
             shiny::textOutput(ns("start_price"))
             )
         })
@@ -216,7 +216,7 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
             shiny::numericInput(ns("p_vol"),label="End Implied Vol (%):",value=""),
             shiny::textOutput(ns("end_price"))))
         }
-        else if (input$Pricing == "Black-Scholes") {
+        else if ((input$Pricing == "Black-Scholes") || (input$Pricing == "Bjerksund-Stensland")) {
           output$Controls2=shiny::renderUI(shiny::tagList(shiny::numericInput(ns("startIV"),label="Start Implied Vol (%): ",value=""),
                                                           shiny::numericInput(ns("p_vol"),label="End Implied Vol (%):",value=""),
                                                           shiny::textOutput(ns("end_price"))))
@@ -283,6 +283,11 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
                               DTE=getDTE(s_datetime(),expDate()),
                               sig=startPriceIV(),div=div())
               },
+              "Bjerksund-Stensland" = {
+                getBjSOptPrice(type=input$Type, S=u_price(),K=strike(),r=i_rate(),
+                              DTE=getDTE(s_datetime(),expDate()),
+                              sig=startPriceIV(),div=div())
+              },
               "NBBO"= {
                 nbbo= NBBO(sym=sym(),right=input$Type, strike=strike(),expiration=expDate(),
                            currency=currency(),exchange=exchange(),tradingClass=tradingClass())
@@ -313,12 +318,17 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
 
      startPriceIV = shiny::reactive({
        shiny::req(input$Type,input$Strike,input$Pricing)
-       if (input$Pricing== "Black-Scholes") {
+       if ((input$Pricing == "Black-Scholes") || (input$Pricing == "Bjerksund-Stensland")) {
          shiny::req(input$startIV)
          startiv=as.numeric(input$startIV)/100
-        } else
+        }
+       else if ((input$Pricing == "Manual") || (input$Pricing == "NBBO")) {
+         shiny::req(startPrice, sDTE)
          startiv=getImpliedVolOpt(type=input$Type,S=u_price(),K=strike(),r=i_rate(),
-                        DTE=sDTE(),price=startPrice(),div=div())
+                                  DTE=sDTE(),price=startPrice(),div=div())
+       }
+
+       else startiv=0
        #message("startPriceIV: ",startiv)
        startiv
      })
@@ -405,7 +415,7 @@ ligneServer = function(id, sym, mul, s_datetime, i_rate, u_price, div,
 
      output$start_price = shiny::renderText({
        shiny::req(input$Pricing)
-       if (input$Pricing == "Black-Scholes") paste0("Start Price: ", round(startPrice(),2))
+       if ((input$Pricing == "Black-Scholes") || (input$Pricing == "Bjerksund-Stensland")) paste0("Start Price: ", round(startPrice(),2))
        else if (input$Pricing == "Manual")  paste0("Start Price IV: ",round(startPriceIV()*100,2),"%")
        else paste0("Start Price: ", round(startPrice(),2),"  Start Price IV: ",round(startPriceIV()*100,2),"%")
      })
@@ -503,7 +513,7 @@ ligneDemoApp <- function() {
 
 ##ligneDemoApp()
 
-ligneApp = function(interest_rate) {
+ligneApp = function(interest_rate=0.04) {
   weekly_dates=c(lubridate::ymd("2024-01-19"),lubridate::ymd("2024-01-26"),
                  lubridate::ymd("2024-02-02"),lubridate::ymd("2024-02-09"),lubridate::ymd("2024-02-16"),lubridate::ymd("2024-02-23")
   )
@@ -531,7 +541,7 @@ ligneApp = function(interest_rate) {
     shiny::tableOutput("table")
   )
 
-  server = function(input, output, session) {
+  server = function(input, output, session, interest_rate) {
     ligne=ligneServer(id="Ligne",sym=shiny::reactive(input$sym),
                       mul=shiny::reactive(input$mul),
                       s_datetime=shiny::reactive(lubridate::now()),

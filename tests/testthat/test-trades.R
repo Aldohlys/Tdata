@@ -1,22 +1,36 @@
-getTestTrades = function() {suppressMessages(read_delim(file=config::get("TestTrades"),
-                                        delim=";",
-                                        locale=locale(date_names="en",decimal_mark=".",
-                                                      grouping_mark="",encoding="UTF-8")))}
+getTestTrades = function() {suppressWarnings(pool::dbReadTable(.GlobalEnv$mydb,"TestTrades"))}
 
+
+# This function returns TRUE wherever elements are the same, including NA's,
+# and FALSE everywhere else.
+compareNA <- function(v1,v2) {
+  same <- (v1 == v2) | (is.na(v1) & is.na(v2))
+  same[is.na(same)] <- FALSE
+  return(same)
+}
 
 test_that("It is possible to retrieve a trade number for a single instrument", {
     with_mocked_bindings(
       getAllTrades = getTestTrades, {
-        trade_nr=getTradeNr("TLT 16FEB24 103 C",account_type="Live")
-        expect_true(trade_nr == 368)
+        trade_nr=getTradeNr("TLT 15MAR24 92 P",account_type="Live")
+        expect_true(trade_nr == 380)
       })
 })
 
-test_that("It is possible to retrieve a trade number for a single instrument without specifying account type", {
+test_that("Error displayed if no trade for these instrument", {
   with_mocked_bindings(
     getAllTrades = getTestTrades, {
-      trade_nr=getTradeNr("TLT 16FEB24 103 C")
-      expect_true(trade_nr == 368)
+      trade_nr=getTradeNr(c("STOCKALEX 15MAR24 92 P","YVESSTARTUP 32FEB24 100 C"),account_type="Live")
+      expect_true(is.na(trade_nr))
+    })
+})
+
+
+test_that("It is possible to retrieve a trade number for a single instrument without specifying account type", {
+  with_mocked_bindings(
+    getAllTrades = getTestTrades,  {
+      trade_nr=getTradeNr("TLT 15MAR24 92 P")
+      expect_true(trade_nr == 380)
     })
 })
 
@@ -24,16 +38,16 @@ test_that("It is possible to retrieve a trade number for a single instrument wit
 test_that("It is possible to retrieve a trade number for a single instrument with account type=NA", {
   with_mocked_bindings(
     getAllTrades = getTestTrades, {
-      trade_nr=getTradeNr("TLT 16FEB24 103 C",NA)
-      expect_true(trade_nr == 368)
+      trade_nr=getTradeNr("TLT 15MAR24 92 P",NA)
+      expect_true(trade_nr == 380)
     })
 })
 
 test_that("It is possible to retrieve a trade number for a trade with multiple instruments", {
   with_mocked_bindings(
     getAllTrades = getTestTrades, {
-      trade_nr=getTradeNr("VALE 19JAN24 13 P",account_type="Live")
-      expect_true(trade_nr == 367)
+      trade_nr=getTradeNr("GLD 09FEB24 189 P",account_type="Simu")
+      expect_true(trade_nr == 383)
     })
 })
 
@@ -41,42 +55,51 @@ test_that("It is possible to retrieve a trade number for a trade with multiple i
 test_that("It is possible to retrieve a trade number for a trade with multiple instruments, using multiple inputs", {
   with_mocked_bindings(
     getAllTrades = getTestTrades, {
-      trade_nr=getTradeNr(sort(c("VALE 19JAN24 13 P","VALE 15MAR24 14 P")), account_type="Live")
-      expect_true(trade_nr == 367)
+      trade_nr=getTradeNr(sort(c("GLD 09FEB24 189 P","GLD 16FEB24 187.5 P")), account_type="Simu")
+      expect_true(trade_nr == 383)
     })
 })
 
 test_that("It is possible to retrieve trade numbers for 2 trades with multiple instruments, using one input per trade", {
   with_mocked_bindings(
     getAllTrades = getTestTrades, {
-      trade_nr=getTradeNr(sort(c("FNV 19JAN24 95 P","VALE 15MAR24 14 P")), account_type="Live")
-      expect_true(all(trade_nr == c(364,367)))
+      trade_nr=getTradeNr(sort(c("GOLD 19APR24 17 C","NEM 20SEP24 35 P")), account_type="Live")
+      expect_true(all(trade_nr == c(395,394)))
     })
 })
 
 test_that("It is possible to retrieve a trade number for 2 trades with multiple instruments, using multiple inputs per trade", {
   with_mocked_bindings(
     getAllTrades = getTestTrades, {
-      trade_nr=getTradeNr(sort(c("FNV 19JAN24 95 P","VALE 15MAR24 14 P","VALE 19JAN24 13 P")),
-                          account_type="Live")
-      expect_true(all(trade_nr == c(364,367)))
+      trade_nr=getTradeNr(sort(c("INTC","GLD 23FEB24 184 P","AAPL Vertical Spread 04.11.2022 140/145 P/P")),
+                          account_type="Simu")
+      expect_true(all(compareNA(trade_nr,c(NA,383,390))))
     })
 })
 
 test_that("It is possible to retrieve a trade number for 3 trades with multiple instruments, using multiple inputs per trade", {
   with_mocked_bindings(
     getAllTrades = getTestTrades, {
-      trade_nr=getTradeNr(sort(c("FNV 19JAN24 95 P","VALE 15MAR24 14 P","VALE 19JAN24 13 P","TLT 16FEB24 103 C")),
+      trade_nr=getTradeNr(sort(c("SMH 19APR24 240 C","ESTX50 21JUN24 4125 P","ESTX50 21JUN24 4525 P","AMGN 19APR24 290 C")),
                           account_type="Live")
-      expect_true(all(trade_nr == c(364,368,367)))
+      expect_true(all(trade_nr == c(400,396,398)))
+    })
+})
+
+test_that("It is possible to retrieve trade numbers for 3 trades with multiple instruments, using multiple inputs per trade but with repeated trade numbers for each instrument", {
+  with_mocked_bindings(
+    getAllTrades = getTestTrades, {
+      trade_nr=getTradeNr(sort(c("SMH 19APR24 240 C","ESTX50 21JUN24 4125 P","ESTX50 21JUN24 4525 P","AMGN 19APR24 290 C")),
+                          account_type="Live", unique= FALSE)
+      expect_true(all(trade_nr == c(400,396,396,398)))
     })
 })
 
 test_that("It is possible to retrieve a trade number providing also data for closed trades", {
   with_mocked_bindings(
     getAllTrades = getTestTrades, {
-      trade_nr=getTradeNr(sort(c("VALE 19JAN24 13 P","STOCK")), account_type="Live")
-      expect_true(all(trade_nr == 367,na.rm=TRUE))
+      trade_nr=getTradeNr(sort(c("VALE SPY 21JUN24 525 P","CVS 19APR24 75 P")), account_type="Live")
+      expect_true(all(trade_nr == 399,na.rm=TRUE))
     })
 })
 
@@ -139,3 +162,45 @@ test_that("Test a trade from Simu account NA with account type equals to Live", 
       expect_true(is.na(trade_nr))
     })
 })
+
+test_that("getOpenDate works with a closed trade", {
+  with_mocked_bindings(
+    getAllTrades = getTestTrades,
+    getToday = function()(as.Date("2024-04-04")), {
+        expect_equal(as.data.frame(getOpenDate(300)),
+             data.frame(TradeNr=300,strategy="BOT",exp_date=as.Date(NA),
+                        orig_date=as.Date("2023-08-02"),last_date=as.Date("2023-08-29")))
+    })
+})
+
+
+test_that("getOpenDate works with a closed trade without expiring closing trade recorded", {
+  with_mocked_bindings(
+    getAllTrades = getTestTrades, getToday = function()(as.Date("2024-04-04")),{
+      expect_equal(as.data.frame(getOpenDate(316)),
+                   data.frame(TradeNr=316,strategy="OFI",exp_date=as.Date(NA),
+                              orig_date=as.Date("2023-09-18"),last_date=as.Date("2023-09-28")))
+    })
+})
+
+
+test_that("getOpenDate works with a opened trade", {
+  with_mocked_bindings(
+    getAllTrades = getTestTrades,getToday = function()(as.Date("2024-04-04")), {
+      expect_equal(as.data.frame(getOpenDate(399)),
+                   data.frame(TradeNr=399,strategy="BPT",exp_date=as.Date("2024-04-19"),
+                              orig_date=as.Date("2024-03-21"),last_date=as.Date("2024-03-21")))
+    })
+})
+
+test_that("getOpenDate works with opened and closed trades, opened trade with multiple expiration dates",{
+  with_mocked_bindings(
+    getAllTrades = getTestTrades,getToday = function()(as.Date("2024-04-04")), {
+      expect_equal(as.data.frame(getOpenDate(c(367,370,392))),
+                   data.frame(TradeNr=c(367,370,392),strategy=c("OFI","BPT","OFI"),
+                              exp_date=c(as.Date(NA),as.Date("2025-12-19"),as.Date("2024-04-19")),
+                              orig_date=c(as.Date("2023-12-14"),as.Date("2023-12-21"),as.Date("2024-02-23")),
+                              last_date=c(as.Date("2024-02-08"),as.Date("2024-03-21"),as.Date("2024-02-23"))))
+    })
+})
+

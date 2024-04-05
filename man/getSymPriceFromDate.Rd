@@ -19,5 +19,5 @@ This function retrieves all values from Yahoo starting from CurrentTradesInitial
 This function calls \code{getSymFromDate} with one or a vector of tickers.
 }
 \examples{
-getSymPriceAllDates(sym_list=c("SPY","FNV","USO"))
+getSymPriceFromDate(sym_list=c("SPY","FNV","USO"),as.Date("2023-01-02"))
 }

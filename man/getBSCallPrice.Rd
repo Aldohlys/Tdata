@@ -43,6 +43,8 @@ This function can be vectorized. It handles also special cases not handled corre
 \item DTE < 0 -> option price = 0
 \item S=K=0 -> option price = 0
 }
+
+#' Notice that results are rounded to 3 digits after decimal point.
 }
 \examples{
 getBSCallPrice(S=100,K=100,r=0.04,DTE=5,sig=0.25,div=0)

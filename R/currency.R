@@ -1,13 +1,18 @@
 #### CURRENCY management ##################
 
+
 ### This function work only for IBKR accounts not for Gonet account
 ### This function is NOT exported
-getAllCurrencyPairs = function() {
-  suppressMessages(read_delim(file=config::get("CurrencyPairs"),
-                                     delim=";",locale=locale(date_names="en",decimal_mark=".",
-                                                             grouping_mark="",encoding="UTF-8")))
-}
+# getAllCurrencyPairs = function() {
+#   suppressMessages(read_delim(file=config::get("CurrencyPairs"),
+#                                      delim=";",locale=locale(date_names="en",decimal_mark=".",
+#                                                              grouping_mark="",encoding="UTF-8")))
+# }
 
+### This assumes that mydb is declared
+getAllCurrencyPairs = function() {
+  pool::dbReadTable(.GlobalEnv$mydb, "CurrencyPairs")
+}
 
 #'  getCurrencyPairs
 #'
@@ -24,9 +29,6 @@ getAllCurrencyPairs = function() {
 #' Once new data is obtained, then write it to CurrencyPairs file
 #'@keywords currency trading
 #'@export
-#'@examples
-#'getCurrencyPairs()
-
 getCurrencyPairs = function() {
   message("getCurrencyPairs")
   ### euro_usd and chf_usd data frames - values for the day- are already retrieved
@@ -34,7 +36,7 @@ getCurrencyPairs = function() {
 
   ### Convert string to date
   last_usd=dplyr::last(usd)
-  last_date=lubridate::ymd(last_usd$date)
+  last_date=as.Date(last_usd$date)
 
   if (last_date == lubridate::today())  {
     #print(usd)
@@ -55,9 +57,10 @@ getCurrencyPairs = function() {
   usd = data.frame(date=lubridate::today(),EUR=EUR,CHF=CHF)
   #print(usd)
 
+  pool::dbAppendTable(.GlobalEnv$mydb, "CurrencyPairs", usd)
   ### write.table seems to be the only one working simply -
   ### to be revisited as utils package is not the most current and efficient
-  utils::write.table(usd,config::get("CurrencyPairs"),sep=";",dec=".",row.names=F,append=T,col.names=F)
+  ### utils::write.table(usd,config::get("CurrencyPairs"),sep=";",dec=".",row.names=F,append=T,col.names=F)
   return(usd)
 }
 
@@ -119,7 +122,7 @@ currency_format = function(amount,currency){
 #' Then it just performs a multiplication of the amount by currency pair value. This function can be vectorized
 #'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF
 #'@keywords currency trading
-#'@examples
+#'Examples
 #'currency_convert(100.45,"EUR")
 #'currency_convert(c(10000,500),c("CHF","EUR"))
 #'currency_convert(c(750.543,10),c("USD","EUR"))
@@ -143,7 +146,7 @@ currency_convert = function(amount,currency) {
 #'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF
 #'@param EUR,CHF EUR is the value of 1 euro in USD, CHF is the value of 1 CHF in USD
 #'@keywords currency trading
-#'@examples
+#'Examples
 #'convert_to_usd(100.45,"EUR",1.09,1.14)
 #'convert_to_usd(c(10000,500),c("CHF","EUR"),1.09,1.14)
 #'convert_to_usd(c(750.543,10),c("USD","EUR"),1.09,1.14)
@@ -168,14 +171,14 @@ convert_to_usd = function(amount,currency,EUR,CHF) {
 #'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF
 #'@param date date is the requested date, it must be in Date format
 #'@keywords currency trading
-#'@examples
+#'Examples
 #'convert_to_usd_date(100.45,"EUR",as.Date("2023-10-15"))
 #'convert_to_usd_date(c(10000,500),c("CHF","EUR"),as.Date("2021-01-09"))
 #'convert_to_usd_date(c(750.543,10),c("USD","EUR"),as.Date("2023-12-03"))
 #'@export
 convert_to_usd_date = function(amount,currency,date) {
   usd=getAllCurrencyPairs()
-  usd$date=lubridate::ymd(usd$date)
+  usd$date=as.Date(usd$date)
 
   nearest_index = which.min(abs(usd$date-date))
   EUR= usd$EUR[nearest_index]

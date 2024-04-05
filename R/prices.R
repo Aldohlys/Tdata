@@ -41,7 +41,7 @@ getSym = function(sym){
 #'@param sym_list one or a vector of symbols
 #'@param date a start date from which to retrieve symbols
 #'@returns a xts matrix: each column of data contains the adjusted prices - column name is the symbol name
-#'@examples getSymPriceAllDates(sym_list=c("SPY","FNV","USO"))
+#'@examples getSymPriceFromDate(sym_list=c("SPY","FNV","USO"),as.Date("2023-01-02"))
 #'@export
 getSymPriceFromDate = function(sym_list,date){
   sym_OHLC=getSymFromDate(sym_list,date)
@@ -219,7 +219,7 @@ stock_price = function(sec="STK",sym,currency,exchange="SMART",reqType=4,close=F
   #### Default value for exchange is SMART
   message("stock_price")
   # ### Special case for CSBGU0 stock I own in Gonet portfolio
-  # if (sym == "CSBGU0") reqType=3
+  if (sym == "CSBGU0") reqType=4
 
   ### SMART works fine in many cases but not for ESTX50, SPX and XSP cases
   exchange = switch(sym, ESTX50= "EUREX", SPX =, XSP = "CBOE", exchange)
@@ -245,6 +245,7 @@ stock_price = function(sec="STK",sym,currency,exchange="SMART",reqType=4,close=F
     line$price=val
     utils::write.table(line,paste0(config::get("DirNewTrading"),"prices.csv"),sep=";",
                        row.names = FALSE,quote=F,col.names = FALSE,append=TRUE)
+    ### pool::dbAppendTable(.GlobalEnv$mydb, "Prices")
   }
   val=line[["price"]]
   if (val== -1) return(-1)

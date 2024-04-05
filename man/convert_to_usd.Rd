@@ -17,10 +17,9 @@ This function converts the amount of currency into USD, using EUR and CHF curren
 \details{
 It merely performs a multiplication of the amount by currency pair value. This function can be vectorized
 }
-\examples{
-convert_to_usd(100.45,"EUR",1.09,1.14)
-convert_to_usd(c(10000,500),c("CHF","EUR"),1.09,1.14)
-convert_to_usd(c(750.543,10),c("USD","EUR"),1.09,1.14)
-}
+\keyword{Examples}
+\keyword{convert_to_usd(100.45,"EUR",1.09,1.14)}
+\keyword{convert_to_usd(c(10000,500),c("CHF","EUR"),1.09,1.14)}
+\keyword{convert_to_usd(c(750.543,10),c("USD","EUR"),1.09,1.14)}
 \keyword{currency}
 \keyword{trading}

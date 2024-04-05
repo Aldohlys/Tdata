@@ -13,7 +13,7 @@ x <- y1 <- y2 <- NULL
 pos <- type <- strike <- DTE <- mul <- NULL
 
 ### for getOpenDate
-TradeNr <- Statut <- TradeDate <- Exp.Date <- Pos <- NULL
+TradeNr <- Statut <- TradeDate <- Strategy <- exp_date <- Exp.Date <- Pos <- NULL
 
 ### for getTradeNr
 Account <- Reward <- Risk <- Instrument <- NULL
@@ -27,3 +27,9 @@ marketPrice <- marketValue <- averageCost <- unrealizedPnL <- symbol <- right <-
 
 ### for stock_price
 exchange <- sec <- NULL
+
+### for greeksNet
+uPrice <- currency <- multiplier <- theta <- vega <- dnet <- ddnet <- gnet <- tnet <- vnet <- NULL
+
+### for currency
+mydb <- NULL

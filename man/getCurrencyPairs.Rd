@@ -20,8 +20,5 @@ Otherwise tries to connect to IBKR TWS API and retrieve pairs value.
 If it does not succeed, it will then ask the end-user using enter_numerical_data  function
 Once new data is obtained, then write it to CurrencyPairs file
 }
-\examples{
-getCurrencyPairs()
-}
 \keyword{currency}
 \keyword{trading}

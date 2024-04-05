@@ -4,10 +4,10 @@
 \alias{readPortfolio}
 \title{readPortfolio}
 \usage{
-readPortfolio(file)
+readPortfolio(portfname)
 }
 \arguments{
-\item{file}{is the absolute path to a portfolio file. Portfolio file is a CSV file that must follow IBKR naming rules.}
+\item{portfname}{is the absolute path to a portfolio file. Portfolio file is a CSV file that must follow IBKR naming rules.}
 }
 \value{
 a tibble with the following columns:

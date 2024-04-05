@@ -1,20 +1,66 @@
 
-###library(DescTools) ### for pgcd
-###library(quantmod) ## to retrieve data from Yahoo - getSymbols
-###library(stringr) ### for str_to_upper function
-##library(RQuantLib) ## for isBusinessDay function
-### library(lubridate) ### for today() function
+#####  trades.R
+##### All utilities related to trades
 
-#' getAllTrades function
+#' saveTrades
+#'
+#' This function is used by RReporting functions and allows to update DB with modified trades
+#' It takes as parameters a trades data frame that must have the same structure as the Trades table
+#'
+#' To be sure that correct data types will be used, it converts field types to the target fields, i.e.
+#' * Integer for \code{TradeNr} and \code{Pos}
+#' * Real (double) for \code{Prix, Comm., Total, Risk, Reward, PnL}
+#'@param trades data frame with the following fields:
+#'\code{TradeNr, Account, TradeDate, Strategy, Instrument, Ssjacent, Pos, Prix,
+#'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
+#'@return No value or Error code from dbWriteTable
+#'@export
+saveTrades = function(trades) {
+
+  file.copy(from=paste0(config::get("DirNewTrading"),"Trades.csv"),
+            to=paste0(config::get("DirNewTrading"),"Trades-old.csv"),overwrite = T)
+
+  utils::write.table(trades,file=paste0(config::get("DirNewTrading"),"Trades.csv"),append=F,
+              col.names=TRUE,row.names=FALSE,sep=";",dec=".",quote=TRUE)
+
+  suppressWarnings(pool::dbWriteTable(.GlobalEnv$mydb,"Trades",trades, overwrite = TRUE,
+                                      field.types=c("TradeNr"=	"INTEGER","TradeDate"	= "INTEGER",
+    "Pos"	= "INTEGER",
+    "Prix" =	"REAL",
+    "Comm." =	"REAL",
+    "Total"	= "REAL",
+    "Risk"=	"REAL",
+    "Reward"=	"REAL",
+    "PnL"= "REAL" )))
+}
+
+#' getAllTrades
 #'
 #' This function work only for IBKR accounts not for Gonet account
-#' This function is used by other Tutils functions - NOT to be exported
+#' This function is used by other Tutils functions but also for RReporting directly.
 #' No argument - takes its source from config::get()
-#' @importFrom readr read_delim locale
+#'
+#' It verifies that \code{TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward, PnL} are all numeric,
+#' and if not, displays an error message and converts them
+#'@return All trades stored in Trades table from mydb DB. Format is the following:
+#'\code{TradeNr, Account, TradeDate, Strategy, Instrument, Ssjacent, Pos, Prix,
+#'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
+#'@export
 getAllTrades = function() {
-  suppressMessages(read_delim(file=config::get("Trades"),
-                                     delim=";",locale=locale(date_names="en",decimal_mark=".",
-                                                             grouping_mark="",encoding="UTF-8")))
+  # suppressMessages(read_delim(file=config::get("Trades"),
+  #                                    delim=";",locale=locale(date_names="en",decimal_mark=".",
+  #                                                            grouping_mark="",encoding="UTF-8")))
+  alltrades = suppressWarnings(pool::dbReadTable(.GlobalEnv$mydb,"Trades"))
+  if (any(with(alltrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL))))) {
+    display_error_message("Trades input data had to be converted!")
+    with(alltrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
+  }
+  alltrades
+}
+
+### This function is useful for test_that test functions as getToday will then be changed for mocking test
+getToday = function() {
+  lubridate::today()
 }
 
 #' getTradeNr
@@ -59,8 +105,7 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
                     Instrument),TradeNr))
   ### If left join returns NA -> trade is not present - not yet recorded in Trades.csv
   if (all(is.na(trade_nr))) {
-    display_error_message("Trades not opened/adjusted in Trades.csv file!")
-    print(v_instrument)
+    display_error_message(cat("For instruments ",v_instrument, " no opened/adjusted trades in Trades.csv file!\n"))
     return(NA)
   }
 
@@ -80,16 +125,19 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
 
 #' getOpenDate
 #'
-#' This function retrieves one or a vector of dates, all pertaining to open/adjusted trades
+#' This function retrieves one or a vector of dates, pertaining to open, adjusted or closed trades, plus trade number and strategy.
 #'
-#' It works by matching all trade number in Trades.csv file argument against trade dates
-#' Then the oldest date per trade is returned.
+#' It works by matching all trade number arguments against corresponding trade dates found in Trades.csv
+#' Then the oldest date per trade is returned, plus still active expiration/active opening date (for existing position only)
+#' plus strategy.
 #'
 #'@param trade_nr an integer or a vector of integers
-#'@return a data frame giving for each trade number:
-#'* `active_open_date` the opening date of the instrument corresponding to `expdate`
-#'* `expdate` the first still active expiration date
+#'@return a data frame including:
+#'* `TradeNr` trade number, an integer
+#'* `strategy` a string, the strategy that was used: can be "BOT", "BPT", "OFI", "CS". or even "Erreur"
+#'* `exp_date` the first still active expiration date  - only for opened/adjusted trades
 #'* `orig_date`  the original opening trade date (even if corresponding instrument part of the trade has been closed since)
+#'* `last_date` the last trading date on the trade - will be the close date if the trade is closed
 #'@export
 getOpenDate = function(trade_nr) {
 
@@ -99,46 +147,62 @@ getOpenDate = function(trade_nr) {
   }
 
   trades=getAllTrades()
+  ### This will create a line for trade_nr even if trade_nr does not exist in trades data frame
+  ### trades is grouped by TradeNr
   trades = dplyr::group_by(dplyr::right_join(trades, data.frame(TradeNr=trade_nr), by="TradeNr"), TradeNr)
-
-  if (nrow(trades)==0) {
-    display_error_message("Trade do not exist !")
-    return(NA)
-  }
-  if (all(trades$Statut %in% "Ferm\u00e9")) {
-    display_error_message("All these trades are closed in Trades.csv file!")
-    return(NA)
-  }
-
-  ### Remove closed trades - this makes sense for vectorized input only
-  trades = dplyr::filter(trades, Statut != "Ferm\u00e9")
 
   ### Retrieve initial opening date for each trade - trades are grouped by trade_nr
   ### orig_date is the oldest date recorded for the trade -
-  orig_date = dplyr::summarize(trades,orig_date=min(lubridate::dmy(TradeDate)))
+  orig_date = dplyr::summarize(trades,orig_date=min(lubridate::ymd(TradeDate)))
+
+  ### last_date is the most recent date recorded for the trade
+  last_date = dplyr::summarize(trades,last_date=max(lubridate::ymd(TradeDate)))
+
+  ### Retrieve strategies for each trade - trades are grouped by trade_nr
+  strategy = dplyr::summarize(trades,strategy=dplyr::first(Strategy))
+
+  non_trades = dplyr::pull(dplyr::filter(orig_date,is.na(orig_date)), TradeNr)
+  if (length(non_trades)!=0) {
+    stop("There are inexisting trades in argument ",non_trades)
+  }
 
   ### Remove all instrument that have been closed - keep only active ones
+  ### For any instrument within a trade, keep the last active date
+  ### trades is grouped by TradeNr
   trades = dplyr::filter(
               dplyr::summarize(
                 dplyr::group_by(trades,TradeNr,Instrument),
                 ### Exp.Date is expiration date associated to Instrument - unique by definition
                 Exp.Date=dplyr::first(lubridate::dmy(Exp.Date)),
-                ### TradeDate is the date where Instrument has been traded within the trade for the first time
-                TradeDate=min(lubridate::dmy(TradeDate)),
                 ### Pos gives the current position of the instrument - may be 0 if instrument has been sold in the trade (ex: roll out)
+                ### Will be 0 if trade is closed in any case
                 Pos=sum(Pos)),
               Pos !=0)
 
-  ### Retrieve first expiration date to come (still active) for each trade number
-  exp_date = dplyr::summarize(trades, Exp.Date=min(Exp.Date))
+  #### In case expiration trades have not been recorded,
+  #### keep only positions whose expiration date is posterior or equal to today
+  trades = dplyr::filter(trades, Exp.Date >= getToday())
 
-  ### Keep only for each trade number the first expiration date data
-  trades = dplyr::inner_join(trades,exp_date,by=c(TradeNr,Exp.Date))
-  ### Include also original trade date for each trade
-  trades = dplyr::left_join(trades,orig_date,by=TradeNr)
+  ### Remove Instrument and Pos column
+  trades = dplyr::select(trades,c(TradeNr,exp_date=Exp.Date))
+
+  ### In case there are still open/adjusted trades
+  if (nrow(trades) != 0) {
+    ### Remove duplicated lines - in case several instrument were handled at the same time for the same trade
+    trades = trades[!duplicated(trades),]
+    ### Retrieve first expiration date to come (still active) for each trade number
+    trades = dplyr::group_by(dplyr::summarize(trades, exp_date=min(exp_date)),TradeNr)
+  }
+
+
+  ### Include also original trade date, last_trade date and strategy for each trade
+  ### In order to make sure to include also closed trades start by left join with orig_date
+  trades = suppressMessages(dplyr::left_join(strategy,trades,by=TradeNr))
+  trades = suppressMessages(dplyr::left_join(trades,orig_date,by=TradeNr))
+  trades = suppressMessages(dplyr::left_join(trades,last_date, by=TradeNr))
 
   ### This tibble is grouped by TradeNr for future handling
-  dplyr::select(trades,TradeNr,active_open_date=TradeDate, expdate=Exp.Date,orig_date)
+  dplyr::group_by(trades,TradeNr)
 }
 
 #' getRnR

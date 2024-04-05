@@ -17,10 +17,9 @@ First it retrieves today's currency pairs by calling getCurrencyPairs() function
 
 Then it just performs a multiplication of the amount by currency pair value. This function can be vectorized
 }
-\examples{
-currency_convert(100.45,"EUR")
-currency_convert(c(10000,500),c("CHF","EUR"))
-currency_convert(c(750.543,10),c("USD","EUR"))
-}
+\keyword{Examples}
 \keyword{currency}
+\keyword{currency_convert(100.45,"EUR")}
+\keyword{currency_convert(c(10000,500),c("CHF","EUR"))}
+\keyword{currency_convert(c(750.543,10),c("USD","EUR"))}
 \keyword{trading}

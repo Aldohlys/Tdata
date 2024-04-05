@@ -85,7 +85,7 @@ journalServer = function(id, sym, windowDate=shiny::reactive(lubridate::today()-
 
         # df= read.table(file=paste0(config::get("DirNewTrading"),"Journal.csv"),
         #                             header=TRUE,sep=";",dec=".")
-        df= suppressMessages(read_delim(file=paste0(config::get("DirNewTrading"),"Journal.csv"),
+        df= suppressMessages(readr::read_delim(file=paste0(config::get("DirNewTrading"),"Journal.csv"),
                                     col_names=TRUE,delim=";",
                                     locale = readr::locale(decimal_mark = ".",grouping_mark = "" )))
         df$date=lubridate::dmy(df$date)

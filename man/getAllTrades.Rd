@@ -2,12 +2,21 @@
 % Please edit documentation in R/trades.R
 \name{getAllTrades}
 \alias{getAllTrades}
-\title{getAllTrades function}
+\title{getAllTrades}
 \usage{
 getAllTrades()
 }
+\value{
+All trades stored in Trades table from mydb DB. Format is the following:
+\code{TradeNr, Account, TradeDate, Strategy, Instrument, Ssjacent, Pos, Prix,
+Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
+}
 \description{
 This function work only for IBKR accounts not for Gonet account
-This function is used by other Tutils functions - NOT to be exported
+This function is used by other Tutils functions but also for RReporting directly.
 No argument - takes its source from config::get()
+}
+\details{
+It verifies that \code{TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward, PnL} are all numeric,
+and if not, displays an error message and converts them
 }

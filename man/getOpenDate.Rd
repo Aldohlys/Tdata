@@ -10,17 +10,20 @@ getOpenDate(trade_nr)
 \item{trade_nr}{an integer or a vector of integers}
 }
 \value{
-a data frame giving for each trade number:
+a data frame including:
 \itemize{
-\item \code{active_open_date} the opening date of the instrument corresponding to \code{expdate}
-\item \code{expdate} the first still active expiration date
+\item \code{TradeNr} trade number, an integer
+\item \code{strategy} a string, the strategy that was used: can be "BOT", "BPT", "OFI", "CS". or even "Erreur"
+\item \code{exp_date} the first still active expiration date  - only for opened/adjusted trades
 \item \code{orig_date}  the original opening trade date (even if corresponding instrument part of the trade has been closed since)
+\item \code{last_date} the last trading date on the trade - will be the close date if the trade is closed
 }
 }
 \description{
-This function retrieves one or a vector of dates, all pertaining to open/adjusted trades
+This function retrieves one or a vector of dates, pertaining to open, adjusted or closed trades, plus trade number and strategy.
 }
 \details{
-It works by matching all trade number in Trades.csv file argument against trade dates
-Then the oldest date per trade is returned.
+It works by matching all trade number arguments against corresponding trade dates found in Trades.csv
+Then the oldest date per trade is returned, plus still active expiration/active opening date (for existing position only)
+plus strategy.
 }
