@@ -11,7 +11,10 @@
 
 ### This assumes that mydb is declared
 getAllCurrencyPairs = function() {
-  pool::dbReadTable(.GlobalEnv$mydb, "CurrencyPairs")
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  all_pairs <- DBI::dbReadTable(conn, "CurrencyPairs")
+  DBI::dbDisconnect(conn)
+  all_pairs
 }
 
 #'  getCurrencyPairs
@@ -32,35 +35,40 @@ getAllCurrencyPairs = function() {
 getCurrencyPairs = function() {
   message("getCurrencyPairs")
   ### euro_usd and chf_usd data frames - values for the day- are already retrieved
-  usd=getAllCurrencyPairs()
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  usd <- DBI::dbReadTable(conn, "CurrencyPairs")
 
   ### Convert string to date
   last_usd=dplyr::last(usd)
   last_date=as.Date(last_usd$date)
 
-  if (last_date == lubridate::today())  {
+  if (last_date == Sys.Date())  {
     #print(usd)
     return(last_usd)
   }
 
   ### No EUR or CHF values for today => to be retrieved from IBKR
-  display_message("Retrieving EUR/USD !")
+  Tbasics::display_message("Retrieving EUR/USD !")
   EUR = reticulate::py$getCurrencyPairValue("EURUSD",reqType=2)
-  if (is.null(EUR)) EUR=enter_numerical_data("EUR/USD")
-  else if (is.na(EUR)) EUR=enter_numerical_data("EUR/USD")
+  if (is.null(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
+  else if (is.na(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
 
-  display_message("Retrieving CHF/USD !")
+  Tbasics::display_message("Retrieving CHF/USD !")
   CHF = reticulate::py$getCurrencyPairValue("CHFUSD",reqType=2)
-  if (is.null(CHF)) CHF=enter_numerical_data("CHF/USD")
-  else if (is.na(CHF)) CHF=enter_numerical_data("CHF/USD")
+  if (is.null(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
+  else if (is.na(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
 
-  usd = data.frame(date=lubridate::today(),EUR=EUR,CHF=CHF)
+  Sys.sleep(1)
+
+  usd = data.frame(date=Sys.Date(),EUR=EUR,CHF=CHF)
   #print(usd)
 
-  pool::dbAppendTable(.GlobalEnv$mydb, "CurrencyPairs", usd)
+  DBI::dbAppendTable(conn, "CurrencyPairs", usd)
   ### write.table seems to be the only one working simply -
   ### to be revisited as utils package is not the most current and efficient
   ### utils::write.table(usd,config::get("CurrencyPairs"),sep=";",dec=".",row.names=F,append=T,col.names=F)
+  DBI::dbDisconnect(conn)
+
   return(usd)
 }
 
@@ -82,6 +90,7 @@ getCurrencyPairs = function() {
 #'currency_format(10000,"CHF")
 #'currency_format(758.458,"USD")
 #'currency_format(100000.455,"EUR")
+#'currency_format(c(100,40),c("EUR","USD"))
 #'@export
 currency_format = function(amount,currency){
   #Returns the amount values formatted with their respective currency sign, based on the currency argument

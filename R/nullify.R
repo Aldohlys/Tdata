@@ -6,12 +6,6 @@
 #'
 ### See also https://r-pkgs.org/package-within.html
 
-### for chartServer call
-x <- y1 <- y2 <- NULL
-
-### for getBSComboPrice
-pos <- type <- strike <- DTE <- mul <- NULL
-
 ### for getOpenDate
 TradeNr <- Statut <- TradeDate <- Strategy <- exp_date <- Exp.Date <- Pos <- NULL
 
@@ -29,7 +23,10 @@ marketPrice <- marketValue <- averageCost <- unrealizedPnL <- symbol <- right <-
 exchange <- sec <- NULL
 
 ### for greeksNet
-uPrice <- currency <- multiplier <- theta <- vega <- dnet <- ddnet <- gnet <- tnet <- vnet <- NULL
+pos <- uPrice <- currency <- multiplier <- delta <- theta <- vega <- dnet <- ddnet <- gnet <- tnet <- vnet <- NULL
 
 ### for currency
-mydb <- NULL
+### mydb <- NULL
+
+### for getIBKR
+new_date <- heure <- strike <- optPrice <- pvDividend <- expdate <- type <- unrealizedPNL <- NULL

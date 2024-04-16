@@ -12,12 +12,13 @@ It should contain at least the following columns: \code{type;pos; mktPrice; delt
 multiplier; currency} - see also readPortfolio function}
 }
 \value{
-a data frame with \code{delta, deltadollars, gamma, theta, vega} for each group
+a data frame of double numbers with \code{delta, deltadollars, gamma, theta, vega} for each group. It is worth noticing that deltadollars is an amount in USD.
+(if necessary it is converted to USD from original currency).
 }
 \description{
-This function computes net position for each Greek, using as input Greek value for each individual option
+This function computes for a portfolio the net position of each Greek, summing over all positions the Greek value of each individual position.
 }
 \details{
-Each position will be multiplied by multiplier and a Greek to obtain the Greek net value.
-All Greek net values will be summed over all positions, for each Greek.
+Each position will be multiplied by multiplier and a Greek to obtain the Greek net value fo the position.
+All Greek net values will be then summed up over all positions, for each Greek.
 }

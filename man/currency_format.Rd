@@ -24,6 +24,7 @@ currency_format(100.45,"EUR")
 currency_format(10000,"CHF")
 currency_format(758.458,"USD")
 currency_format(100000.455,"EUR")
+currency_format(c(100,40),c("EUR","USD"))
 }
 \keyword{currency}
 \keyword{trading}

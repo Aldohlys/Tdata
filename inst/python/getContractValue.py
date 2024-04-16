@@ -7,7 +7,6 @@ import simplejson
 import pandas as pd
 import collections
 import locale
-import sqlite3
 
 def is_port_in_use(port):
     import socket
@@ -507,8 +506,8 @@ def getIBKRData():
   account=ib.managedAccounts()[0]
   
 
-  #### Takes Swiss type of date
-  dd=(datetime.datetime.now()).strftime('%d.%m.%Y')
+  #### Takes integer type of date
+  dd=int((datetime.datetime.now()).strftime('%Y%m%d'))
   dh=(datetime.datetime.now()).strftime("%H:%M:%S")
   
   df=pd.DataFrame({'account':account,
@@ -562,7 +561,6 @@ def getIBKRData():
   ### Retrieve 15 minutes delayed market values in a single go
   ib.reqMarketDataType(2) ### Request type - Should be 2 or 4
   tickers = ib.reqTickers(*dg)
-  ib.sleep(1)
   
   ### Build dataframe from prices just retrieved
   l=[[ticker.contract.symbol,ticker.marketPrice()] for ticker in tickers]
@@ -571,7 +569,10 @@ def getIBKRData():
   #### Remove all lines without prices
   #### Store new prices only if there is something to store
   uprices_data=uprices_data.dropna(subset="price")
-
+  if not uprices_data.empty:
+    uprices_data.insert(0,"datetime",datetime.datetime.now().strftime('%d %b %Y %Hh%M'))
+    
+  print(uprices_data)
   
   # #### For options is needed only contract column from df - to be extracted
   # options=DataFrame()
@@ -599,11 +600,14 @@ def getIBKRData():
   
   options=ib.qualifyContracts(*options)
   tickers = ib.reqTickers(*options)
-
-
+  
+  ### Wait until all data has been received
+  ib.sleep(1)
+  
   #### IB connection no more needed
   ib.disconnect()
  
+  print("All data retrieved from IBKR")
   #### Look at first option contract
   
   ### optionComputation elements (9)
@@ -620,44 +624,48 @@ def getIBKRData():
       option_c.loc[len(option_c.index)]=optionComputation
   df=df.join(option_c)
   
+  ### Extract meaningful columns
+  cols = ["date","heure","secType", "symbol", "lastTradeDateOrContractMonth",  "strike", "right" ,"position", 
+  "marketPrice", "optPrice", "marketValue",  "averageCost", "unrealizedPNL", "impliedVol", "pvDividend",
+  "delta",   "gamma", "vega", "theta", "undPrice","multiplier","currency"]
+  df = df[[c for c in df.columns if c in cols]]
 
-  # for i in range(len(df)):
-  #    contract=df.iloc[i,0]
-  #    contract_details=DataFrame([contract])
-  #    contract_details.to_csv('PortfolioContracts.csv', header=False,index=False,mode='a',sep=";",encoding='utf-8')
-  dd=(datetime.datetime.now()).strftime('%d.%m.%Y')
+  dd=int((datetime.datetime.now()).strftime('%Y%m%d'))
   dh=(datetime.datetime.now()).strftime("%H:%M:%S")
   
   df=df.assign(date=dd,heure=dh)
   
+  ### Re-order df columns according to col order
+  df = df[cols]
+  ### Rename some columns that are really ugly
+  df = df.rename(columns={'lastTradeDateOrContractMonth':'expdate', 
+                            'undPrice':'uPrice', 'impliedVol':'IV','position':'pos', 'marketPrice':'mktPrice',
+                            'marketValue':'mktValue',
+                            'averageCost':'avgCost', 'unrealizedPNL':'unPnL'})
   portf_data=df
+
   print(portf_data)
    
   ##################################################
-  ######## Save data to CSV ########################
+  ######## Save data ########################
   
-  ##### 1. Save underlying prices to CSV #########
-  if not uprices_data.empty:
-    uprices_data.insert(0,"datetime",datetime.datetime.now().strftime('%d %b %Y %Hh%M'))
-    uprices_data.to_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv",header=False, index=False, mode='a', sep=';')
-
-
-  #### 2. Save account data to CSV ################
-  account_data.to_csv("C:\\Users\\aldoh\\Documents\\NewTrading\\Account.csv", mode='a', index=False, header=False, sep=';', encoding='utf-8')
+  # ##### 1. Save underlying prices to CSV #########
+  ### uprices_data.to_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv",header=False, index=False, mode='a', sep=';')
+  ### 2. Save account data to CSV ################
+  ### account_data.to_csv("C:\\Users\\aldoh\\Documents\\NewTrading\\Account.csv", mode='a', index=False, header=False, sep=';', encoding='utf-8')
 
   #### 3. Save portf data to CSV ##############
   ### only a subset of df is being stored
-  portf_data.to_csv('C:\\Users\\aldoh\\Documents\\NewTrading\\'+ib.managedAccounts()[0]+'.csv',
-  header=False, index=False, mode='a', 
-  sep=';', 
-  columns=["date","heure","secType", "symbol", "lastTradeDateOrContractMonth",  "strike", "right" ,"position", 
-  "marketPrice", "optPrice", "marketValue",  "averageCost", "unrealizedPNL", "impliedVol", "pvDividend",
-  "delta",   "gamma", "vega", "theta", "undPrice","multiplier","currency"],encoding='utf-8')
+  # portf_data.to_csv('C:\\Users\\aldoh\\Documents\\NewTrading\\'+ib.managedAccounts()[0]+'.csv',
+  # header=False, index=False, mode='a', 
+  # sep=';', 
+  # columns=["date","heure","secType", "symbol", "lastTradeDateOrContractMonth",  "strike", "right" ,"position", 
+  # "marketPrice", "optPrice", "marketValue",  "averageCost", "unrealizedPNL", "impliedVol", "pvDividend",
+  # "delta",   "gamma", "vega", "theta", "undPrice","multiplier","currency"],encoding='utf-8')
   
   #### Debug info
-  print(uprices_data)
-  
- 
+  #print(uprices_data)
+
   return [account_data, uprices_data, portf_data] 
 
 

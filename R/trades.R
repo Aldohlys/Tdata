@@ -23,21 +23,23 @@ saveTrades = function(trades) {
   utils::write.table(trades,file=paste0(config::get("DirNewTrading"),"Trades.csv"),append=F,
               col.names=TRUE,row.names=FALSE,sep=";",dec=".",quote=TRUE)
 
-  suppressWarnings(pool::dbWriteTable(.GlobalEnv$mydb,"Trades",trades, overwrite = TRUE,
-                                      field.types=c("TradeNr"=	"INTEGER","TradeDate"	= "INTEGER",
-    "Pos"	= "INTEGER",
-    "Prix" =	"REAL",
-    "Comm." =	"REAL",
-    "Total"	= "REAL",
-    "Risk"=	"REAL",
-    "Reward"=	"REAL",
-    "PnL"= "REAL" )))
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  DBI::dbWriteTable(conn, "Trades", trades, overwrite = TRUE,
+                    field.types=c("TradeNr"=	"INTEGER","TradeDate"	= "INTEGER",
+                                  "Pos"	= "INTEGER",
+                                  "Prix" =	"REAL",
+                                  "Comm." =	"REAL",
+                                  "Total"	= "REAL",
+                                  "Risk"=	"REAL",
+                                  "Reward"=	"REAL",
+                                  "PnL"= "REAL" ))
+  DBI::dbDisconnect(conn)
 }
 
 #' getAllTrades
 #'
 #' This function work only for IBKR accounts not for Gonet account
-#' This function is used by other Tutils functions but also for RReporting directly.
+#' This function is used by other Tdata functions but also for RReporting directly.
 #' No argument - takes its source from config::get()
 #'
 #' It verifies that \code{TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward, PnL} are all numeric,
@@ -50,9 +52,12 @@ getAllTrades = function() {
   # suppressMessages(read_delim(file=config::get("Trades"),
   #                                    delim=";",locale=locale(date_names="en",decimal_mark=".",
   #                                                            grouping_mark="",encoding="UTF-8")))
-  alltrades = suppressWarnings(pool::dbReadTable(.GlobalEnv$mydb,"Trades"))
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  alltrades = DBI::dbReadTable(conn, "Trades")
+  DBI::dbDisconnect(conn)
+
   if (any(with(alltrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL))))) {
-    display_error_message("Trades input data had to be converted!")
+    Tbasics::display_error_message("Trades input data had to be converted!")
     with(alltrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
   }
   alltrades
@@ -60,7 +65,7 @@ getAllTrades = function() {
 
 ### This function is useful for test_that test functions as getToday will then be changed for mocking test
 getToday = function() {
-  lubridate::today()
+  Sys.Date()
 }
 
 #' getTradeNr
@@ -79,7 +84,7 @@ getToday = function() {
 #'@export
 getTradeNr = function(v_instrument,account_type=NA,unique=T) {
   if(length(v_instrument)==0) {
-    display_error_message("No instrument to be searched!")
+    Tbasics::display_error_message("No instrument to be searched!")
     return(NA)
   }
 
@@ -103,9 +108,10 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
   trade_nr=suppressMessages(dplyr::pull(
     dplyr::group_by(dplyr::left_join(as.data.frame(list(Instrument=v_instrument)),trades),
                     Instrument),TradeNr))
-  ### If left join returns NA -> trade is not present - not yet recorded in Trades.csv
+  ### If left join returns NA -> trade is not present - not yet recorded in Trades table
   if (all(is.na(trade_nr))) {
-    display_error_message(cat("For instruments ",v_instrument, " no opened/adjusted trades in Trades.csv file!\n"))
+    Tbasics::display_error_message(paste0("For instruments ", do.call(paste,as.list(c(v_instrument,sep=" and "))),
+                                          " no opened/adjusted trades in Trades table!"))
     return(NA)
   }
 
@@ -142,21 +148,21 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
 getOpenDate = function(trade_nr) {
 
   if (!is.numeric(trade_nr)) {
-    display_error_message("trade_nr must be a numeric")
+    Tbasics::display_error_message("trade_nr must be a numeric")
     return(NA)
   }
 
   trades=getAllTrades()
   ### This will create a line for trade_nr even if trade_nr does not exist in trades data frame
   ### trades is grouped by TradeNr
-  trades = dplyr::group_by(dplyr::right_join(trades, data.frame(TradeNr=trade_nr), by="TradeNr"), TradeNr)
+  trades = suppressMessages(dplyr::group_by(dplyr::right_join(trades, data.frame(TradeNr=trade_nr), by="TradeNr"), TradeNr))
 
   ### Retrieve initial opening date for each trade - trades are grouped by trade_nr
   ### orig_date is the oldest date recorded for the trade -
-  orig_date = dplyr::summarize(trades,orig_date=min(lubridate::ymd(TradeDate)))
+  orig_date = dplyr::summarize(trades,orig_date=min(as.Date(as.character(TradeDate),format="%Y%m%d")))
 
   ### last_date is the most recent date recorded for the trade
-  last_date = dplyr::summarize(trades,last_date=max(lubridate::ymd(TradeDate)))
+  last_date = dplyr::summarize(trades,last_date=max(as.Date(as.character(TradeDate),format="%Y%m%d")))
 
   ### Retrieve strategies for each trade - trades are grouped by trade_nr
   strategy = dplyr::summarize(trades,strategy=dplyr::first(Strategy))
@@ -173,7 +179,7 @@ getOpenDate = function(trade_nr) {
               dplyr::summarize(
                 dplyr::group_by(trades,TradeNr,Instrument),
                 ### Exp.Date is expiration date associated to Instrument - unique by definition
-                Exp.Date=dplyr::first(lubridate::dmy(Exp.Date)),
+                Exp.Date=as.Date(dplyr::first(Exp.Date),format="%d.%m.%Y"),
                 ### Pos gives the current position of the instrument - may be 0 if instrument has been sold in the trade (ex: roll out)
                 ### Will be 0 if trade is closed in any case
                 Pos=sum(Pos)),
@@ -222,21 +228,21 @@ getRnR = function(trade_nr) {
   message("getRnR - Reward and Risk")
 
   if (!is.numeric(trade_nr)) {
-    display_error_message("trade_nr must be a numeric")
+    Tbasics::display_error_message("trade_nr must be a numeric")
     return(NA)
   }
 
   ##if (is.unsorted(v_instrument)) stop("Instrument must be sorted - prog. error")
   trades = getAllTrades()
-  trades = dplyr::group_by(dplyr::right_join(trades, data.frame(TradeNr=trade_nr), by="TradeNr"), TradeNr)
+  trades = suppressMessages(dplyr::group_by(dplyr::right_join(trades, data.frame(TradeNr=trade_nr), by="TradeNr"), TradeNr))
 
   if (nrow(trades)==0) {
-    display_error_message("Trade does not exist!")
+    Tbasics::display_error_message("Trade does not exist!")
     return(NA)
   }
 
   if (all(trades$Statut %in% "Ferm\u00e9")) {
-    display_error_message("All these trades are closed in Trades.csv file!")
+    Tbasics::display_error_message("All these trades are closed in Trades.csv file!")
     return(NA)
   }
 

@@ -1,4 +1,4 @@
-Package: Tutils
+Package: Tdata
 Title: Provide basic utilities for trading IBKR account
 Version: 0.0.0.9000
 Authors@R: 
@@ -8,33 +8,21 @@ Description: This package contains various R and Python functions that are to be
 License: MIT + file LICENSE
 Encoding: UTF-8
 Imports:
-    readr,
     scales,
     reticulate,
     dplyr,
-    lubridate,
-    stringr,
-    withr,
     shiny,
     purrr,
-    DescTools,
     utils,
     RQuantLib,
     config,
-    derivmkts,
-    tidyr,
     quantmod,
-    zoo,
     hms,
     xts,
-    DT,
-    htmltools,
-    stats,
-    ggplot2,
-    plotly,
-    pool,
     DBI,
-    RSQLite
+    RSQLite,
+    Tbasics,
+    zoo
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.1
 Suggests: 

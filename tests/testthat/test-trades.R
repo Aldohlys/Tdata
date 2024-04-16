@@ -1,4 +1,14 @@
-getTestTrades = function() {suppressWarnings(pool::dbReadTable(.GlobalEnv$mydb,"TestTrades"))}
+
+conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+
+getTestTrades = function() {
+  alltrades = DBI::dbReadTable(conn, "TestTrades")
+  if (any(with(alltrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL))))) {
+    Tbasics::display_error_message("Trades input data had to be converted!")
+    with(alltrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
+  }
+  alltrades
+}
 
 
 # This function returns TRUE wherever elements are the same, including NA's,
@@ -8,6 +18,14 @@ compareNA <- function(v1,v2) {
   same[is.na(same)] <- FALSE
   return(same)
 }
+
+test_that("It is possible to retrieve a trade number for a single instrument", {
+  with_mocked_bindings(
+    getAllTrades = getTestTrades, {
+      trade_nr=getTradeNr("NEM 19APR24 30 P",account_type="Live")
+      expect_true(trade_nr == 394)
+    })
+})
 
 test_that("It is possible to retrieve a trade number for a single instrument", {
     with_mocked_bindings(
@@ -204,3 +222,4 @@ test_that("getOpenDate works with opened and closed trades, opened trade with mu
     })
 })
 
+DBI::dbDisconnect(conn)

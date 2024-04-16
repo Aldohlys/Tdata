@@ -29,3 +29,8 @@ This assumes a right column exists in portfolio file
 \code{type} value is either Stock, Put, Call or NA for anything else
 }
 }
+\examples{
+\dontrun{
+readPortfolio("DU5555")
+}
+}

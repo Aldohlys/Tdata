@@ -1,28 +1,44 @@
 #### Account related utilities
 #'   readAccount
 #'
-#' This function reads the Account.csv file and formats it with right Date and HMS format
+#' This function reads the Account table.
 #' It then filters data so that it matches \code{accountnr} number
+#' Finally it formats account data with right Date and HMS format
 #'@param accountnr is the account number (IBKR)
 #'@returns a tibble with the following fields: \code{ account	date	heure
 #' NetLiquidation	EquityWithLoanValue	FullAvailableFunds	FullInitMarginReq	FullMaintMarginReq
 #' FullExcessLiquidity	OptionMarketValue	StockMarketValue	UnrealizedPnL	RealizedPnL	TotalCashBalance
 #'  CashFlow}
+#'@examples
+#'\dontrun{
+#'readAccount("DU5555")
+#'}
 #'@export
 readAccount = function(accountnr) {
   # file=paste0(config::get("DirNewTrading"),"Account",".csv")
-  # account_data = suppressMessages(read_delim(file=file,delim=";",
+  # account_data = suppressWarnings(read_delim(file=file,delim=";",
   #                                            locale=locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
-  account_data = pool::dbReadTable(.GlobalEnv$mydb,"Account")
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  account_data = DBI::dbReadTable(conn,"Account")
+  DBI::dbDisconnect(conn)
+
   ### account	date	heure
   ### NetLiquidation	EquityWithLoanValue	FullAvailableFunds	FullInitMarginReq	FullMaintMarginReq
   ### FullExcessLiquidity	OptionMarketValue	StockMarketValue	UnrealizedPnL	RealizedPnL	TotalCashBalance
   ### Starts on Oct 4th, 2022 for IBKR, on June 1st for Gonet
 
-  ### Use internal R date format instead of European date format
-  account_data$date=account_data$rdate
-  account_data$heure=hms::parse_hms(account_data$heure)
-  dplyr::filter(account_data,account==accountnr)
+  ### Filter based upon account number and remove account number from result
+  account_data = dplyr::filter(account_data,account==accountnr)
+  account_data = dplyr::select(account_data,-account)
+
+  ### If there is at least one line then do conversion date and heure
+  if (nrow(account_data) != 0) {
+    ### Convert to internal R date format from of integer date format
+    account_data$date=as.Date(as.character(account_data$date),"%Y%m%d")
+    account_data$heure=hms::parse_hms(account_data$heure)
+  }
+  else Tbasics::display_error_message(paste0("No data recorded for ", accountnr))
+  return(account_data)
 }
 
 
@@ -48,13 +64,20 @@ readAccount = function(accountnr) {
 #'@returns a tibble with the following columns:
 #' \code{date; heure; symbol; type; expiration; strike; pos; mktPrice; optPrice}
 #' \code{mktValue; avgCost; uPnL; IV; pvDividend; delta; gamma; vega; theta; uPrice; multiplier; currency}
+#'@examples
+#'\dontrun{
+#'readPortfolio("DU5555")
+#'}
 #'@export
 readPortfolio = function(portfname) {
   message("readPortfolio")
 
-  #### Test if requested portfolio is present in DB (e.g. Live portfolio does not exist)
-  name = pool::dbGetQuery(.GlobalEnv$mydb,"SELECT name FROM sqlite_master WHERE type='table' AND name=?",params=list(portfname))
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
+  #### Test if requested portfolio is present in DB (e.g. Live portfolio does not exist)
+  name = DBI::dbGetQuery(conn,"SELECT name FROM sqlite_master WHERE type='table' AND name=?",params=list(portfname))
+
+  ### If portfolio exists there is one and only one portfolio name referred
   if (nrow(name)==1) {
     # portf= suppressMessages(read_delim(file=file,delim=";",
     #                                    locale=locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
@@ -63,41 +86,28 @@ readPortfolio = function(portfname) {
     # marketValue;averageCost;unrealizedPnL;impliedVol;pvDividend;delta;gamma;vega;theta;undPrice;multiplier;currency
     ### Convert from European date format to internal R date format
 
-    portf = pool::dbReadTable(.GlobalEnv$mydb,portfname)
-    portf$heure=hms::parse_hms(portf$heure)
-    ### With DB it is not necewssary to convert position into an integer (this is not a float)
+    portf = dplyr::collect(DBI::dbReadTable(conn,portfname))
+    DBI::dbDisconnect(conn)
+
+    portf$date <- as.Date(as.character(portf$date),"%Y%m%d")
+    portf$heure <- hms::parse_hms(portf$heure)
+
+    ### With DB it is not necessary to convert position into an integer (this is not a float)
     ### portf$position=as.integer(portf$position)
     ## There are no CASH positions that are virtual
     ### portf = dplyr::filter(portf, secType!="CASH")
 
-    ## For nicer output on screen -makes column names shorter
-
     ### Case where there are options in the portfolio - these field names come from IBKR - cannot be changed
-    if ("lastTradeDateOrContractMonth" %in% colnames(portf)) portf = dplyr::rename(portf, expiration=lastTradeDateOrContractMonth)
-    if ("undPrice" %in% colnames(portf)) portf = dplyr::rename(portf, uPrice=undPrice)
-    if ("impliedVol" %in% colnames(portf)) portf = dplyr::rename(portf,IV=impliedVol)
 
     #### Remove special Gonet "USD_" fields if present
     portf = dplyr::select(portf,!dplyr::starts_with("USD_"))
-
-    portf = dplyr::rename(portf, pos=position,
-                      mktPrice=marketPrice, mktValue=marketValue,
-                      avgCost=averageCost,uPnL=unrealizedPnL)
-
-    # portf = dplyr::mutate(portf, .after=symbol,
-    #                       type= dplyr::case_match(secType,
-    #                                               "STK" ~ "Stock",
-    #                                               c("OPT","FOP") ~ dplyr::if_else(portf$right=="P","Put","Call"),
-    #                                               "FUT" ~ "Future",
-    #                                             .default = secType),
-    #                     .keep="unused")
-    # portf = dplyr::select(portf,-right)
-
     return(portf)
   }
   else {
+    DBI::dbDisconnect(conn)
+
     message("Portfolio doesn't exist, please check portfolio name")
-    display_error_message("Portfolio doesn't exist, please check portfolio name")
+    Tbasics::display_error_message("Portfolio doesn't exist, please check portfolio name")
     return(dplyr::tibble())
   }
 }
@@ -121,7 +131,7 @@ readPortfolio = function(portfname) {
 twr <- function(dates, e_nlv, cashflows) {
   ### dates are dates when data are provided - there should be only one data point per dates
   if (!all(!duplicated(dates))) {
-    display_error_message("twr:All dates must be different!")
+    Tbasics::display_error_message("twr:All dates must be different!")
     return(NA)
   }
   else {
@@ -150,7 +160,7 @@ twr <- function(dates, e_nlv, cashflows) {
     if (length(cash_flows) != n)  {
       print(paste0("NLV:",length(e_nlv)))
       print(paste0("Cash flows",length(cash_flows)))
-      display_error_message("twr:Cash flows number of elements different from Porfolio values!!!!")
+      Tbasics::display_error_message("twr:Cash flows number of elements different from Porfolio values!!!!")
       return(NA)
     }
     else {
@@ -185,15 +195,16 @@ twr <- function(dates, e_nlv, cashflows) {
 ##############################
 #'   greeksNet
 #'
-#' This function computes net position for each Greek, using as input Greek value for each individual option
+#' This function computes for a portfolio the net position of each Greek, summing over all positions the Greek value of each individual position.
 #'
-#' Each position will be multiplied by multiplier and a Greek to obtain the Greek net value.
-#' All Greek net values will be summed over all positions, for each Greek.
+#' Each position will be multiplied by multiplier and a Greek to obtain the Greek net value fo the position.
+#' All Greek net values will be then summed up over all positions, for each Greek.
 #'
 #'@param portf a data frame with one line per instrument, may be grouped by date and time.
 #'It should contain at least the following columns: \code{type;pos; mktPrice; delta; gamma; vega; theta; uPrice;
 #'multiplier; currency} - see also readPortfolio function
-#'@returns a data frame with \code{delta, deltadollars, gamma, theta, vega} for each group
+#'@returns a data frame of double numbers with \code{delta, deltadollars, gamma, theta, vega} for each group. It is worth noticing that deltadollars is an amount in USD.
+#'(if necessary it is converted to USD from original currency).
 #'@export
 greeksNet = function(portf) {
   if ("delta" %in% colnames(portf)) {
@@ -226,7 +237,7 @@ greeksNet = function(portf) {
                                                            multiplier*vega*pos,
                                                            0)),
                      delta=sum(dnet,na.rm=FALSE),
-                     deltadollars=currency_format(sum(ddnet,na.rm=FALSE),"USD"),
+                     deltadollars=sum(ddnet,na.rm=FALSE),
                      gamma=sum(gnet,na.rm=FALSE),
                      theta=sum(tnet,na.rm=FALSE),
                      vega=sum(vnet,na.rm=FALSE))
@@ -245,29 +256,33 @@ greeksNet = function(portf) {
 #'
 #'@returns No value
 #'@export
+#'@examples
+#'\dontrun{
+#'getIBKR()
+#'}
 getIBKR <- function() {
 
-  replace_date  <- function(x) {
-    sub("(\\d{2}).(\\d{2}).(\\d{4})","\\3\\2\\1",x)
-  }
+  # replace_date  <- function(x) {
+  #   sub("(\\d{2}).(\\d{2}).(\\d{4})","\\3\\2\\1",x)
+  # }
 
   l = reticulate::py$getIBKRData()
+
+  ### Open connection with DB
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
   #### Process new account data
   account_data = l[[1]]
   account_type = switch(account_data$account,"U1804173"="Live","DU5221795"="Simu")
 
-  account = dplyr::mutate(account_data, new_date= replace_date(date), rdate=as.Date(as.character(new_date),"%Y%m%d"),.after=date)
-  pool::dbAppendTable(.GlobalEnv$mydb,"Account",account)
+  DBI::dbAppendTable(conn,"Account",account_data)
 
   #### Process new prices for underlyings part of the portfolio
   uprices_data = l[[2]]
-  pool::dbAppendTable(.GlobalEnv$mydb,"Prices",uprices_data)
+  DBI::dbAppendTable(conn,"Prices",uprices_data)
 
   #### Process portfolio last positions
-  portf_data = dplyr::select(l[[3]], date, heure, secType, symbol, lastTradeDateOrContractMonth, strike,
-                             right, position, marketPrice, optPrice, marketValue, averageCost, unrealizedPnL=unrealizedPNL,
-                             impliedVol, pvDividend, delta, gamma, vega, theta, undPrice, multiplier, currency)
+  portf_data = l[[3]]
 
   ### Retrieve opened trades
   open_trades = dplyr::filter(getAllTrades(), Statut == "Ajust\U00e9" | Statut ==  "Ouvert", Account == account_type)
@@ -275,7 +290,6 @@ getIBKR <- function() {
   open_trades_instrument=dplyr::distinct(dplyr::select(open_trades,TradeNr, Instrument))
 
   ### Transform fresh data from IBKR
-  portf_data = dplyr::mutate(portf_data, expdate=as.Date(lastTradeDateOrContractMonth,"%Y%m%d"), .before=lastTradeDateOrContractMonth)
   portf_data = dplyr::mutate(portf_data, type= dplyr::case_match(secType,"STK" ~ "Stock",
                                                                  c("OPT","FOP") ~ dplyr::if_else(right=="P","Put","Call"),
                                                                  "FUT" ~ "Future",
@@ -284,18 +298,16 @@ getIBKR <- function() {
   ### field right not needed anymore - removed
   portf_data$right=NULL
 
-  portf_data = dplyr::mutate(portf_data,Instrument=buildInstrumentName(symbol,expdate,strike,type))
+  portf_data = dplyr::mutate(portf_data,Instrument=Tbasics::buildInstrumentName(symbol,as.Date(as.character(expdate),"%Y%m%d"),strike,type))
   ### In case one single instrument has been used in several trades - I choose first trade as trade number
   ### It is also possible that trades not yet recorded appear in portf_data and that closed trades are still opened in trades recorded
   ### portf_data should come first - if necessary trade_nr will be equal to NA
-  portf_data = dplyr::left_join(portf_data, open_trades_instrument,multiple="first")
+  portf_data = dplyr::left_join(portf_data, open_trades_instrument, multiple="first")
 
   ### Move TradeNr to 1st place
-  portf_data = dplyr::select(portf_data, TradeNr, everything())
-
-  ### Add some date related stuff
-  portf_data = dplyr::mutate(portf_data, new_date= replace_date(date), rdate=as.Date(as.character(new_date),"%Y%m%d"),.after=date)
+  portf_data = dplyr::select(portf_data, TradeNr, dplyr::everything())
 
   ### Append to DB
-  pool::dbAppendTable(.GlobalEnv$mydb,account_data$account,portf_data)
+  DBI::dbAppendTable(conn,account_data$account,portf_data)
+  DBI::dbDisconnect(conn)
 }

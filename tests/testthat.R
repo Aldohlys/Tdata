@@ -7,6 +7,7 @@
 # * https://testthat.r-lib.org/articles/special-files.html
 
 library(testthat)
-library(Tutils)
+library(Tdata)
 
-test_check("Tutils")
+test_check("Tdata")
+

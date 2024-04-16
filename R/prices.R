@@ -30,7 +30,7 @@ getSymFromDate = function(sym, date) {
 #'@examples getSym("SPY")
 #'@export
 getSym = function(sym){
-  getSymFromDate(sym,lubridate::ymd(config::get("CurrentTradesInitialDate")))
+  getSymFromDate(sym,as.Date(config::get("CurrentTradesInitialDate")))
 }
 
 
@@ -98,9 +98,9 @@ getsymPrice = function(sym,currency,report_date){
 
   ### First case - requested date is an holiday or requested date is not today
   ### Get last close price in this case
-  if ((!RQuantLib::isBusinessDay("UnitedStates",report_date)) | report_date < lubridate::today()) {
-    prices_list=getPriceAllDates(getSymFromDate(sym,lubridate::ymd("2023-01-03")))
-    report_date = findNearestNumberOrDate(prices_list$date, report_date)
+  if ((!RQuantLib::isBusinessDay("UnitedStates",report_date)) | report_date < Sys.Date()) {
+    prices_list=getPriceAllDates(getSymFromDate(sym,as.Date("2023-01-03")))
+    report_date = Tbasics::findNearestNumberOrDate(prices_list$date, report_date)
     price = dplyr::filter(prices_list,date==report_date)
     return(price$value)
   }
@@ -130,7 +130,7 @@ getLastAdjustedPrice = function(ticker) {
                   {
                     ## Case date is Tuesday morning and US market not yet opened + Monday and Friday were off -> Get THur data
                     ### This returns all last data available
-                    ticker=getSymFromDate(ticker,lubridate::today()-5)
+                    ticker=getSymFromDate(ticker,Sys.Date()-5)
                     ### Last column is "ticker.Adjusted"
                     sapply(ticker, function(x) round(x[[nrow(x),6]],2))
                   }
@@ -150,7 +150,7 @@ getLastAdjustedPrice = function(ticker) {
 getLastPriceDate = function(ticker) {
   dplyr::if_else( (is.null(ticker) | ticker %in% c("","All","STOCK")),
                   NA,
-                  {ticker=getSymFromDate(ticker,lubridate::today()-5)
+                  {ticker=getSymFromDate(ticker,Sys.Date()-5)
                   ### Last column is "ticker.Adjusted" -> to be renamed as Adjusted
                   sapply(ticker,function(x) format(zoo::index(x[nrow(x)]),"%d.%m.%Y"))
                   })
@@ -176,7 +176,7 @@ getLastTickerData = function(ticker) {
       ### NA shall work as a numeric for future computations like round(x,2)
       ticker %in% c("","All","STOCK")) return(list(last=NA,change=NA))
   tryCatch({
-    ticks=getSymFromDate(ticker,lubridate::today()-5)[[1]] ## Case Tuesday morning and US market not yet opened + Monday and Friday were off -> Get Wed and THur data
+    ticks=getSymFromDate(ticker,Sys.Date()-5)[[1]] ## Case Tuesday morning and US market not yet opened + Monday and Friday were off -> Get Wed and THur data
     ##names(ticks)[length(names(ticks))]="Adjusted" ### Last column is "ticker.Adjusted" -> to be renamed as Adjusted
     last_data=ticks[[nrow(ticks),6]]
     p_last_data=ticks[[nrow(ticks)-1,6]]
@@ -238,10 +238,10 @@ stock_price = function(sec="STK",sym,currency,exchange="SMART",reqType=4,close=F
   ### isTRUE let is.na test works also if val=NULL
   ### length(val) is TRUE when val=numeric(0)
   if (is.null(line)) {
-    val=enter_numerical_data(sym)
+    val=Tbasics::enter_numerical_data(sym)
 
     #### Write data to CSV file as data input by end user or Yahoo
-    line=dplyr::tibble(datetime=format(lubridate::now(),"%e %b %Y %Hh%M"),sym=sym)
+    line=dplyr::tibble(datetime=format(Sys.time(),"%e %b %Y %Hh%M"),sym=sym)
     line$price=val
     utils::write.table(line,paste0(config::get("DirNewTrading"),"prices.csv"),sep=";",
                        row.names = FALSE,quote=F,col.names = FALSE,append=TRUE)
@@ -302,14 +302,17 @@ getStockPriceServer = function(id, sec=shiny::reactive("STK"),sym,
 
   ### Case where no IBKR connection exists (NULL) or no value returned
   if (is.null(line)) {
-    val=enter_numerical_data(sym())
+    val=Tbasics::enter_numerical_data(sym())
     print(val)
 
     #### Write data to CSV file as data input by end user
-    line=dplyr::tibble(datetime=format(lubridate::now(),"%e %b %Y %Hh%M"),sym=sym())
+    line=dplyr::tibble(datetime=format(Sys.time(),"%e %b %Y %Hh%M"),sym=sym())
     line$price=val
-    utils::write.table(line,paste0(config::get("DirNewTrading"),"prices.csv"),sep=";",
-                       row.names = FALSE,quote=F,col.names = FALSE,append=TRUE)
+    # utils::write.table(line,paste0(config::get("DirNewTrading"),"prices.csv"),sep=";",
+    #                    row.names = FALSE,quote=F,col.names = FALSE,append=TRUE)
+    conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+    DBI::dbAppendTable(conn, "Prices", line)
+    DBI::dbDisconnect(conn)
   }
   else val=line[["price"]]
 

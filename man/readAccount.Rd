@@ -16,6 +16,12 @@ FullExcessLiquidity	OptionMarketValue	StockMarketValue	UnrealizedPnL	RealizedPnL
  CashFlow}
 }
 \description{
-This function reads the Account.csv file and formats it with right Date and HMS format
+This function reads the Account table.
 It then filters data so that it matches \code{accountnr} number
+Finally it formats account data with right Date and HMS format
+}
+\examples{
+\dontrun{
+readAccount("DU5555")
+}
 }
