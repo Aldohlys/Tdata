@@ -83,14 +83,15 @@ getCurrencyPairs = function() {
 #'
 #' Only 2 digits after decimal are displayed. Big mark (3 digits separator) is empty.
 
-#'@param amount,currency amount is the number to be displayed, currency is a string whose value is either EUR, CHF or USD
-#'@keywords currency trading
+#'@param amount,currency amount is the number to be displayed, currency is a string whose value is either EUR, CHF or USD.
+#'If length(currency) is 1, then it is recycled
 #'@examples
 #'currency_format(100.45,"EUR")
 #'currency_format(10000,"CHF")
 #'currency_format(758.458,"USD")
 #'currency_format(100000.455,"EUR")
 #'currency_format(c(100,40),c("EUR","USD"))
+#'currency_format(c(100,40),"EUR")
 #'@export
 currency_format = function(amount,currency){
   #Returns the amount values formatted with their respective currency sign, based on the currency argument
@@ -114,6 +115,13 @@ currency_format = function(amount,currency){
     big.mark = "",
     accuracy=0.01
   )
+
+  ### If length currency equals 1 and length arguments differ
+  ### then recycled otherwise error is raised
+  if (length(currency) != length(amount)) {
+    if (length(currency) == 1) currency <- rep(currency, length(amount))
+    else stop("amount and currency do not have same length AND currency length is not equal to 1 !")
+  }
 
   dplyr::if_else (is.na(amount), "", {
     dplyr::case_match(currency, "EUR"~euro(amount),

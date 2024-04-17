@@ -36,4 +36,11 @@ test_that("Convert to USD a vector of CHF and EUR as of 9.01.2023 - Value from 8
   )
 })
 
-
+test_that("Conversion format work for currency", {
+  expect_equal(currency_format(100.45,"EUR"), "100.45 \U20AC")
+  expect_equal(currency_format(10000,"CHF"), "10000.00 CHF")
+  expect_equal(currency_format(758.458,"USD"), "758.46 $")
+  expect_equal(currency_format(100000.455,"EUR"), "100000.46 \U20AC")
+  expect_equal(currency_format(c(100.45,758.458),c("EUR","USD")), c("100.45 \U20AC", "758.46 $"))
+  expect_equal(currency_format(c(100000.455,758.458,265.43) ,"USD"), c("100000.46 $","758.46 $","265.43 $"))
+})

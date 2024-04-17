@@ -7,7 +7,8 @@
 currency_format(amount, currency)
 }
 \arguments{
-\item{amount, currency}{amount is the number to be displayed, currency is a string whose value is either EUR, CHF or USD}
+\item{amount, currency}{amount is the number to be displayed, currency is a string whose value is either EUR, CHF or USD.
+If length(currency) is 1, then it is recycled}
 }
 \description{
 This function returns a string with amount and currency symbol
@@ -25,6 +26,5 @@ currency_format(10000,"CHF")
 currency_format(758.458,"USD")
 currency_format(100000.455,"EUR")
 currency_format(c(100,40),c("EUR","USD"))
+currency_format(c(100,40),"EUR")
 }
-\keyword{currency}
-\keyword{trading}
