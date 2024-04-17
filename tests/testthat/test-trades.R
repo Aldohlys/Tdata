@@ -222,4 +222,33 @@ test_that("getOpenDate works with opened and closed trades, opened trade with mu
     })
 })
 
+
+test_that("getRnR works with one simple trade",{
+  with_mocked_bindings(
+    getAllTrades = getTestTrades,  {
+      expect_equal(as.data.frame(getRnR(392)),
+                   data.frame(TradeNr = 392, risk = 500, reward = 700))
+  })
+})
+
+test_that("getRnR works with one simple trade with reward/risks on multiple lines",{
+  with_mocked_bindings(
+    getAllTrades = getTestTrades,  {
+      expect_equal(as.data.frame(getRnR(395)),
+                   data.frame(TradeNr = 395, risk = 215, reward = 700))
+      expect_equal(as.data.frame(getRnR(c(395, 395))),
+                   data.frame(TradeNr = c(395, 395), risk = c(215, 215), reward = c(700, 700)))
+    })
+})
+
+
+test_that("getRnR works with multiple trades",{
+  with_mocked_bindings(
+    getAllTrades = getTestTrades,  {
+      expect_equal(as.data.frame(getRnR(c(392, 380))),
+                   data.frame(TradeNr = c(392, 380), risk = c(500, 800), reward = c(700, 897)))
+    })
+})
+
+
 DBI::dbDisconnect(conn)

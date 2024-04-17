@@ -19,6 +19,9 @@ Risk column is the sum of risks (non-NA) for all given instruments that belong t
 This function retrieves a data frame listing reward and risk for a given list of trade numbers
 }
 \details{
-It works by matching all trade number in Trades.csv file argument against the argument given.
-Then it groups by trade number and compute for each trade numnber the total of reward and risks
+It works by matching all trade numbers in Trades DB against the argument \code{trade_nr} given.
+Then it groups by trade number and compute for each trade number the total of reward and risks.
+Trades may be opened, adjusted or closed.
+If the same trade number is present multiple times, then risk and reward data will be repeated
+This is useful for mass getRnR calls
 }

@@ -136,6 +136,8 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
 #' It works by matching all trade number arguments against corresponding trade dates found in Trades.csv
 #' Then the oldest date per trade is returned, plus still active expiration/active opening date (for existing position only)
 #' plus strategy.
+#' If the same trade number is present multiple times, then risk and reward data will be repeated
+#' This is useful for mass getRnR calls
 #'
 #'@param trade_nr an integer or a vector of integers
 #'@return a data frame including:
@@ -208,15 +210,21 @@ getOpenDate = function(trade_nr) {
   trades = suppressMessages(dplyr::left_join(trades,last_date, by=TradeNr))
 
   ### This tibble is grouped by TradeNr for future handling
-  dplyr::group_by(trades,TradeNr)
+  result <- dplyr::group_by(trades,TradeNr)
+
+  ### If same TradeNr is requested multiple times then result will be repeated multiple times
+  suppressMessages(dplyr::left_join(data.frame(TradeNr = trade_nr), result))
 }
 
 #' getRnR
 #'
 #' This function retrieves a data frame listing reward and risk for a given list of trade numbers
 #'
-#' It works by matching all trade number in Trades.csv file argument against the argument given.
-#' Then it groups by trade number and compute for each trade numnber the total of reward and risks
+#' It works by matching all trade numbers in Trades DB against the argument \code{trade_nr} given.
+#' Then it groups by trade number and compute for each trade number the total of reward and risks.
+#' Trades may be opened, adjusted or closed.
+#' If the same trade number is present multiple times, then risk and reward data will be repeated
+#' This is useful for mass getRnR calls
 #'
 #'@param trade_nr an integer or a vector of integers
 #'@return a dataframe with column trade number, reward and risk.
@@ -225,33 +233,35 @@ getOpenDate = function(trade_nr) {
 #'Risk column is the sum of risks (non-NA) for all given instruments that belong to the trade number
 #'@export
 getRnR = function(trade_nr) {
-  message("getRnR - Reward and Risk")
 
   if (!is.numeric(trade_nr)) {
     Tbasics::display_error_message("trade_nr must be a numeric")
     return(NA)
   }
 
-  ##if (is.unsorted(v_instrument)) stop("Instrument must be sorted - prog. error")
-  trades = getAllTrades()
-  trades = suppressMessages(dplyr::group_by(dplyr::right_join(trades, data.frame(TradeNr=trade_nr), by="TradeNr"), TradeNr))
+  trades <- getAllTrades()
+
+  ### Retrieve only trades that have TradeNr within trade_nr input data
+  trades <- dplyr::filter(trades, TradeNr %in% trade_nr)
 
   if (nrow(trades)==0) {
     Tbasics::display_error_message("Trade does not exist!")
     return(NA)
   }
 
-  if (all(trades$Statut %in% "Ferm\u00e9")) {
-    Tbasics::display_error_message("All these trades are closed in Trades.csv file!")
-    return(NA)
-  }
+  ### Group by TradeNr for summarize to work properly
+  trades <- dplyr::group_by(trades, TradeNr)
 
-  ### Remove closed trades - Extract only open/adjusted trades
-  trades = dplyr::filter(trades, Statut != "Ferm\u00e9")
 
   ### Retrieve instruments in trades.csv corresponding to instruments of dt
   ### If there are several records for the same instrument, take the oldest one (min)
-  RnR=  dplyr::summarize(trades, reward= sum(as.double(Reward),na.rm=T),risk= sum(as.double(Risk),na.rm=T))
+  RnR <-  dplyr::summarize(trades,
+                         risk = sum(as.double(Risk), na.rm=T),
+                         reward = sum(as.double(Reward), na.rm=T))
   #print(RnR)
+
+  ###├ If the same trade number is requested multiple times then RnR will be returned as many times
+  RnR <- suppressMessages(dplyr::left_join(data.frame(TradeNr = trade_nr), RnR))
+
   return(RnR)
 }
