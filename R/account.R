@@ -47,7 +47,7 @@ readAccount = function(accountnr) {
 #' readPortfolio
 #'
 #'
-#' This function reads the input file and performs a bunch of data wrangling before returning a tibble with all data.
+#' This function reads a portfolio table given as entry and performs a bunch of data wrangling before returning a tibble with all data.
 #'
 #'
 #' Data wrangling:
@@ -60,7 +60,8 @@ readAccount = function(accountnr) {
 #' \code{type} value is either Stock, Put, Call or NA for anything else
 
 #'
-#'@param portfname is the absolute path to a portfolio file. Portfolio file is a CSV file that must follow IBKR naming rules.
+#'@param portfname is a string that is a name of a portfolio table into local DB.
+#'local DB path is retrieved through config.yaml file
 #'@returns a tibble with the following columns:
 #' \code{date; heure; symbol; type; expiration; strike; pos; mktPrice; optPrice}
 #' \code{mktValue; avgCost; uPnL; IV; pvDividend; delta; gamma; vega; theta; uPrice; multiplier; currency}

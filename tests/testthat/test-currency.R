@@ -27,12 +27,20 @@ test_that("Up to date currency pairs can be retrieved either from IBKR or from e
 test_that("Convert to USD a given amount in CHF and EUR", {
   expect_equal(round(convert_to_usd_date(100.45,"EUR",as.Date("2023-11-20")),2),
                round(100.45*1.0925,2))
+  expect_equal(convert_to_usd_date(c(1000,2000),"EUR",as.Date("2023-12-03")),
+               c(1088.3, 2176.6))
 })
 
 ### 2021-01-08	EUR/USD 1.22714447975159	CHF/USD 1.12975203990936
 test_that("Convert to USD a vector of CHF and EUR as of 9.01.2023 - Value from 8.01.2023 is taken as 9.01 was not recorded",{
   expect_equal(round(convert_to_usd_date(c(10000,500),c("CHF","EUR"),as.Date("2021-01-09")),2),
                round(c(10000*1.1298,500*1.2271),2)
+  )
+})
+
+test_that("Convert to USD works with only one date", {
+  expect_error(
+    convert_to_usd_date(c(1000, 2000), c("EUR", "EUR"), c(as.Date("2023-12-03"),as.Date("2023-12-04")))
   )
 })
 

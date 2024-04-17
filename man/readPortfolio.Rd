@@ -7,7 +7,8 @@
 readPortfolio(portfname)
 }
 \arguments{
-\item{portfname}{is the absolute path to a portfolio file. Portfolio file is a CSV file that must follow IBKR naming rules.}
+\item{portfname}{is a string that is a name of a portfolio table into local DB.
+local DB path is retrieved through config.yaml file}
 }
 \value{
 a tibble with the following columns:
@@ -15,7 +16,7 @@ a tibble with the following columns:
 \code{mktValue; avgCost; uPnL; IV; pvDividend; delta; gamma; vega; theta; uPrice; multiplier; currency}
 }
 \description{
-This function reads the input file and performs a bunch of data wrangling before returning a tibble with all data.
+This function reads a portfolio table given as entry and performs a bunch of data wrangling before returning a tibble with all data.
 }
 \details{
 Data wrangling:

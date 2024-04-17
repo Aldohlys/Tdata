@@ -184,7 +184,7 @@ convert_to_usd = function(amount,currency,EUR,CHF) {
 #'
 #' Last it calls the convert_to_usd function.
 #'
-#' This function can be vectorized.
+#' This function can be vectorized for \code{amount} and \code{currency}, but \code{date} MUST be unique.
 #'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF
 #'@param date date is the requested date, it must be in Date format
 #'@keywords currency trading
@@ -192,17 +192,32 @@ convert_to_usd = function(amount,currency,EUR,CHF) {
 #'convert_to_usd_date(100.45,"EUR",as.Date("2023-10-15"))
 #'convert_to_usd_date(c(10000,500),c("CHF","EUR"),as.Date("2021-01-09"))
 #'convert_to_usd_date(c(750.543,10),c("USD","EUR"),as.Date("2023-12-03"))
+#'convert_to_usd_date(c(750.543,10),"EUR",as.Date("2023-12-03"))
 #'@export
 convert_to_usd_date = function(amount,currency,date) {
+
+  if (length(date) != 1) stop("date must be of length 1!")
+
   usd=getAllCurrencyPairs()
   usd$date=as.Date(usd$date)
 
+  ### This works only if date is of length 1
+  ### which.min returns one single index, even if date is a vector
   nearest_index = which.min(abs(usd$date-date))
+
   EUR= usd$EUR[nearest_index]
   CHF= usd$CHF[nearest_index]
 
-  convert_to_usd(amount,currency,EUR,CHF)
+    if (length(currency) == 1) {
+      len <- length(amount)
+      if (len != 1) {
+        currency <- rep(currency, len)
+        EUR <- rep(EUR, len)
+        CHF <- rep(CHF, len)
+      }
+    }
 
+  convert_to_usd(amount,currency,EUR,CHF)
 }
 
 

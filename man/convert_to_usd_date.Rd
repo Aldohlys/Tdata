@@ -20,11 +20,12 @@ It retrieves the EUR and CHF corresponding values.
 
 Last it calls the convert_to_usd function.
 
-This function can be vectorized.
+This function can be vectorized for \code{amount} and \code{currency}, but \code{date} MUST be unique.
 }
 \keyword{Examples}
 \keyword{convert_to_usd_date(100.45,"EUR",as.Date("2023-10-15"))}
 \keyword{convert_to_usd_date(c(10000,500),c("CHF","EUR"),as.Date("2021-01-09"))}
+\keyword{convert_to_usd_date(c(750.543,10),"EUR",as.Date("2023-12-03"))}
 \keyword{convert_to_usd_date(c(750.543,10),c("USD","EUR"),as.Date("2023-12-03"))}
 \keyword{currency}
 \keyword{trading}
