@@ -47,24 +47,19 @@ readAccount = function(accountnr) {
 #' readPortfolio
 #'
 #'
-#' This function reads a portfolio table given as entry and performs a bunch of data wrangling before returning a tibble with all data.
+#' This function reads a portfolio table given as entry
+#' and performs a bit of data wrangling before returning a data frame with all data.
 #'
 #'
 #' Data wrangling:
-#' 1. formats it with right Date and HMS format
-#' 2. converts \code{position} to \code{integer}
-#' 3. removes all CASH positions
-#' 4. rename IBKR columns to more friendly names
-#' 5. Remove secType and right columns and replace them by \code{type} column.
-#' This assumes a right column exists in portfolio file
-#' \code{type} value is either Stock, Put, Call or NA for anything else
-
+#' 1. formats it with right internal R Date format and heure HMS format
 #'
 #'@param portfname is a string that is a name of a portfolio table into local DB.
 #'local DB path is retrieved through config.yaml file
-#'@returns a tibble with the following columns:
-#' \code{date; heure; symbol; type; expiration; strike; pos; mktPrice; optPrice}
-#' \code{mktValue; avgCost; uPnL; IV; pvDividend; delta; gamma; vega; theta; uPrice; multiplier; currency}
+#'@returns a data frame with the following columns:
+#' \code{TradeNr; date; heure; secType; symbol; expdate; strike; pos}
+#' \code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend}
+#' \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument}
 #'@examples
 #'\dontrun{
 #'readPortfolio("DU5555")
@@ -80,16 +75,12 @@ readPortfolio = function(portfname) {
 
   ### If portfolio exists there is one and only one portfolio name referred
   if (nrow(name)==1) {
-    # portf= suppressMessages(read_delim(file=file,delim=";",
-    #                                    locale=locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
-    ### portf contains all following columns: date;heure;secType;symbol;lastTradeDateOrContractMonth;strike;
-    # right;position;marketPrice;optPrice;
-    # marketValue;averageCost;unrealizedPnL;impliedVol;pvDividend;delta;gamma;vega;theta;undPrice;multiplier;currency
-    ### Convert from European date format to internal R date format
 
-    portf = dplyr::collect(DBI::dbReadTable(conn,portfname))
+    ### read table from DB - no collect function necessary as there is no lazy evaluation later implied (no dplyr)
+    portf = DBI::dbReadTable(conn,portfname)
     DBI::dbDisconnect(conn)
 
+    ### Convert from European date format to internal R date format
     portf$date <- as.Date(as.character(portf$date),"%Y%m%d")
     portf$heure <- hms::parse_hms(portf$heure)
 
@@ -101,7 +92,7 @@ readPortfolio = function(portfname) {
     ### Case where there are options in the portfolio - these field names come from IBKR - cannot be changed
 
     #### Remove special Gonet "USD_" fields if present
-    portf = dplyr::select(portf,!dplyr::starts_with("USD_"))
+    ###  portf = dplyr::select(portf,!dplyr::starts_with("USD_"))
     return(portf)
   }
   else {
@@ -112,6 +103,56 @@ readPortfolio = function(portfname) {
     return(dplyr::tibble())
   }
 }
+
+############# PORTFOLIO specific functions #############
+#' readLastPortfolio
+#'
+#'
+#' This function reads the last record of a portfolio table given as entry,
+#' and performs a bit of data wrangling before returning a data frame with all data.
+#'
+#'
+#' Data wrangling:
+#' 1. formats it with right internal R Date format and heure HMS format
+#'
+#'
+#'@param account_type is a string whose value is \code{Live} or \code{Simu}
+#'@returns a data frame with the following columns:
+#' \code{TradeNr; date; heure; secType; symbol; expdate; strike; pos}
+#' \code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend}
+#' \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument}
+#'@examples
+#'\dontrun{
+#'readLastPortfolio("DU5555")
+#'}
+#'@export
+readLastPortfolio <- function(account_type) {
+  # ### retrieve last recorded (date, time) - Other possible implementation
+  # last_portf = portf[unlist(portf %>% group_rows() %>% last),]
+  message("readLastPortfolio")
+  mydb <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+
+  ### Perform the required query as needed
+  #### Live/Simu come from IBKR reporting files
+  #### Change them into account numbers
+
+  last_portf <- switch(account_type,
+                       "Live" = DBI::dbGetQuery(mydb,
+                        "WITH Last_record AS(SELECT max(date) as date, heure FROM (SELECT date, MAX(heure) as heure FROM U1804173 GROUP BY date))
+					SELECT * FROM U1804173 WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"),
+                       "Simu" = DBI::dbGetQuery(mydb,
+                        "WITH Last_record AS(SELECT max(date) as date, heure FROM (SELECT date, MAX(heure) as heure FROM DU5221795 GROUP BY date))
+					SELECT * FROM DU5221795 WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"))
+
+  DBI::dbDisconnect(mydb)
+
+  ### Convert from European date format to internal R date format
+  ### NB date is stored as integer in DB so conversion to character is really necessary - not to be fancy
+  last_portf$date <- as.Date(as.character(last_portf$date),"%Y%m%d")
+  last_portf$heure <- hms::parse_hms(last_portf$heure)
+  return(last_portf)
+}
+
 
 ###############  TWR function
 ##############################
@@ -130,6 +171,7 @@ readPortfolio = function(portfname) {
 #'@returns a numerical vector of TWR values
 #'@export
 twr <- function(dates, e_nlv, cashflows) {
+  message("twr")
   ### dates are dates when data are provided - there should be only one data point per dates
   if (!all(!duplicated(dates))) {
     Tbasics::display_error_message("twr:All dates must be different!")

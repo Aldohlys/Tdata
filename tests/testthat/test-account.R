@@ -1,23 +1,49 @@
-test_that("readPortfolio U1804173 returns some data and columns are all authorized names", {
+test_that("readPortfolio DU5221795 returns some data and columns are all authorized names", {
   expect_true({
-    portf=readPortfolio("U1804173")
-       all(colnames(portf) %in% c("TradeNr", "date", "new_date", "rdate", "heure", "secType", "symbol", "expiration", "expdate", "strike",
-                                  "pos", "mktPrice", "optPrice", "mktValue", "avgCost", "unPnL", "IV", "pvDividend", "delta", "gamma",
-                                  "vega", "theta", "uPrice", "multiplier", "currency", "type", "Instrument")) &&
-      nrow(portf) >=1
+    portf=readPortfolio("DU5221795")
+    expect_true(identical(colnames(portf),
+                          c("TradeNr","date", "heure", "secType","symbol",   "expdate", "strike", "right", "pos", "mktPrice", "optPrice",
+                               "mktValue", "avgCost", "unPnL", "IV", "pvDividend", "delta", "gamma", "vega", "theta",
+                               "uPrice", "multiplier", "currency", "type", "Instrument")))
+    expect_true(nrow(portf) >=1)
   })
 })
 
-test_that("readPortfolio Gonet returns some data and columns are all authorized names", {
-  skip("Skip Gonet")
+test_that("readPortfolio U1804173 returns some data and columns are all authorized names", {
   expect_true({
-    portf=readPortfolio("Gonet")
-    all(colnames(portf) %in% c("TradeNr","date", "heure", "symbol", "type", "expiration", "strike", "pos", "mktPrice", "optPrice",
-                               "mktValue", "avgCost", "uPnL", "IV", "pvDividend", "delta", "gamma", "vega", "theta",
-                               "uPrice", "multiplier", "currency")) &&
-      nrow(portf) >=1
+    portf=readPortfolio("U1804173")
+    expect_true(identical(colnames(portf),
+                          c("TradeNr","date", "heure", "secType","symbol",   "expdate", "strike", "pos", "mktPrice", "optPrice",
+                                "mktValue", "avgCost", "unPnL", "IV", "pvDividend", "delta", "gamma", "vega", "theta",
+                                "uPrice", "multiplier", "currency", "type", "Instrument")))
+    expect_true(nrow(portf) >=1)
   })
 })
+
+
+
+test_that("readLastPortfolio Simu returns some data and columns are all authorized names", {
+  expect_true({
+    portf=readLastPortfolio("Simu")
+    expect_true(identical(colnames(portf),
+                          c("TradeNr","date", "heure", "secType","symbol", "expdate", "strike", "right", "pos", "mktPrice", "optPrice",
+                            "mktValue", "avgCost", "unPnL", "IV", "pvDividend", "delta", "gamma", "vega", "theta",
+                            "uPrice", "multiplier", "currency", "type", "Instrument")))
+    expect_true(nrow(portf) >=1)
+  })
+})
+
+test_that("readLastPortfolio Live returns some data and columns are all authorized names", {
+  expect_true({
+    portf=readLastPortfolio("Live")
+    expect_true(identical(colnames(portf),
+                          c("TradeNr","date", "heure", "secType","symbol", "expdate", "strike", "pos", "mktPrice", "optPrice",
+                            "mktValue", "avgCost", "unPnL", "IV", "pvDividend", "delta", "gamma", "vega", "theta",
+                            "uPrice", "multiplier", "currency", "type", "Instrument")))
+    expect_true(nrow(portf) >=1)
+  })
+})
+
 
 test_that("readAccount Simu  returns some data and columns look good", {
   expect_true({
