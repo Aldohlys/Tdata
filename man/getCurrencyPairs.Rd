@@ -10,15 +10,7 @@ getCurrencyPairs()
 This function provides a pair EUR/USD, CHF/USD.
 }
 \details{
-It first retrieves the CurrencyPairs CSV file
-and looks for the last record.
-
-If last record date is today then returns it.
-
-Otherwise tries to connect to IBKR TWS API and retrieve pairs value.
-
-If it does not succeed, it will then ask the end-user using enter_numerical_data  function
-Once new data is obtained, then write it to CurrencyPairs file
+It looks into CurrencyPairs table and requests
+the last record. It does not try to retrieve more up to date value from IBKR or other sources.
+See \code{getIBKR()} to get more up to date data from IBKR
 }
-\keyword{currency}
-\keyword{trading}

@@ -315,6 +315,26 @@ getIBKR <- function() {
   #   sub("(\\d{2}).(\\d{2}).(\\d{4})","\\3\\2\\1",x)
   # }
 
+  #### Start retrieving currency pairs
+  Tbasics::display_message("Retrieving EUR/USD !")
+  EUR = try(reticulate::py$getCurrencyPairValue("EURUSD",reqType=2))
+  if (is.null(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
+  else if (is.na(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
+
+  Tbasics::display_message("Retrieving CHF/USD !")
+  CHF = try(reticulate::py$getCurrencyPairValue("CHFUSD",reqType=2))
+  if (is.null(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
+  else if (is.na(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
+
+  Sys.sleep(1)
+
+  usd = data.frame(date = Sys.Date(), EUR = round(EUR,4), CHF = round(CHF,4))
+
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  DBI::dbAppendTable(conn, "CurrencyPairs", usd)
+  DBI::dbDisconnect(conn)
+
+
   l = reticulate::py$getIBKRData()
 
   ### Open connection with DB

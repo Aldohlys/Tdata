@@ -21,56 +21,23 @@ getAllCurrencyPairs = function() {
 #'
 #' This function provides a pair EUR/USD, CHF/USD.
 #'
-#' It first retrieves the CurrencyPairs CSV file
-#' and looks for the last record.
-#'
-#' If last record date is today then returns it.
-#'
-#' Otherwise tries to connect to IBKR TWS API and retrieve pairs value.
-#'
-#' If it does not succeed, it will then ask the end-user using enter_numerical_data  function
-#' Once new data is obtained, then write it to CurrencyPairs file
-#'@keywords currency trading
+#' It looks into CurrencyPairs table and requests
+#' the last record. It does not try to retrieve more up to date value from IBKR or other sources.
+#' See \code{getIBKR()} to get more up to date data from IBKR
 #'@export
 getCurrencyPairs = function() {
   message("getCurrencyPairs")
   ### euro_usd and chf_usd data frames - values for the day- are already retrieved
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-  usd <- DBI::dbReadTable(conn, "CurrencyPairs")
 
-  ### Convert string to date
-  last_usd=dplyr::last(usd)
-  last_date=as.Date(last_usd$date)
-
-  if (last_date == Sys.Date())  {
-    #print(usd)
-    return(last_usd)
-  }
-
-  ### No EUR or CHF values for today => to be retrieved from IBKR
-  Tbasics::display_message("Retrieving EUR/USD !")
-  EUR = reticulate::py$getCurrencyPairValue("EURUSD",reqType=2)
-  if (is.null(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
-  else if (is.na(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
-
-  Tbasics::display_message("Retrieving CHF/USD !")
-  CHF = reticulate::py$getCurrencyPairValue("CHFUSD",reqType=2)
-  if (is.null(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
-  else if (is.na(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
-
-  Sys.sleep(1)
-
-  usd = data.frame(date=Sys.Date(),EUR=EUR,CHF=CHF)
-  #print(usd)
-
-  DBI::dbAppendTable(conn, "CurrencyPairs", usd)
-  ### write.table seems to be the only one working simply -
-  ### to be revisited as utils package is not the most current and efficient
-  ### utils::write.table(usd,config::get("CurrencyPairs"),sep=";",dec=".",row.names=F,append=T,col.names=F)
+  ### Get last record from CurrencyPairs table
+  usd <- DBI::dbGetQuery(conn, "SELECT *
+                                      FROM CurrencyPairs
+                                      WHERE ROWID = (SELECT MAX(ROWID)  FROM CurrencyPairs);")
   DBI::dbDisconnect(conn)
-
   return(usd)
 }
+
 
 
 #'  currency_format

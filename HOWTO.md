@@ -1,8 +1,15 @@
 Once a change is done:
+
 1- document and commit change with GitKraken
+
 2- execute use_version() - this will commit a new change
+
 3- execute clean and install
+
 4- build source package (recommandation)
+
 5- go to Tuser and renv::install(build_location) - this will be under
+
 C:\Users\aldoh\Documents\RApplication
 
+Run regularly check()

@@ -1,6 +1,6 @@
 Package: Tdata
 Title: Provide basic utilities for trading IBKR account
-Version: 0.5.0
+Version: 1.0.0
 Authors@R: 
     person("Alexis", "Martin", , "aldohlys@gmail.com", role = c("aut","cre"),
            comment = c(ORCID = ""))
@@ -11,7 +11,6 @@ Imports:
     scales,
     reticulate,
     dplyr,
-    shiny,
     purrr,
     utils,
     RQuantLib,
@@ -22,6 +21,7 @@ Imports:
     DBI,
     RSQLite,
     Tbasics,
+    lubridate,
     zoo
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.1
