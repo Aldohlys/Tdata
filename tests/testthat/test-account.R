@@ -24,7 +24,7 @@ test_that("readPortfolio U1804173 returns some data and columns are all authoriz
 
 test_that("readLastPortfolio Simu returns some data and columns are all authorized names", {
   expect_true({
-    portf=readLastPortfolio("Simu")
+    portf=readLastPortfolio("DU5221795")
     expect_true(identical(colnames(portf),
                           c("TradeNr","date", "heure", "secType","symbol", "expdate", "strike", "right", "pos", "mktPrice", "optPrice",
                             "mktValue", "avgCost", "unPnL", "IV", "pvDividend", "delta", "gamma", "vega", "theta",
@@ -35,7 +35,7 @@ test_that("readLastPortfolio Simu returns some data and columns are all authoriz
 
 test_that("readLastPortfolio Live returns some data and columns are all authorized names", {
   expect_true({
-    portf=readLastPortfolio("Live")
+    portf=readLastPortfolio("U1804173")
     expect_true(identical(colnames(portf),
                           c("TradeNr","date", "heure", "secType","symbol", "expdate", "strike", "pos", "mktPrice", "optPrice",
                             "mktValue", "avgCost", "unPnL", "IV", "pvDividend", "delta", "gamma", "vega", "theta",

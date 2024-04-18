@@ -57,9 +57,12 @@ readAccount = function(accountnr) {
 #'@param portfname is a string that is a name of a portfolio table into local DB.
 #'local DB path is retrieved through config.yaml file
 #'@returns a data frame with the following columns:
-#' \code{TradeNr; date; heure; secType; symbol; expdate; strike; pos}
+#' \code{TradeNr; date; heure; secType; symbol; expdate; strike; right(*); pos}
 #' \code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend}
 #' \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument}
+#'
+#'
+#' \code{right} comes only for simulated account
 #'@examples
 #'\dontrun{
 #'readPortfolio("DU5555")
@@ -116,17 +119,20 @@ readPortfolio = function(portfname) {
 #' 1. formats it with right internal R Date format and heure HMS format
 #'
 #'
-#'@param account_type is a string whose value is \code{Live} or \code{Simu}
+#'@param portfname is a string whose value is actual portfolio table name in DB
 #'@returns a data frame with the following columns:
-#' \code{TradeNr; date; heure; secType; symbol; expdate; strike; pos}
+#' \code{TradeNr; date; heure; secType; symbol; expdate; strike; right(*); pos}
 #' \code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend}
 #' \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument}
+#'
+#'
+#' \code{right} comes only for simulated account
 #'@examples
 #'\dontrun{
 #'readLastPortfolio("DU5555")
 #'}
 #'@export
-readLastPortfolio <- function(account_type) {
+readLastPortfolio <- function(portfname) {
   # ### retrieve last recorded (date, time) - Other possible implementation
   # last_portf = portf[unlist(portf %>% group_rows() %>% last),]
   message("readLastPortfolio")
@@ -136,11 +142,11 @@ readLastPortfolio <- function(account_type) {
   #### Live/Simu come from IBKR reporting files
   #### Change them into account numbers
 
-  last_portf <- switch(account_type,
-                       "Live" = DBI::dbGetQuery(mydb,
+  last_portf <- switch(portfname,
+                       "U1804173" = DBI::dbGetQuery(mydb,
                         "WITH Last_record AS(SELECT max(date) as date, heure FROM (SELECT date, MAX(heure) as heure FROM U1804173 GROUP BY date))
 					SELECT * FROM U1804173 WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"),
-                       "Simu" = DBI::dbGetQuery(mydb,
+                       "DU5221795" = DBI::dbGetQuery(mydb,
                         "WITH Last_record AS(SELECT max(date) as date, heure FROM (SELECT date, MAX(heure) as heure FROM DU5221795 GROUP BY date))
 					SELECT * FROM DU5221795 WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"))
 

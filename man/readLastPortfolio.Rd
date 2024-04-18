@@ -4,16 +4,18 @@
 \alias{readLastPortfolio}
 \title{readLastPortfolio}
 \usage{
-readLastPortfolio(account_type)
+readLastPortfolio(portfname)
 }
 \arguments{
-\item{account_type}{is a string whose value is \code{Live} or \code{Simu}}
+\item{portfname}{is a string whose value is actual portfolio table name in DB}
 }
 \value{
 a data frame with the following columns:
-\code{TradeNr; date; heure; secType; symbol; expdate; strike; pos}
+\code{TradeNr; date; heure; secType; symbol; expdate; strike; right(*); pos}
 \code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend}
 \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument}
+
+\code{right} comes only for simulated account
 }
 \description{
 This function reads the last record of a portfolio table given as entry,
