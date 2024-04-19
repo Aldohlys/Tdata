@@ -316,35 +316,52 @@ getIBKR <- function() {
   # }
 
   #### Start retrieving currency pairs
-  Tbasics::display_message("Retrieving EUR/USD !")
-  EUR = try(reticulate::py$getCurrencyPairValue("EURUSD",reqType=2))
-  if (is.null(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
-  else if (is.na(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
-
-  Tbasics::display_message("Retrieving CHF/USD !")
-  CHF = try(reticulate::py$getCurrencyPairValue("CHFUSD",reqType=2))
-  if (is.null(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
-  else if (is.na(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
-
-  Sys.sleep(1)
-
-  usd = data.frame(date = Sys.Date(), EUR = round(EUR,4), CHF = round(CHF,4))
-
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-  DBI::dbAppendTable(conn, "CurrencyPairs", usd)
-  DBI::dbDisconnect(conn)
-
+  # Tbasics::display_message("Retrieving EUR/USD !")
+  # EUR = try(reticulate::py$getCurrencyPairValue("EURUSD",reqType=2))
+  # if (is.null(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
+  # else if (is.na(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
+  #
+  # Tbasics::display_message("Retrieving CHF/USD !")
+  # CHF = try(reticulate::py$getCurrencyPairValue("CHFUSD",reqType=2))
+  # if (is.null(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
+  # else if (is.na(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
+  #
+  # Sys.sleep(1)
+  Tbasics::display_message("Call IBKR to retrieve data!!")
 
   l = reticulate::py$getIBKRData()
 
-  ### Open connection with DB
+  if (typeof(l) != "list") {
+    display_error_message("No IB connection possible!")
+    return()
+  }
+
+  ### Open connection to user DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+
+  currency_pairs_data <- l[[4]]
+  usd = data.frame(date = Sys.Date(),
+                   EUR = round(currency_pairs_data[1],4),
+                   CHF = round(currency_pairs_data[1],4))
+
+  ### Retrieve last record date
+  last_date <- getCurrencyPairs()$date
+
+  ### In case last record date is prior to today then look at the record
+  ### Otherwise no reason to save it
+  if (last_date != Sys.Date()) {
+    ### Verify that returned data from IBKR is correct
+    if (!is.nan(usd$EUR) & !is.nan(usd$CHF)) {
+      DBI::dbAppendTable(conn, "CurrencyPairs", usd)
+    }
+  }
+
 
   #### Process new account data
   account_data = l[[1]]
-  account_type = switch(account_data$account,"U1804173"="Live","DU5221795"="Simu")
-
   DBI::dbAppendTable(conn,"Account",account_data)
+
+  account_type = switch(account_data$account,"U1804173"="Live","DU5221795"="Simu")
 
   #### Process new prices for underlyings part of the portfolio
   uprices_data = l[[2]]

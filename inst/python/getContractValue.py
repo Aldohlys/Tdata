@@ -1,43 +1,3 @@
-from ib_insync import *
-import math
-import json
-import sys
-import datetime
-import simplejson
-import pandas as pd
-import collections
-import locale
-
-def is_port_in_use(port):
-    import socket
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(('localhost', port)) == 0
-
-def getPort():
-  import random
-  port_id=random.randint(1,9990)
-  if (is_port_in_use(port_id)):
-    port_id=port_id+1
-    print("Port id:",port_id)
-  return port_id
-
-
-def determine_sec(sym):
-  if (any(sym==x for x in ["ESTX50","XSP","SPX"])): return "IND"
-  else: return "STK"
-  
-def determine_exch(sym):
-  if (any(sym==x for x in ["XSP","SPX"])): return "CBOE"
-  if (sym=="ESTX50"): return "EUREX"
-  if (sym=="DTLA"): return "LSEETF"
-  if (sym=="CSBGU0"): return "EBS"
-  return "SMART"
-
-def determine_sym(sym):
-  if (".SW" in sym): return sym[:-3]
-  if (".PA" in sym): return sym[:-3]
-  if (".L" in sym): return sym[:-2]
-  return sym
 
 #' Live	1	Live market data is streaming data relayed back in real time. 
 #' Market data subscriptions are required to receive live market data.
@@ -67,6 +27,45 @@ def determine_sym(sym):
 #'  Delayed Frozen	4	Requests delayed "frozen" data for a user without market data subscriptions.
 # 
 
+from ib_insync import *
+import math
+import json
+import sys
+import datetime
+import simplejson
+import pandas as pd
+import collections
+import locale
+
+def is_port_in_use(port):
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('localhost', port)) == 0
+
+def getPort():
+  import random
+  port_id=random.randint(1,9990)
+  if (is_port_in_use(port_id)):
+    port_id=port_id+1
+    print("Port id:",port_id)
+  return port_id
+
+def determine_sec(sym):
+  if (any(sym==x for x in ["ESTX50","XSP","SPX"])): return "IND"
+  else: return "STK"
+  
+def determine_exch(sym):
+  if (any(sym==x for x in ["XSP","SPX"])): return "CBOE"
+  if (sym=="ESTX50"): return "EUREX"
+  if (sym=="DTLA"): return "LSEETF"
+  if (sym=="CSBGU0"): return "EBS"
+  return "SMART"
+
+def determine_sym(sym):
+  if (".SW" in sym): return sym[:-3]
+  if (".PA" in sym): return sym[:-3]
+  if (".L" in sym): return sym[:-2]
+  return sym
 
 def getStockValue(sec,sym,currency,exchange,reqType,close):
   ### This function returns either:
@@ -166,7 +165,6 @@ def getCurrencyPairValue(currency_pair,reqType):
   ib.disconnect()
   return(value)
   
-
 def getOptValue(sym,expiration,strike,right,currency,exchange,tradingClass):
   #print("\ngetOptValue")
   ib = IB()
@@ -252,13 +250,12 @@ def retrieve_prices(position_list,reqType):
     du.insert(0,"datetime",datetime.datetime.now().strftime('%d %b %Y %Hh%M'))
     du.to_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv",header=False, index=False, mode='a', sep=';')
 
-
 ##dh=itertools.islice(dh,len(dh)-1,len(dh))
 def retrieve_gonet_prices():
   dh = pd.read_csv('C:\\Users\\aldoh\\Documents\\NewTrading\\Gonet.csv',sep=";")
   dh["date"]=[datetime.datetime.strptime(d, '%d.%m.%Y').date() for d in dh.date]
   dh = dh.groupby(["date","heure"])
-  dh=next(iter(collections.deque(dh,maxlen=1)))[1]
+  dh = next(iter(collections.deque(dh,maxlen=1)))[1]
   
   #### DTLA can only be retrieved using reqType = 2 frozen data
   retrieve_prices(dh[dh.symbol == "DTLA.L"],2)
@@ -283,7 +280,6 @@ def find_nearest_number(numbers, target):
             nearest = number
     
     return nearest
-
 
 def getChains(sym,secType,currency,exchangeSec):
   with open("C:/Users/aldoh/Documents/NewTrading/Chains.json", "r") as fp:
@@ -340,32 +336,6 @@ def getChain(sym,secType,currency,exchangeSec,exchangeOpt,tradingClass):
   ### IN all other cases return NaN
   return(float('NaN'))
   
-# def getExpDates(sym,secType,currency,exchange,tradingClass):
-#   ib = IB()
-#   try:
-#     ib.connect('127.0.0.1', 7496, clientId=getPort())    # use this one for TWS (Traders Workstation) acct mgt
-#   except ConnectionError:
-#     return None
-#   
-#   underlying= Contract(symbol=sym,secType=secType,
-#                       exchange=exchange,currency=currency,tradingClass=tradingClass) # Simple contract may be an index or stock
-#   if(ib.qualifyContracts(underlying)):
-#     chains = ib.reqSecDefOptParams(sym, '', underlying.secType, underlying.conId)
-#     ib.sleep(1)
-#     print("Chains: ",chains)
-#     chain = next(c for c in chains if c.exchange == exchange)
-#     ### chain = next(c for c in chains)
-#     print("ExpDates:",chain.expirations)
-#     ch_expirations=chain.expirations
-#   else: ch_expirations=float('nan')
-#   
-#   ib.disconnect()
-#   return(ch_expirations)
-# 
-# 
-#py$getStrikesfromExpDate(sym="HD",secType="STK",currency="USD", exchange="SMART",expdate='20231006',strikes=strikes_list)
-
-
 def getStrikesfromExpDate(sym,currency,exchange,tradingClass,expdate,strikes):
   with open("C:/Users/aldoh/Documents/NewTrading/Strikes.json", "r") as fp:
     stored_chains=json.load(fp)
@@ -401,6 +371,229 @@ def getStrikesfromExpDate(sym,currency,exchange,tradingClass,expdate,strikes):
 
   return(updated_strikes)
 
+def retrieveCurrencyPairs(ib):
+  contracts = [Forex("EURUSD"), Forex("CHFUSD")] # Simple contract
+  if(ib.qualifyContracts(*contracts)):
+    ib.reqMarketDataType(2) ### Request type - Should be 2 or 4
+    tickers = ib.reqTickers(*contracts)
+    ib.sleep(1)
+    l=[ticker.marketPrice() for ticker in tickers]
+    print("\nEUR/USD, CHF/USD: ",l)
+  else: 
+    l= float('nan')
+  return l
+
+def retrieveAccountData(ib):
+  df=util.df(ib.accountSummary())
+  dt=datetime.date.today()
+  
+  #### This script looks only into BASE currency stats - it does not look for currency specifics
+  NetLiquidation=df[df['tag'] == 'NetLiquidation'].iloc[0,2]
+  EquityWithLoanValue=df[df['tag'] == 'EquityWithLoanValue'].iloc[0,2]
+  FullAvailableFunds=df[df['tag'] == 'FullAvailableFunds'].iloc[0,2]
+  FullInitMarginReq=df[df['tag'] == 'FullInitMarginReq'].iloc[0,2]
+  FullMaintMarginReq=df[df['tag'] == 'FullMaintMarginReq'].iloc[0,2]
+  FullExcessLiquidity=df[df['tag'] == 'FullExcessLiquidity'].iloc[0,2]
+  StockMarketValue=df[(df['tag'] == 'StockMarketValue') & (df['currency'] == 'BASE')].iloc[0,2]
+  OptionMarketValue=df[(df['tag'] == 'OptionMarketValue') & (df['currency'] == 'BASE')].iloc[0,2]
+  UnrealizedPnL=df[(df['tag'] == 'UnrealizedPnL') & (df['currency'] == 'BASE')].iloc[0,2]
+  RealizedPnL=df[(df['tag'] == 'RealizedPnL') & (df['currency'] == 'BASE')].iloc[0,2]
+  TotalCashBalance=df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'BASE')].iloc[0,2]
+  # TotalCashBalanceCHF=df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'CHF')].iloc[0,2]
+  # TotalCashBalanceEUR=df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'EUR')].iloc[0,2]
+  
+  #### Looks only on the first account
+  account=ib.managedAccounts()[0]
+  
+
+  #### Takes integer type of date
+  dd=int((datetime.datetime.now()).strftime('%Y%m%d'))
+  dh=(datetime.datetime.now()).strftime("%H:%M:%S")
+  
+  df=pd.DataFrame({'account':account,
+                'date':[dd],
+             'heure':[dh],
+             'NetLiquidation':[NetLiquidation],
+              'EquityWithLoanValue':[EquityWithLoanValue],
+              'FullAvailableFunds':[FullAvailableFunds],
+              'FullInitMarginReq':[FullInitMarginReq],
+              'FullMaintMarginReq':[FullMaintMarginReq],
+              'FullExcessLiquidity':[FullExcessLiquidity],
+              'OptionMarketValue':[OptionMarketValue],
+              'StockMarketValue':[StockMarketValue],
+              'UnrealizedPnL':[UnrealizedPnL],
+              'RealizedPnL':[RealizedPnL],
+              'TotalCashBalance':[TotalCashBalance],
+              'CashFlow':0
+              # 'TotalCashBalanceCHF':[TotalCashBalanceCHF],
+              # 'TotalCashBalanceEUR':[TotalCashBalanceEUR]
+              })
+  return df
+
+def retrievePricesData(ib, du):
+  
+  ### Then build contract taking into account special cases (index type, SMART vs. EUREX exchange)
+  dg=[Contract(secType=determine_sec(sym),symbol=sym,currency=currency,exchange=determine_exch(sym)) for sym,currency in zip(du["symbol"],du["currency"])]
+  
+  ### They should all be qualified - no need to test
+  ib.qualifyContracts(*dg)
+  
+  ### Retrieve 15 minutes delayed market values in a single go
+  ib.reqMarketDataType(2) ### Request type - Should be 2 or 4
+  tickers = ib.reqTickers(*dg)
+  
+  ### Build dataframe from prices just retrieved
+  l=[[ticker.contract.symbol,ticker.marketPrice()] for ticker in tickers]
+  
+  dh=pd.DataFrame(l,columns=["sym","price"])
+  #### Remove all lines without prices
+  #### Store new prices only if there is something to store
+  dh=dh.dropna(subset="price")
+  if not dh.empty:
+    dh.insert(0,"datetime",datetime.datetime.now().strftime('%d %b %Y %Hh%M'))
+
+  return(dh)  
+
+def retrievePortfolioData(ib, df):
+
+  options=[]
+  for i,row in df.iterrows():            # Use iterrows to print output
+     if (row['secType']=="OPT"): options.append(row['contract'])
+  
+  # IB Market data type 4 works for EUREX and also for US options but in US opening hours
+  # IB Market data type 2 works for only US options (in or out US opening hours)
+  # 1 = Live
+  # 2 = Frozen
+  # 3 = Delayed
+  # 4 = Delayed frozen
+  ib.reqMarketDataType(2)
+  
+  options=ib.qualifyContracts(*options)
+  tickers = ib.reqTickers(*options)
+  
+  ### All data has been retrieved from IBKR
+  #### Look at first option contract
+  
+  ### optionComputation elements (9)
+  #tickAttrib  impliedVol     delta  optPrice  pvDividend     gamma      vega     theta  undPrice
+  option_c=pd.DataFrame(columns=["tickAttrib", "impliedVol", "delta", "optPrice", "pvDividend", "gamma", "vega", "theta", "undPrice"])
+  opt=0
+  for i,row in df.iterrows():
+     #### Iterate over each contract
+      if (row['secType']=="OPT"):
+          optionComputation=tickers[opt].modelGreeks
+          opt=opt+1
+      else:  optionComputation=[0,0,0,0,0,0,0,0,0]
+      ### Construction de option computation à revoir
+      option_c.loc[len(option_c.index)]=optionComputation
+  df=df.join(option_c)
+  
+  ### Extract meaningful columns
+  cols = ["date","heure","secType", "symbol", "lastTradeDateOrContractMonth",  "strike", "right" ,"position", 
+  "marketPrice", "optPrice", "marketValue",  "averageCost", "unrealizedPNL", "impliedVol", "pvDividend",
+  "delta",   "gamma", "vega", "theta", "undPrice","multiplier","currency"]
+  df = df[[c for c in df.columns if c in cols]]
+
+  dd=int((datetime.datetime.now()).strftime('%Y%m%d'))
+  dh=(datetime.datetime.now()).strftime("%H:%M:%S")
+  
+  df=df.assign(date=dd,heure=dh)
+  
+  ### Re-order df columns according to col order
+  df = df[cols]
+  ### Rename some columns that are really ugly
+  df = df.rename(columns={'lastTradeDateOrContractMonth':'expdate', 
+                            'undPrice':'uPrice', 'impliedVol':'IV','position':'pos', 'marketPrice':'mktPrice',
+                            'marketValue':'mktValue',
+                            'averageCost':'avgCost', 'unrealizedPNL':'unPnL'})
+  return df
+  
+def getIBKRData():
+  ib = IB()
+  try:
+    ib.connect('127.0.0.1', 7496, clientId=getPort())
+  except ConnectionError:
+    return 0
+  
+  ##### Forex dataretrieval ###############
+  print("#####  Retrieving CurrencyPairs... ")
+  
+  ##### If EUR or CHF are not defined so be it - user will try again anyway #####
+  ##### As everything is done into Python at this stage nothing is requested from user
+  currency_pairs_data = retrieveCurrencyPairs(ib)
+  # if (math.isnan(EUR)):
+  #   EUR = input("Enter EUR/USD pair: ")
+  # if (math.isnan(CHF)):
+  #   CHF = input("Enter EUR/USD pair: ")
+  
+
+  #### Get account related data first #########
+
+  print("\n#####  Retrieving account data... \n")
+  account_data= retrieveAccountData(ib)
+  print(account_data)
+
+  ### Store portfolio in df, then split contract definition (first column) into multiple columns
+  ### Merge resulting split with the other columns
+
+
+  #### For options, get the list of contract definitions
+  #### i index is necessary to iterate over df
+  #### Consider only row that are of secType = OPT
+  ###  Extract only 'contract' column in row 
+  
+  df= util.df(ib.portfolio())
+  c_def=pd.DataFrame()
+  for i in range(len(df)):
+    line=df.iloc[i,0]
+    #### Iterate over each line of portfolio
+    ib.qualifyContracts(line)
+    c_def=pd.concat([c_def,pd.DataFrame([df.iloc[i,0]])],ignore_index=True)
+  df=c_def.join(df)
+  
+  print("\n#####  Retrieving underlying price data... \n")
+  
+  #### Remove underlying symbol duplicates
+  u_prices_data = retrievePricesData(ib, df.drop_duplicates(subset='symbol',keep="first"))
+  print(u_prices_data)
+
+  print("\n#####  Retrieving portfolio data... \n")
+  portf_data= retrievePortfolioData(ib, df)
+  print(portf_data)
+  
+  ### Wait until all data has been received
+  ib.sleep(1)
+  
+  #### IB connection no more needed
+  ib.disconnect()
+  
+  return [account_data, u_prices_data, portf_data, currency_pairs_data] 
+
+
+# def getExpDates(sym,secType,currency,exchange,tradingClass):
+#   ib = IB()
+#   try:
+#     ib.connect('127.0.0.1', 7496, clientId=getPort())    # use this one for TWS (Traders Workstation) acct mgt
+#   except ConnectionError:
+#     return None
+#   
+#   underlying= Contract(symbol=sym,secType=secType,
+#                       exchange=exchange,currency=currency,tradingClass=tradingClass) # Simple contract may be an index or stock
+#   if(ib.qualifyContracts(underlying)):
+#     chains = ib.reqSecDefOptParams(sym, '', underlying.secType, underlying.conId)
+#     ib.sleep(1)
+#     print("Chains: ",chains)
+#     chain = next(c for c in chains if c.exchange == exchange)
+#     ### chain = next(c for c in chains)
+#     print("ExpDates:",chain.expirations)
+#     ch_expirations=chain.expirations
+#   else: ch_expirations=float('nan')
+#   
+#   ib.disconnect()
+#   return(ch_expirations)
+# 
+# 
+#py$getStrikesfromExpDate(sym="HD",secType="STK",currency="USD", exchange="SMART",expdate='20231006',strikes=strikes_list)
 
 # def getimpliedVol(sym,secType,date,price,currency,exchange,reqType):
 #   print("getimpliedVol: ",sym,secType,date,price,currency,exchange,reqType)
@@ -475,197 +668,5 @@ def getStrikesfromExpDate(sym,currency,exchange,tradingClass,expdate,strikes):
 #   
 #   ib.disconnect()
 #   return tradingClass_list
-
-
-def getIBKRData():
-  ib = IB()
-  ib.connect('127.0.0.1', 7496, clientId=getPort())
-  
-  ##############################################################################
-  #### Get account related data first #########
-  df=util.df(ib.accountSummary())
-  dt=datetime.date.today()
-  
-  
-  #### This script looks only into BASE currency stats - it does not look for currency specifics
-  NetLiquidation=df[df['tag'] == 'NetLiquidation'].iloc[0,2]
-  EquityWithLoanValue=df[df['tag'] == 'EquityWithLoanValue'].iloc[0,2]
-  FullAvailableFunds=df[df['tag'] == 'FullAvailableFunds'].iloc[0,2]
-  FullInitMarginReq=df[df['tag'] == 'FullInitMarginReq'].iloc[0,2]
-  FullMaintMarginReq=df[df['tag'] == 'FullMaintMarginReq'].iloc[0,2]
-  FullExcessLiquidity=df[df['tag'] == 'FullExcessLiquidity'].iloc[0,2]
-  StockMarketValue=df[(df['tag'] == 'StockMarketValue') & (df['currency'] == 'BASE')].iloc[0,2]
-  OptionMarketValue=df[(df['tag'] == 'OptionMarketValue') & (df['currency'] == 'BASE')].iloc[0,2]
-  UnrealizedPnL=df[(df['tag'] == 'UnrealizedPnL') & (df['currency'] == 'BASE')].iloc[0,2]
-  RealizedPnL=df[(df['tag'] == 'RealizedPnL') & (df['currency'] == 'BASE')].iloc[0,2]
-  TotalCashBalance=df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'BASE')].iloc[0,2]
-  # TotalCashBalanceCHF=df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'CHF')].iloc[0,2]
-  # TotalCashBalanceEUR=df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'EUR')].iloc[0,2]
-  
-  #### Looks only on the first account
-  account=ib.managedAccounts()[0]
-  
-
-  #### Takes integer type of date
-  dd=int((datetime.datetime.now()).strftime('%Y%m%d'))
-  dh=(datetime.datetime.now()).strftime("%H:%M:%S")
-  
-  df=pd.DataFrame({'account':account,
-                'date':[dd],
-             'heure':[dh],
-             'NetLiquidation':[NetLiquidation],
-              'EquityWithLoanValue':[EquityWithLoanValue],
-              'FullAvailableFunds':[FullAvailableFunds],
-              'FullInitMarginReq':[FullInitMarginReq],
-              'FullMaintMarginReq':[FullMaintMarginReq],
-              'FullExcessLiquidity':[FullExcessLiquidity],
-              'OptionMarketValue':[OptionMarketValue],
-              'StockMarketValue':[StockMarketValue],
-              'UnrealizedPnL':[UnrealizedPnL],
-              'RealizedPnL':[RealizedPnL],
-              'TotalCashBalance':[TotalCashBalance],
-              'CashFlow':0
-              # 'TotalCashBalanceCHF':[TotalCashBalanceCHF],
-              # 'TotalCashBalanceEUR':[TotalCashBalanceEUR]
-              })
-
-  account_data=df
-  print(account_data)
- 
-  ##############################################################################
-  #### ThHen do the portfolio stuff 
-  ### Store portfolio in df, then split contract definition (first column) into multiple columns
-  ### Merge resulting split with the other columns
-  
-  df= util.df(ib.portfolio())
-  c_def=pd.DataFrame()
-  for i in range(len(df)):
-    line=df.iloc[i,0]
-    #### Iterate over each line of portfolio
-    ib.qualifyContracts(line)
-    c_def=pd.concat([c_def,pd.DataFrame([df.iloc[i,0]])],ignore_index=True)
-  df=c_def.join(df)
-  
-  #### Store underlying prices in prices.csv
-  #### First remove underlying symbol duplicates
-  #### 
-  
-  du=df.drop_duplicates(subset='symbol',keep="first")
-  
-  ### Then build contract taking into account special cases (index type, SMART vs. EUREX exchange)
-  dg=[Contract(secType=determine_sec(sym),symbol=sym,currency=currency,exchange=determine_exch(sym)) for sym,currency in zip(du["symbol"],du["currency"])]
-  
-  ### They should all be qualified - no need to test
-  ib.qualifyContracts(*dg)
-  
-  ### Retrieve 15 minutes delayed market values in a single go
-  ib.reqMarketDataType(2) ### Request type - Should be 2 or 4
-  tickers = ib.reqTickers(*dg)
-  
-  ### Build dataframe from prices just retrieved
-  l=[[ticker.contract.symbol,ticker.marketPrice()] for ticker in tickers]
-  uprices_data=pd.DataFrame(l,columns=["sym","price"])
-  
-  #### Remove all lines without prices
-  #### Store new prices only if there is something to store
-  uprices_data=uprices_data.dropna(subset="price")
-  if not uprices_data.empty:
-    uprices_data.insert(0,"datetime",datetime.datetime.now().strftime('%d %b %Y %Hh%M'))
-    
-  print(uprices_data)
-  
-  # #### For options is needed only contract column from df - to be extracted
-  # options=DataFrame()
-  # for i,row in df.iterrows():            # Use iterrows to print output
-  #    if (row['secType']=="OPT"): options=concat([options,DataFrame([row['contract']])],ignore_index=True)
-  # ib.reqMarketDataType(4)
-  # print(options)
-  
-  #### For options, get the list of contract definitions
-  #### i index is necessary to iterate over df
-  #### Consider only row that are of secType = OPT
-  ###  Extract only 'contract' column in row 
-  options=[]
-  for i,row in df.iterrows():            # Use iterrows to print output
-     if (row['secType']=="OPT"): options.append(row['contract'])
-  
-  
-  # IB Market data type 4 works for EUREX and also for US options but in US opening hours
-  # IB Market data type 2 works for only US options (in or out US opening hours)
-  # 1 = Live
-  # 2 = Frozen
-  # 3 = Delayed
-  # 4 = Delayed frozen
-  ib.reqMarketDataType(4)
-  
-  options=ib.qualifyContracts(*options)
-  tickers = ib.reqTickers(*options)
-  
-  ### Wait until all data has been received
-  ib.sleep(1)
-  
-  #### IB connection no more needed
-  ib.disconnect()
- 
-  print("All data retrieved from IBKR")
-  #### Look at first option contract
-  
-  ### optionComputation elements (9)
-  #tickAttrib  impliedVol     delta  optPrice  pvDividend     gamma      vega     theta  undPrice
-  option_c=pd.DataFrame(columns=["tickAttrib", "impliedVol", "delta", "optPrice", "pvDividend", "gamma", "vega", "theta", "undPrice"])
-  opt=0
-  for i,row in df.iterrows():
-     #### Iterate over each contract
-      if (row['secType']=="OPT"):
-          optionComputation=tickers[opt].modelGreeks
-          opt=opt+1
-      else:  optionComputation=[0,0,0,0,0,0,0,0,0]
-      ### Construction de option computation à revoir
-      option_c.loc[len(option_c.index)]=optionComputation
-  df=df.join(option_c)
-  
-  ### Extract meaningful columns
-  cols = ["date","heure","secType", "symbol", "lastTradeDateOrContractMonth",  "strike", "right" ,"position", 
-  "marketPrice", "optPrice", "marketValue",  "averageCost", "unrealizedPNL", "impliedVol", "pvDividend",
-  "delta",   "gamma", "vega", "theta", "undPrice","multiplier","currency"]
-  df = df[[c for c in df.columns if c in cols]]
-
-  dd=int((datetime.datetime.now()).strftime('%Y%m%d'))
-  dh=(datetime.datetime.now()).strftime("%H:%M:%S")
-  
-  df=df.assign(date=dd,heure=dh)
-  
-  ### Re-order df columns according to col order
-  df = df[cols]
-  ### Rename some columns that are really ugly
-  df = df.rename(columns={'lastTradeDateOrContractMonth':'expdate', 
-                            'undPrice':'uPrice', 'impliedVol':'IV','position':'pos', 'marketPrice':'mktPrice',
-                            'marketValue':'mktValue',
-                            'averageCost':'avgCost', 'unrealizedPNL':'unPnL'})
-  portf_data=df
-
-  print(portf_data)
-   
-  ##################################################
-  ######## Save data ########################
-  
-  # ##### 1. Save underlying prices to CSV #########
-  ### uprices_data.to_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv",header=False, index=False, mode='a', sep=';')
-  ### 2. Save account data to CSV ################
-  ### account_data.to_csv("C:\\Users\\aldoh\\Documents\\NewTrading\\Account.csv", mode='a', index=False, header=False, sep=';', encoding='utf-8')
-
-  #### 3. Save portf data to CSV ##############
-  ### only a subset of df is being stored
-  # portf_data.to_csv('C:\\Users\\aldoh\\Documents\\NewTrading\\'+ib.managedAccounts()[0]+'.csv',
-  # header=False, index=False, mode='a', 
-  # sep=';', 
-  # columns=["date","heure","secType", "symbol", "lastTradeDateOrContractMonth",  "strike", "right" ,"position", 
-  # "marketPrice", "optPrice", "marketValue",  "averageCost", "unrealizedPNL", "impliedVol", "pvDividend",
-  # "delta",   "gamma", "vega", "theta", "undPrice","multiplier","currency"],encoding='utf-8')
-  
-  #### Debug info
-  #print(uprices_data)
-
-  return [account_data, uprices_data, portf_data] 
 
 
