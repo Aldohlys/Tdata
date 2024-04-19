@@ -67,7 +67,8 @@ def determine_sym(sym):
   if (".L" in sym): return sym[:-2]
   return sym
 
-def getStockValue(sec,sym,currency,exchange,reqType,close):
+
+def getValue(list_sec, list_sym, list_currency, list_exchange, reqType, close):
   ### This function returns either:
   ### -1 if contract does not exist or
   ### NULL if no connection to IBKR and sym does not exist in prices.csv or
@@ -78,20 +79,21 @@ def getStockValue(sec,sym,currency,exchange,reqType,close):
   ### Case where called from a batch and prices are stored
   locale.setlocale(locale.LC_ALL, '')
   
-  ### Retrieve last prices for 'sym' if any
-  #print("getStockValue")
-  stored_prices=pd.read_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv",sep=';')
-  line=stored_prices.loc[stored_prices['sym'] == sym]
-  
-  ### Return last line of lines if at least one and the line is less than 60 minutes old
-  ### Otherwise do not take it into account
-  if not line.empty: 
-    line =line.iloc[-1]
-    limit_to_reload= datetime.datetime.now()-datetime.timedelta(minutes=60)
-    last_storage=datetime.datetime.strptime(line["datetime"],'%d %b %Y %Hh%M')
-    if (last_storage > limit_to_reload): return(line)
-    line = pd.DataFrame()
-  
+  ### case where list_sym is a list of tickers, verify that other arguments are well defined
+  if (type(list_sym) == list):
+    len_sym = len(list_sym)
+    if (type(list_sec) != list):
+      list_sec = [list_sec]*len_sym
+    if (type(list_currency) != list):
+      list_currency = [list_currency]*len_sym
+    if (type(list_exchange) != list):
+      list_exchange = [list_exchange]*len_sym
+    contracts=[Contract(secType=sec, symbol=sym, currency=currency, exchange=exchange) 
+      for sec, sym, currency, exchange in zip(list_sec, list_sym,list_currency,list_exchange)]
+
+  else:
+    contracts = [Contract(secType=list_sec, symbol=list_sym, currency=list_currency, exchange=list_exchange)]
+
   ## Try to establish connection
   ib = IB()
   try:
@@ -99,72 +101,34 @@ def getStockValue(sec,sym,currency,exchange,reqType,close):
   except ConnectionError:
     print("From IB: Connection error")
     #### If no IB connection possible then return either last value or None
-    if line.empty: return None
-    return line
+    return 0
     
   ##### INDIVIDUAL CONTRACTS
-  contract = Contract(symbol=sym,secType=sec,exchange=exchange,currency=currency) # Simple contract
-  print("Contract:",contract)
-  
-  if(ib.qualifyContracts(contract)):
+
+  if(ib.qualifyContracts(*contracts)):
     ib.reqMarketDataType(int(reqType)) ### Request type - Should be 2 or 4
-    [ticker] = ib.reqTickers(contract)
+    tickers = ib.reqTickers(*contracts)
     #print("\nTicker:",ticker)
-    if (close): value= ticker.close
-    else:  value= ticker.marketPrice()
+    if (close): value= [ticker.close for ticker in tickers]
+    else:  value= [ticker.marketPrice() for ticker in tickers]
     ib.sleep(1)
     ib.disconnect()
-    ### If no value is returned (no market price available)
-    if(math.isnan(value)):
-    #### Either return last stored value if available or return NaN
-      print("from IB: NA")
-      if line.empty: return None
-      return line
-    
-  else:
-    ib.sleep(1)
-    ib.disconnect()
-    #### Contract does not exist
-    print("from IB:",-1)
-    return(pd.DataFrame({"price":[-1]}))
   
-  print("from IB:",value)
+  else:
+    ib.disconnect()
+    return -1
+
   ### Compute new record - data obtained from market
   data= {
-    "datetime": [datetime.datetime.now().strftime("%e %b %Y %Hh%M")],
-    "sym":[sym],
-    "price":[value]
+    "datetime": [datetime.datetime.now().strftime("%e %b %Y %Hh%M")] * len(value),
+    "sym":list_sym,
+    "price":value
   }
   df=pd.DataFrame(data)
   
-  #### New value available - then store it. If same as before, store it anyway because of new timestamp
-  df.to_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv", mode='a', header=False, sep=";", index=False)
   return(df)
 
-def getCurrencyPairValue(currency_pair,reqType):
-  #print("\ngetCurrencyPairValue")
-  ib = IB()
-  try:
-    ib.connect('127.0.0.1', 7496, clientId=getPort())    # use this one for TWS (Traders Workstation) acct mgt
-  except ConnectionError:
-    return float('nan')
 
-  ##### INDIVIDUAL CONTRACTS
-  contract = Forex(currency_pair) # Simple contract
-  print("Contract:",contract)
-  if(ib.qualifyContracts(contract)):
-    ib.reqMarketDataType(int(reqType)) ### Request type - Should be 2 or 4
-    [ticker] = ib.reqTickers(contract)
-    ib.sleep(1)
-    print("\nTicker:",ticker)
-    value= ticker.marketPrice()
-    print("\nValue:",value)
-  else: 
-    value=float('nan')
-  
-  ib.disconnect()
-  return(value)
-  
 def getOptValue(sym,expiration,strike,right,currency,exchange,tradingClass):
   #print("\ngetOptValue")
   ib = IB()
@@ -231,37 +195,37 @@ def getStraddleValue(sym,expiration,strike,currency,exchange,tradingClass):
 
 ############ For Gonet portfolio
 
-def retrieve_prices(position_list,reqType):
-  
-  locale.setlocale(locale.LC_ALL, '')
-  
-  du=position_list.drop_duplicates(subset='symbol',keep="first")
-  dg=[Contract(secType=determine_sec(determine_sym(sym)),symbol=determine_sym(sym),currency=currency,exchange=determine_exch(determine_sym(sym))) for sym,currency in zip(du["symbol"],du["currency"])]
-  ib.qualifyContracts(*dg)
-  
-  ib.reqMarketDataType(reqType) ### Request type - Should be 2 or 4
-  tickers = ib.reqTickers(*dg)
-  l=[[ticker.contract.symbol,ticker.marketPrice()] for ticker in tickers]
-  
-  du=DataFrame(l,columns=["sym","price"])
-  du=du.dropna(subset="price")
-  
-  if not du.empty:
-    du.insert(0,"datetime",datetime.datetime.now().strftime('%d %b %Y %Hh%M'))
-    du.to_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv",header=False, index=False, mode='a', sep=';')
+# def retrieve_prices(position_list,reqType):
+#   
+#   locale.setlocale(locale.LC_ALL, '')
+#   
+#   du=position_list.drop_duplicates(subset='symbol',keep="first")
+#   dg=[Contract(secType=determine_sec(determine_sym(sym)),symbol=determine_sym(sym),currency=currency,exchange=determine_exch(determine_sym(sym))) for sym,currency in zip(du["symbol"],du["currency"])]
+#   ib.qualifyContracts(*dg)
+#   
+#   ib.reqMarketDataType(reqType) ### Request type - Should be 2 or 4
+#   tickers = ib.reqTickers(*dg)
+#   l=[[ticker.contract.symbol,ticker.marketPrice()] for ticker in tickers]
+#   
+#   du=DataFrame(l,columns=["sym","price"])
+#   du=du.dropna(subset="price")
+#   
+#   if not du.empty:
+#     du.insert(0,"datetime",datetime.datetime.now().strftime('%d %b %Y %Hh%M'))
+#     du.to_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv",header=False, index=False, mode='a', sep=';')
 
 ##dh=itertools.islice(dh,len(dh)-1,len(dh))
-def retrieve_gonet_prices():
-  dh = pd.read_csv('C:\\Users\\aldoh\\Documents\\NewTrading\\Gonet.csv',sep=";")
-  dh["date"]=[datetime.datetime.strptime(d, '%d.%m.%Y').date() for d in dh.date]
-  dh = dh.groupby(["date","heure"])
-  dh = next(iter(collections.deque(dh,maxlen=1)))[1]
-  
-  #### DTLA can only be retrieved using reqType = 2 frozen data
-  retrieve_prices(dh[dh.symbol == "DTLA.L"],2)
-  #### CSBGU0 can only be retrieved using reqType = 4 delayed frozen data
-  #### Other stocks don't care
-  retrieve_prices(dh[dh.symbol!= "DTLA.L"], 4)
+# def retrieve_gonet_prices():
+#   dh = pd.read_csv('C:\\Users\\aldoh\\Documents\\NewTrading\\GonetTrades.csv',sep=";")
+#   dh["date"]=[datetime.datetime.strptime(d, '%d.%m.%Y').date() for d in dh.date]
+#   dh = dh.groupby(["date","heure"])
+#   dh = next(iter(collections.deque(dh,maxlen=1)))[1]
+#   
+#   #### DTLA can only be retrieved using reqType = 2 frozen data
+#   retrieve_prices(dh[dh.symbol == "DTLA.L"],2)
+#   #### CSBGU0 can only be retrieved using reqType = 4 delayed frozen data
+#   #### Other stocks don't care
+#   retrieve_prices(dh[dh.symbol!= "DTLA.L"], 4)
   
   
 ###################################  General functions about options chains ###############
@@ -669,4 +633,101 @@ def getIBKRData():
 #   ib.disconnect()
 #   return tradingClass_list
 
+# 
+# def getStockValue(sec,sym,currency,exchange,reqType,close):
+#   ### This function returns either:
+#   ### -1 if contract does not exist or
+#   ### NULL if no connection to IBKR and sym does not exist in prices.csv or
+#   ### NA if price not available from market and sym does not exist in prices.csv or 
+#   ### a dataframe with date and time, symbol and price + 
+#   ###    store record into prices.cv file if new record
+#   
+#   ### Case where called from a batch and prices are stored
+#   locale.setlocale(locale.LC_ALL, '')
+#   
+#   ### Retrieve last prices for 'sym' if any
+#   #print("getStockValue")
+#   stored_prices=pd.read_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv",sep=';')
+#   line=stored_prices.loc[stored_prices['sym'] == sym]
+#   
+#   ### Return last line of lines if at least one and the line is less than 60 minutes old
+#   ### Otherwise do not take it into account
+#   if not line.empty: 
+#     line =line.iloc[-1]
+#     limit_to_reload= datetime.datetime.now()-datetime.timedelta(minutes=60)
+#     last_storage=datetime.datetime.strptime(line["datetime"],'%d %b %Y %Hh%M')
+#     if (last_storage > limit_to_reload): return(line)
+#     line = pd.DataFrame()
+#   
+#   ## Try to establish connection
+#   ib = IB()
+#   try:
+#     ib.connect('127.0.0.1', 7496, clientId=getPort())    # use this one for TWS (Traders Workstation) acct mgt
+#   except ConnectionError:
+#     print("From IB: Connection error")
+#     #### If no IB connection possible then return either last value or None
+#     if line.empty: return None
+#     return line
+#     
+#   ##### INDIVIDUAL CONTRACTS
+#   contract = Contract(symbol=sym,secType=sec,exchange=exchange,currency=currency) # Simple contract
+#   print("Contract:",contract)
+#   
+#   if(ib.qualifyContracts(contract)):
+#     ib.reqMarketDataType(int(reqType)) ### Request type - Should be 2 or 4
+#     [ticker] = ib.reqTickers(contract)
+#     #print("\nTicker:",ticker)
+#     if (close): value= ticker.close
+#     else:  value= ticker.marketPrice()
+#     ib.sleep(1)
+#     ib.disconnect()
+#     ### If no value is returned (no market price available)
+#     if(math.isnan(value)):
+#     #### Either return last stored value if available or return NaN
+#       print("from IB: NA")
+#       if line.empty: return None
+#       return line
+#     
+#   else:
+#     ib.sleep(1)
+#     ib.disconnect()
+#     #### Contract does not exist
+#     print("from IB:",-1)
+#     return(pd.DataFrame({"price":[-1]}))
+#   
+#   print("from IB:",value)
+#   ### Compute new record - data obtained from market
+#   data= {
+#     "datetime": [datetime.datetime.now().strftime("%e %b %Y %Hh%M")],
+#     "sym":[sym],
+#     "price":[value]
+#   }
+#   df=pd.DataFrame(data)
+#   
+#   #### New value available - then store it. If same as before, store it anyway because of new timestamp
+#   df.to_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv", mode='a', header=False, sep=";", index=False)
+#   return(df)
 
+# def getCurrencyPairValue(currency_pair,reqType):
+#   #print("\ngetCurrencyPairValue")
+#   ib = IB()
+#   try:
+#     ib.connect('127.0.0.1', 7496, clientId=getPort())    # use this one for TWS (Traders Workstation) acct mgt
+#   except ConnectionError:
+#     return float('nan')
+# 
+#   ##### INDIVIDUAL CONTRACTS
+#   contract = Forex(currency_pair) # Simple contract
+#   print("Contract:",contract)
+#   if(ib.qualifyContracts(contract)):
+#     ib.reqMarketDataType(int(reqType)) ### Request type - Should be 2 or 4
+#     [ticker] = ib.reqTickers(contract)
+#     ib.sleep(1)
+#     print("\nTicker:",ticker)
+#     value= ticker.marketPrice()
+#     print("\nValue:",value)
+#   else: 
+#     value=float('nan')
+#   
+#   ib.disconnect()
+#   return(value)

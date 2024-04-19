@@ -1,5 +1,5 @@
-library(reticulate)
-py_run_file("C:/Users/aldoh/Documents/Global/getContractValue.py")
+
+reticulate::py_run_file("C:/Users/aldoh/Documents/RApplication/Tdata/inst/python/getContractValue.py")
 
 repl_python()
 
@@ -22,7 +22,7 @@ ib.disconnect()
 strikes=[19,20,21,22,23]
 strike=21
 
-ib.reqMarketDataType(4)
+ib.reqMarketDataType(2)
 ib.reqPnL("U1804173")
 
 sec="IND"
@@ -30,6 +30,12 @@ sec="STK"
 secType="STK"
 secType="IND"
 secType="FUND"
+list_sec = ["STK", "STK", "IND"]
+list_sym = ["SPY", "SLV", "ESTX50"]
+list_exchange = ["SMART", "SMART", "EUREX"]
+list_currency = ["USD", "USD", "EUR"]
+reqType=2
+close=False
 
 sym="SPY"
 sym="ESTX50"
@@ -48,6 +54,7 @@ sym="QQQ"
 sym="DTLA"
 sym="CSBGU0"
 
+
 exchangeSec="SMART"
 exchange='SMART'
 exchange='EUREX'
@@ -59,6 +66,7 @@ exchangeSec="CME"
 exchangeSec='EUREX'
 exchangeOpt="EUREX"
 exchangeOpt="SMART"
+
 
 currency="USD"
 currency="EUR"
