@@ -2,26 +2,26 @@
 ###################  Retrieve prices functions #######################
 
 #### auto.assign=TRUE is necessary if multiple symbols at the same time
-#'   getSymFromDate
+#'   getSymIntervalDate
 #'
 #'This function gets from Yahoo service all values (Open, High, Low, Close, Volume and Adjusted)
 #'for one of a vector of symbols. It is based upon quantmod getSymbols function.
 #'It converts IBKR-style tickers into Yahoo-style tickers first.
 #'@param sym one or a vector of symbols
-#'@param date a start date from which to retrieve symbols
+#'@param from_date a start date from which to retrieve symbols
+#'@param to_date a end date to which to retrieve symbols - Default is today
 #'@returns a list of list: each list contains the list of prices and volume: Open, Close, Low, High, Volume and Adjusted
 #'@keywords Yahoo
-#'@examples getSymFromDate("SPY",as.Date("2023-12-01"))
-#'@export
-getSymFromDate = function(sym, date) {
+getSymIntervalDate = function(sym, from_date, to_date = Sys.Date()) {
 
-  if (length(date) != 1) stop("date must be equal to 1!")
+  if (length(from_date) != 1) stop("length from_date must be equal to 1!")
+  if (length(to_date) != 1) stop("length to_date must be equal to 1!")
 
   lookup_yahoo = c("ESTX50"="^STOXX50E","MC"="MC.PA","OR"="OR.PA","TTE"="TTE.PA","AI"="AI.PA",
                    "SPX"="^SPX","XSP"="^XSP","RUT"="^RUT","NESN"="NESN.SW","HOLN"="HOLN.SW","SLHN"="SLHN.SW",
-                   "EUR.USD"="EURUSD=X","EUR.CHF"="EURCHF=X")
+                   "CSBGU0"="CSBGU0.SW","DTLA"="DTLA.L","EUR.USD"="EURUSD=X","EUR.CHF"="EURCHF=X")
   sym = dplyr::if_else(sym %in% names(lookup_yahoo), lookup_yahoo[sym], sym)
-  lapply(sym, function(x) { suppressMessages(quantmod::getSymbols(x, from = date, auto.assign = F, warnings=FALSE))})
+  lapply(sym, function(x) { suppressMessages(quantmod::getSymbols(x, from = from_date, to = to_date, auto.assign = F, warnings=FALSE))})
 }
 
 #' getSym
@@ -30,27 +30,27 @@ getSymFromDate = function(sym, date) {
 #' This function calls \code{getSymFromDate} with one or a vector of tickers.
 #'@param sym one or a vector of symbols
 #'@returns a list of list: each list contains the list of prices and volume: Open, Close, Low, High, Volume and Adjusted
-#'@examples getSym("SPY")
-#'@export
 getSym = function(sym){
-  getSymFromDate(sym, as.Date(config::get("CurrentTradesInitialDate")))
+  getSymIntervalDate(sym, as.Date(config::get("CurrentTradesInitialDate")))
 }
 
 
-#' getSymPriceFromDate
+#' getSymPriceIntervalDate
 #'
 #' This function retrieves all values from Yahoo starting from CurrentTradesInitialDate - see config.yml file at user level directory
 #' This function calls \code{getSymFromDate} with one or a vector of tickers.
 #'@param sym_list one or a vector of symbols
-#'@param date a start date from which to retrieve symbols
+#'@param from_date a start date from which to retrieve symbols
+#'@param to_date a end date to which to retrieve symbols - Default is today
 #'@returns a xts matrix: each column of data contains the adjusted prices - column name is the symbol name
-#'@examples getSymPriceFromDate(sym_list=c("SPY","FNV","USO"),as.Date("2023-01-02"))
+#'@examples getSymPriceIntervalDate(sym_list=c("SPY","FNV","USO"),as.Date("2023-01-02"))
 #'@export
-getSymPriceFromDate = function(sym_list, date){
+getSymPriceIntervalDate = function(sym_list, from_date, to_date = Sys.Date()){
 
-  if (length(date) != 1) stop("date must be equal to 1!")
+  if (length(from_date) != 1) stop("length from_date must be equal to 1!")
+  if (length(to_date) != 1) stop("length to_date must be equal to 1!")
 
-  sym_OHLC = getSymFromDate(sym_list, date)
+  sym_OHLC = getSymIntervalDate(sym_list, from_date, to_date)
 
   sym_all = purrr::reduce(sym_OHLC, \(acc, x) cbind(acc, x) )
   adj_sym = sym_all[,grepl("Adjusted", names(sym_all))]
@@ -59,59 +59,44 @@ getSymPriceFromDate = function(sym_list, date){
 }
 
 
-#' getPriceAllDates
-#' This function is a helper function that helps to deal with \code{getSymFromDate} returned values
-#' It extracts the first list of the list of lists returned by \code{getSymFromDate},
-#' Takes the 6th column (adjusted values) and then convert it into a tibble with one column \code{date} and one column \code{value}.
-#'@param sym_list a list of list, each list having 6 fields.
-#'@returns a tibble with one column \code{date} and one column \code{value}.
-#'@examples getPriceAllDates(getSym("SPY"))
-#'@export
-getPriceAllDates= function(sym_list) {
-  ### Takes only the first element of the sym list
-  ### This is for compatibility with getSymFromDate
-  sym = sym_list[[1]]
-  price = dplyr::tibble(date = as.Date(zoo::index(sym)), value = as.numeric(sym[,6]))
-  colnames(price) = c("date","value")
-  return(price)
-}
-
 ######################
 
 #'   getSymPrice
 #'
-#'This function retrieves the price of one ticker from an exchange or from Yahoo download service.
+#'This function retrieves an historical price of one or several tickers from Yahoo download service at a given date
 #'
-#'It tries first on Yahoo (close price) - this works only for previous days, not for today
-#'Then in Prices table and if not available returns NA. It cannot work on a vectorized report_date
+#'It will look for adjusted price from Yahoo. This function works only for previous days, not for today.
+#'It will look around \code{report_date} to make sure it grasps at least one date with values from Yahoo.
+#'It can be a closed day. In this case, nearest day will be taken (i.e. Monday for Sunday and Friday for Saturday)
 #'
-#'@param sym ticker name, as known by IBKR, If necessary, will be converted to Yahoo ticker name.
-#'@param report_date either today, then it will look at IBKR by calling getStockPrice, or a past day, then will look at Yahoo service-
-#'\code{report_date} can be a closed day. In this case, nearest day is taken in the list.
-#'Prices list goes back only to CurrentTradesInitialDate )set by config::get() for IBKR so currently begin of 2023
-#'This is not suited for Gonet account
-#'@examples getSymPrice("SPY")
+#'@param sym ticker name, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.
+#'@param report_date date, any date prior to today. Default is yesterday.
+#'@examples \dontrun{
+#'getSymPrice("SPY")
+#'getSymPrice(c("SPY","XSP"))
+#'getSymPrice(c("ESTX50","DTLA"),as.Date("2024-04-15"))
+#'}
 #'@export
-getSymPrice = function(sym, report_date){
+getSymPrice = function(sym, report_date = Sys.Date() - 1){
 
   if (length(report_date) != 1) stop("report_date must be equal to 1!")
+  if (report_date > Sys.Date() - 1) stop("report_date must be prior today!")
 
   ### First case - requested date is an holiday or requested date is not today
   ### Get last close price in this case
-  if ((!RQuantLib::isBusinessDay("UnitedStates", report_date)) | report_date < Sys.Date()) {
-    ### Take prices list 5 days before report_date to be sure to grasp at least one business day among these 5 days
-    prices_list=getPriceAllDates(getSymFromDate(sym, report_date - 5))
+  ### Take prices list 5 days before report_date to be sure to grasp at least one business day among these 5 days
+  if (report_date == Sys.Date() - 1) prices_list <- getSymPriceIntervalDate(sym, report_date - 5, report_date + 1)
+  else prices_list <- getSymPriceIntervalDate(sym, report_date - 5, report_date + 2)
 
-    #### report_date becomes the nearest recorded day in Yahoo
-    report_date = Tbasics::findNearestNumberOrDate(prices_list$date, report_date)
-    price = dplyr::filter(prices_list,date==report_date)
-    return(price$value)
-  }
+  #### find nearest date to report_date, report_date becomes the nearest recorded day in Yahoo
+  #### Monday date will be taken for Sunday, and Friday for Saturday
+  report_date = Tbasics::findNearestNumberOrDate(as.Date(zoo::index(prices_list)), report_date)
 
-  #### If report_date is today and is not an holiday
-  ####  then retrieve most current market price from DB
-  return(getStockPrice(sym=sym))
+  ### Extract prices line for report_date
+  prices = prices_list[report_date]
 
+  ### convert xts object to numeric vector
+  return(as.numeric(prices))
 }
 
 ###
@@ -132,7 +117,7 @@ getLastAdjustedPrice = function(ticker) {
                   {
                     ## Case date is Tuesday morning and US market not yet opened + Monday and Friday were off -> Get THur data
                     ### This returns all last data available
-                    ticker=getSymFromDate(ticker,Sys.Date()-5)
+                    ticker=getSymIntervalDate(ticker,Sys.Date()-5)
                     ### Last column is "ticker.Adjusted"
                     sapply(ticker, function(x) round(x[[nrow(x),6]],2))
                   }
@@ -152,7 +137,7 @@ getLastAdjustedPrice = function(ticker) {
 getLastPriceDate = function(ticker) {
   dplyr::if_else( (is.null(ticker) | ticker %in% c("","All","STOCK")),
                   NA,
-                  {ticker = getSymFromDate(ticker, Sys.Date() - 5)
+                  {ticker = getSymIntervalDate(ticker, Sys.Date() - 5)
                   ### Last column is "ticker.Adjusted" -> to be renamed as Adjusted
                   sapply(ticker, function(x) format(zoo::index(x[nrow(x)]), "%d.%m.%Y"))
                   })
@@ -178,7 +163,7 @@ getLastTickerData = function(ticker) {
       ### NA shall work as a numeric for future computations like round(x,2)
       ticker %in% c("", "All", "STOCK")) return(list(last = NA, change = NA))
   tryCatch({
-    ticks = getSymFromDate(ticker, Sys.Date() - 5)[[1]] ## Case Tuesday morning and US market not yet opened + Monday and Friday were off -> Get Wed and THur data
+    ticks = getSymIntervalDate(ticker, Sys.Date() - 5)[[1]] ## Case Tuesday morning and US market not yet opened + Monday and Friday were off -> Get Wed and THur data
     ##names(ticks)[length(names(ticks))]="Adjusted" ### Last column is "ticker.Adjusted" -> to be renamed as Adjusted
     last_data = ticks[[nrow(ticks), 6]]
     p_last_data = ticks[[nrow(ticks) - 1, 6]]
@@ -196,13 +181,14 @@ getLastTickerData = function(ticker) {
 ###
 #'getStockPrice
 #'
-#'For a given ticker this function returns the last known value from IBKR. It first looks for last value stored in prices.csv file.
-#'If one exists that is no older than 1 hour, then this value is returned. Otherwise it looks for IBKR service to retrieve a new data.
-#'If IBKR service is not available, it will request it from end-user on console.In the end the new price is stored in prices.csv file.
+#'For a given ticker this function returns either the last close price from Yahoo service or the last stored price.
+#'
+#'This will depend upon close parameter. If close is TRUE then Yahoo service is used, otherwise data is retrieved from prices DB
 #'
 #'This function is not vectorized and accepts only one ticker at a time.
-#'@param sym string - IBKR style of ticker, if unknown then function returns -1
-#'@param close Boolean TRUE/FALSE if true then retrieve last close price if true then retrieve active price
+#'If no price ticker exists in DB it will then return an empty line.
+#'@param sym string - IBKR style of ticker.
+#'@param close Boolean TRUE/FALSE if true then retrieve last close price else retrieve last stored price.
 #'@returns a value
 #'@examples
 #'\dontrun{
@@ -212,23 +198,23 @@ getLastTickerData = function(ticker) {
 #'}
 #'@export
 getStockPrice = function(sym, close = FALSE) {
-  #### Default value for security type is Stock
-  #### Default value for exchange is SMART
   message("getStockPrice")
 
-  if (close) return(
-    data.frame(
+  if (close) {
+    line <- data.frame(
       datetime = format(lubridate::ymd_hms(paste(Sys.Date() - 1,"22:00:00")), "%d %b %Y %Hh%M"),
       sym = sym,
       price = getLastAdjustedPrice(sym)
     )
-  )
+  }
 
   ### Just retrieve last price from DB but no update from DB
-  mydb <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
-  line <- DBI::dbGetQuery(mydb, "SELECT * FROM Prices
+  else {
+    mydb <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
+    line <- DBI::dbGetQuery(mydb, "SELECT * FROM Prices
                           WHERE sym = ? ORDER BY ROWID DESC LIMIT 1;", params = list(sym))
-  DBI::dbDisconnect(mydb)
+    DBI::dbDisconnect(mydb)
+  }
 
   return(line)
 }
@@ -253,7 +239,8 @@ getStockPrice = function(sym, close = FALSE) {
 #'@examples
 #'\dontrun{
 #'getIBKRPrice(list_sym="SPY")
-#'getIBKRPrice(list_sec=c("IND","STK"), list_sym=c("ESTX50","USO"), list_currency=c("EUR","USD"), list_exchange = c("EUREX","SMART"))
+#'getIBKRPrice(list_sec=c("IND","STK"), list_sym=c("ESTX50","USO"), list_currency=c("EUR","USD"),
+#'list_exchange = c("EUREX","SMART"))
 #'getIBKRPrice(list_sym="USO",close=TRUE)
 #'}
 #'@export
@@ -264,7 +251,7 @@ getIBKRPrice <- function(list_sec="STK", list_sym, list_currency="USD", list_exc
 
   ### Error case do not go further on###
   if (length(list_price) == 1) {
-    display_error_message("IBKR data retrieval did not work - either no connection or contract does not exist")
+    Tbasics::display_error_message("IBKR data retrieval did not work - either no connection or contract does not exist")
     return (list_price)
   }
 
@@ -374,4 +361,21 @@ getIBKRPrice <- function(list_sec="STK", list_sym, list_currency="USD", list_exc
 #'     })
 #'   }
 #'   shiny::shinyApp(ui,server)
+#' }
+
+#' #' getPriceAllDates
+#' #'
+#' #' This function is a helper function that helps to deal with \code{getSymFromDate} returned values
+#' #' It extracts the first list of the list of lists returned by \code{getSymFromDate},
+#' #' Takes the 6th column (adjusted values) and then convert it into a tibble with one column \code{date} and one column \code{value}.
+#' #'@param sym_list a list of list, each list having 6 fields.
+#' #'@returns a tibble with one column \code{date} and one column \code{value}.
+#' #'@examples getPriceAllDates(getSym("SPY"))
+#' getPriceAllDates= function(sym_list) {
+#'   ### Takes only the first element of the sym list
+#'   ### This is for compatibility with getSymFromDate
+#'   sym = sym_list[[1]]
+#'   price = dplyr::tibble(date = as.Date(zoo::index(sym)), value = as.numeric(sym[,6]))
+#'   colnames(price) = c("date","value")
+#'   return(price)
 #' }

@@ -7,20 +7,21 @@
 getStockPrice(sym, close = FALSE)
 }
 \arguments{
-\item{sym}{string - IBKR style of ticker, if unknown then function returns -1}
+\item{sym}{string - IBKR style of ticker.}
 
-\item{close}{Boolean TRUE/FALSE if true then retrieve last close price if true then retrieve active price}
+\item{close}{Boolean TRUE/FALSE if true then retrieve last close price else retrieve last stored price.}
 }
 \value{
 a value
 }
 \description{
-For a given ticker this function returns the last known value from IBKR. It first looks for last value stored in prices.csv file.
-If one exists that is no older than 1 hour, then this value is returned. Otherwise it looks for IBKR service to retrieve a new data.
-If IBKR service is not available, it will request it from end-user on console.In the end the new price is stored in prices.csv file.
+For a given ticker this function returns either the last close price from Yahoo service or the last stored price.
 }
 \details{
+This will depend upon close parameter. If close is TRUE then Yahoo service is used, otherwise data is retrieved from prices DB
+
 This function is not vectorized and accepts only one ticker at a time.
+If no price ticker exists in DB it will then return an empty line.
 }
 \examples{
 \dontrun{
