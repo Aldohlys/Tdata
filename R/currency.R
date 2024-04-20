@@ -169,7 +169,8 @@ convert_to_usd_date = function(amount,currency,date) {
   usd$date=as.Date(usd$date)
 
   ### This works only if date is of length 1
-  ### which.min returns one single index, even if date is a vector
+  ### because which.min returns one single index, even if date is a vector
+  ### if date is not recorded yet, it will provide the values of yesterday or before
   nearest_index = which.min(abs(usd$date-date))
 
   EUR= usd$EUR[nearest_index]

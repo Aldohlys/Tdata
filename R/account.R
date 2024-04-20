@@ -293,8 +293,6 @@ greeksNet = function(portf) {
   }
 }
 
-
-#############  getIBKR function ###############
 ##############################
 #'   getIBKR
 #'
@@ -332,7 +330,7 @@ getIBKR <- function() {
   l = reticulate::py$getIBKRData()
 
   if (typeof(l) != "list") {
-    display_error_message("No IB connection possible!")
+    Tbasics::display_error_message("No IB connection possible!")
     return()
   }
 
@@ -355,7 +353,6 @@ getIBKR <- function() {
       DBI::dbAppendTable(conn, "CurrencyPairs", usd)
     }
   }
-
 
   #### Process new account data
   account_data = l[[1]]
@@ -396,4 +393,211 @@ getIBKR <- function() {
   ### Append to DB
   DBI::dbAppendTable(conn,account_data$account,portf_data)
   DBI::dbDisconnect(conn)
+}
+
+##############################
+#'   getGonet
+#'
+#' This function retrieves trades from GonetTrades.CSV and deduces current Gonet portfolio positions.
+#' It he retrieves prices from IBKR and then store updated Gonet portfolio positions into DB "Gonet" table.
+#'
+#'
+#'@returns No value
+#'@export
+#'@examples
+#'\dontrun{
+#'getGonet()
+#'}
+getGonet <- function() {
+  gonet_trades = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetTrades.csv",delim=";",
+                                             locale=readr::locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
+
+  ### Get the list of trades and deduce what are the remaining positions - see Gonet.R
+  ### Remove all null position and verify there are no negative positions (no short on Gonet)
+  ### Only position that exist (<>0) are taken into account for computations - incl. unrealized PnL
+
+  ### This will build the portfolio current position
+  portf <- dplyr::summarize(dplyr::group_by(gonet_trades, sym_ibkr),
+                                  TradeNr=dplyr::first(TradeNr),
+                                  type=dplyr::first(type),
+                                  sym_yahoo=dplyr::first(sym_yahoo),
+                                  ### orig_date is the oldest date in all trades related to sym_ibkr
+                                  orig_date=dplyr::first(as.Date(orig_date,"%d.%m.%Y")),
+                                               position=sum(position), price=dplyr::first(price),
+                                               cost=sum(cost),currency=dplyr::first(currency),
+                                               exchange=dplyr::first(exchange))
+  portf <- dplyr::filter(portf, position != 0)
+  portf$date <- format(Sys.Date(),"%d.%m.%Y")
+  portf$heure <- format(Sys.time(),"%H:%M:%S")  ### Allows for several recordings in the same day
+
+  if (any(portf$position <0)) {
+    Tbasics::display_error_message("For any symbol all positions must be positive, or position sum is equal to 0")
+    return()
+  }
+
+  ### compute the average cost using adjusted Yahoo prices - this may have changed since last call due to dividend payout
+  portf$orig_adjusted_price = unlist(purrr::pmap_dbl(portf,
+                                          function(sym_yahoo,orig_date,...){getSymPrice(sym_yahoo, orig_date)}))
+
+  ### get prices from IBKR using list_sec= "STK", and otherwise values from GonetTrades
+  portf$last_price <- getIBKRPrice(list_sym = portf$sym_ibkr, list_currency = portf$currency,
+                              list_exchange = portf$exchange)
+
+
+  ### Compute all necessary fields for storing in CSV/DB
+  portf <- dplyr::mutate(portf, secType="STK", symbol=sym_ibkr, pos=position, type="Stock",
+                    mktPrice=last_price, mktValue=round(pos*mktPrice,2),
+                    avgCost=round(pos*orig_adjusted_price,2),
+                    unPnL=round(mktValue-avgCost,2))
+
+  portf <- dplyr::select(portf, TradeNr, date, heure, secType, symbol, pos, mktPrice, mktValue,
+                         avgCost, unPnL, currency, type)
+
+  ### store prices in .CSV / DB
+  ## Make them available for other functions
+  ### Open connection to user DB
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  DBI::dbAppendTable(conn,"Gonet",portf)
+  DBI::dbDisconnect(conn)
+
+}
+
+
+############################
+#'   getAccountGonet
+#'
+#'This function reads last portfolio from Gonet and then deduces account record similar to IBKR
+#'and stores it into DB "Account" table.
+#'The tricky piece is to manage Cash positions
+#'
+#'@returns No value
+#'@export
+#'@examples
+#'\dontrun{
+#'getAccountGonet()
+#'}
+getAccountGonet <- function() {
+
+  account.var=c("account","date","heure","NetLiquidation","EquityWithLoanValue","FullAvailableFunds","FullInitMarginReq","FullMaintMarginReq","FullExcessLiquidity","OptionMarketValue","StockMarketValue","UnrealizedPnL","RealizedPnL","TotalCashBalance","CashFlow")
+  portf <- readLastPortfolio("Gonet")
+
+  #### There are "portf_lines" opened positions in the GOnet portfolio (stocks)
+  #### Some may be empty (NA lines) -> in this case the whole is considered as NA and therefore not stored
+  #### ### DO not take into account days where one of the exchanges (NYSE, Euronext, SMI) is closed
+
+  acc = dplyr::summarize(portf, StockMarketValue = round(sum(USD_MktV, na.rm = FALSE),2),
+                UnrealizedPnL = round(sum(USD_unPnL, na.rm = FALSE)))
+  if (any(is.na(acc))) {
+    Tbasics::display_error_message("Could not get a complete potfolio record - some prices are missing -> no account recorded")
+    return()
+  }
+
+    ### Create a cash position in Gonet where 26'000 EUR from June 1st, 2022 till March 15th
+    ### After March 15th, 2023 cash position is closed
+    Cash_EUR=xts(c(rep(26000,287),rep(0,Sys.Date()-as.Date("2022-06-01")-286)),
+                 order.by=seq(ymd("2022-06-01"),length=Sys.Date()-as.Date("2022-06-01")+1,by="days"))
+    names(Cash_EUR)="Cash_EUR"
+    Cash_EUR = data.frame(date=as.Date(index(Cash_EUR)),Cash_EUR=as.numeric(Cash_EUR))
+
+    #### Create a USD Cash position - closed on March 15th, 2023
+    Cash_USD=xts(c(rep(33000,287),rep(0,Sys.Date()-as.Date("2022-06-01")-286)),
+                 order.by=seq(ymd("2022-06-01"),length=Sys.Date()-as.Date("2022-06-01")+1,by="days"))
+    names(Cash_USD)="Cash_USD"
+    Cash_USD = data.frame(date=as.Date(index(Cash_USD)),Cash_USD=as.numeric(Cash_USD))
+
+    #### Add Cash positions to acc data frame using date as join
+    acc=suppressMessages(left_join(left_join(left_join(acc,Cash_EUR),usd),Cash_USD))
+
+    ### convert to USD all Gonet positions
+    acc %<>% mutate(account="Gonet",
+                    date = format(date,"%d.%m.%Y"),
+                    heure = heure,
+                    TotalCashBalance = round(convert_to_usd_date(Cash_EUR,"EUR", Sys.Date()) + Cash_USD, 2),
+                    NetLiquidation = round(TotalCashBalance + StockMarketValue, 2),
+                    EquityWithLoanValue = NetLiquidation,
+                    FullAvailableFunds = TotalCashBalance,
+                    CashFlow = 0,
+                    FullInitMarginReq = NA,
+                    FullMaintMarginReq = NA,
+                    FullExcessLiquidity = NA,
+                    OptionMarketValue = 0,
+                    RealizedPnL = 0,
+    )
+
+    ### Remove Cash positions
+    acc=select(acc,!any_of(c("Cash_EUR","Cash_CHF","Cash_USD")))
+
+    #### account;date;heure;NetLiquidation;EquityWithLoanValue;FullAvailableFunds;FullInitMarginReq;
+    ####  FullMaintMarginReq;FullExcessLiquidity;OptionMarketValue;StockMarketValue;
+    ####  UnrealizedPnL;RealizedPnL;TotalCashBalance;CashFlow
+    acc=select(acc,all_of(account.var))
+    conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+    DBI::dbAppendTable(conn,"Account",acc)
+    DBI::dbDisconnect(conn)
+}
+
+############################
+#'   getAccountLive
+#'
+#'This function reads last portfolio from Gonet and then deduces account record similar to IBKR
+#'and stores it into DB "Account" table.
+#'The tricky piece is to manage Cash positions
+#'
+#'@returns No value
+#'@export
+#'@examples
+#'\dontrun{
+#'getAccountLive()
+#'}
+getAccountLive <- function() {
+
+  account.var=c("account","date","heure","NetLiquidation","EquityWithLoanValue","FullAvailableFunds","FullInitMarginReq","FullMaintMarginReq","FullExcessLiquidity","OptionMarketValue","StockMarketValue","UnrealizedPnL","RealizedPnL","TotalCashBalance","CashFlow")
+  account.var.gonet = c(account.var[1:6],account.var[10:15])
+  s_date = Sys.Date()
+
+  #### Assumes that Gonet and Uxxx are already in this file -
+  #### This is a post processing function that computes Live data from these 2 accounts
+
+  ### Processes only data that is posterior to s_date - so it can be used on a regular basis (every day or so)
+
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  account_d <- DBI::dbReadTable(conn,"Account")
+
+  account_d$date=as.Date(account_d$date,format="%d.%m.%Y")
+  account_d %<>% filter(date >= s_date)
+
+  acc1 = select(filter(account_d,account=="U1804173"),all_of(account.var))
+  acc2 = select(filter(account_d,account=="Gonet"),all_of(account.var.gonet))
+
+  data=inner_join(acc1,acc2,by="date",multiple="any",suffix=c(".1",".2"))
+
+  #### Empty lines in Gonet account due to closed days in Europe that are not closed in US (ex: 10.04.2023 - Easter Monday)
+  #### And vice-versa - in this case it is not possible to produce a Live account -> exit function
+  data=data[!is.na(data$NetLiquidation.2),]
+
+  if(!nrow(data)) {
+      Tbasics::display_error_message("Not enough data to process for write_account_live function!!! Needs both Uxx and Gonet data")
+      return()
+  }
+
+  #### Add all the columns that are common to Gonet and Uxxx -
+  #### knowing that Gonet columns is a subset of Uxxx columns
+  ### Remove fields that can't be added: account, date, heure
+  sub.var.gonet=account.var.gonet[-(1:3)]
+  account.var.1=paste0(sub.var.gonet,".1")
+  account.var.2=paste0(sub.var.gonet,".2")
+
+  sub_res= round(data[account.var.1]+data[account.var.2],2)
+  names(sub_res)=sub.var.gonet
+
+  #### Build Live account record from previous data
+  data=cbind(account="Live",date=format(data$date,"%d.%m.%Y"),heure=data["heure.1"],
+             data[c("FullInitMarginReq","FullMaintMarginReq","FullExcessLiquidity")],sub_res)
+  data = rename(data,heure=heure.1)
+  data= select(data,all_of(account.var))
+
+  ### Stored in DB the Live account record
+  DBI::dbAppendTable(conn, "Account", data)
+  DBI::dbDisconnect(conn)
+
 }

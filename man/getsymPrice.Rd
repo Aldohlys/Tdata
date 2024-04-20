@@ -4,23 +4,25 @@
 \alias{getSymPrice}
 \title{getSymPrice}
 \usage{
-getSymPrice(sym, report_date)
+getSymPrice(sym, report_date = Sys.Date() - 1)
 }
 \arguments{
-\item{sym}{ticker name, as known by IBKR, If necessary, will be converted to Yahoo ticker name.}
+\item{sym}{ticker name, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.}
 
-\item{report_date}{either today, then it will look at IBKR by calling getStockPrice, or a past day, then will look at Yahoo service-
-\code{report_date} can be a closed day. In this case, nearest day is taken in the list.
-Prices list goes back only to CurrentTradesInitialDate )set by config::get() for IBKR so currently begin of 2023
-This is not suited for Gonet account}
+\item{report_date}{date, any date prior to today. Default is yesterday.}
 }
 \description{
-This function retrieves the price of one ticker from an exchange or from Yahoo download service.
+This function retrieves an historical price of one or several tickers from Yahoo download service at a given date
 }
 \details{
-It tries first on Yahoo (close price) - this works only for previous days, not for today
-Then in Prices table and if not available returns NA. It cannot work on a vectorized report_date
+It will look for adjusted price from Yahoo. This function works only for previous days, not for today.
+It will look around \code{report_date} to make sure it grasps at least one date with values from Yahoo.
+It can be a closed day. In this case, nearest day will be taken (i.e. Monday for Sunday and Friday for Saturday)
 }
 \examples{
+\dontrun{
 getSymPrice("SPY")
+getSymPrice(c("SPY","XSP"))
+getSymPrice(c("ESTX50","DTLA"),as.Date("2024-04-15"))
+}
 }

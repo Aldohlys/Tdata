@@ -16,6 +16,3 @@ a list of list: each list contains the list of prices and volume: Open, Close, L
 This function retrieves all values from Yahoo starting from CurrentTradesInitialDate - see config.yml file at user level directory
 This function calls \code{getSymFromDate} with one or a vector of tickers.
 }
-\examples{
-getSym("SPY")
-}

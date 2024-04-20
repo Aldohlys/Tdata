@@ -30,3 +30,6 @@ pos <- uPrice <- currency <- multiplier <- delta <- theta <- vega <- dnet <- ddn
 
 ### for getIBKR
 new_date <- heure <- strike <- optPrice <- pvDividend <- expdate <- type <- unrealizedPNL <- NULL
+
+### for getGonet
+sym_ibkr <- sym_yahoo <- orig_date <- price <- cost <- NULL

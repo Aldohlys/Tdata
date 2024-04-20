@@ -41,7 +41,8 @@ If IBKR service is not available, it will return an error code and display an er
 \examples{
 \dontrun{
 getIBKRPrice(list_sym="SPY")
-getIBKRPrice(list_sec=c("IND","STK"), list_sym=c("ESTX50","USO"), list_currency=c("EUR","USD"), list_exchange = c("EUREX","SMART"))
+getIBKRPrice(list_sec=c("IND","STK"), list_sym=c("ESTX50","USO"), list_currency=c("EUR","USD"),
+list_exchange = c("EUREX","SMART"))
 getIBKRPrice(list_sym="USO",close=TRUE)
 }
 }
