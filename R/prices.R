@@ -224,7 +224,7 @@ getStockPrice = function(sym, close = FALSE) {
 #'getIBKRPrice
 #'
 #'Retrieves a price or a list of price from IBKR and
-#'returns a data frame with date and time (formatted), the list of tickers and corresponding prices.
+#'returns a data frame with date and time (formatted), the list of tickers and corresponding prices. Additionally store prices in DB Prices table (if different from NaN and not a close price)
 #'
 #'For a given ticker or a list of tickers, this function returns prices from IBKR.
 #'If IBKR service is not available, it will return an error code and display an error message: 0 if no IBKR service, -1 if contract is unknown.
@@ -235,12 +235,12 @@ getStockPrice = function(sym, close = FALSE) {
 #'@param list_exchange string or vector of strings- list of exchanges SMART, EUREX, CBOE,..., if unknown then function returns -1 - default is SMART
 #'@param reqType integer - should be either 2 or 4, default is 2
 #'@param close Boolean TRUE/FALSE, default is FALSE. if TRUE then retrieve last close price from IBKR, if FALSE then retrieve market price from IBKR
-#'@returns a data frmae with the following fields: \code{datetime} (formatted date and time), \code{sym} (ticker name), \code{price} (price as double)
+#'@returns a data frame with the following fields: \code{datetime} (formatted date and time), \code{sym} (ticker name), \code{price} (price as double)
 #'@examples
 #'\dontrun{
 #'getIBKRPrice(list_sym="SPY")
-#'getIBKRPrice(list_sec=c("IND","STK"), list_sym=c("ESTX50","USO"), list_currency=c("EUR","USD"),
-#'list_exchange = c("EUREX","SMART"))
+#'getIBKRPrice(list_sec=c("IND","STK","STK"), list_sym=c("ESTX50","USO","ABBN"),
+#'list_currency=c("EUR","USD","CHF"), list_exchange = c("EUREX","SMART","SMART"))
 #'getIBKRPrice(list_sym="USO",close=TRUE)
 #'}
 #'@export
@@ -256,9 +256,10 @@ getIBKRPrice <- function(list_sec="STK", list_sym, list_currency="USD", list_exc
   }
 
   ### Last close price should not be stored as date and time will be wrong (IBKR returned last day close data...)
+  ### Also only prices that are different from NaN will be stored in DB
   if (!close) {
     myconn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-    DBI::dbAppendTable(myconn, "Prices", list_price)
+    DBI::dbAppendTable(myconn, "Prices", list_price[!is.nan(list_price$price),])
     DBI::dbDisconnect(myconn)
   }
 

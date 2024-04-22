@@ -148,7 +148,10 @@ readLastPortfolio <- function(portfname) {
 					SELECT * FROM U1804173 WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"),
                        "DU5221795" = DBI::dbGetQuery(mydb,
                         "WITH Last_record AS(SELECT max(date) as date, heure FROM (SELECT date, MAX(heure) as heure FROM DU5221795 GROUP BY date))
-					SELECT * FROM DU5221795 WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"))
+					SELECT * FROM DU5221795 WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"),
+                       "Gonet" = DBI::dbGetQuery(mydb,
+                                                     "WITH Last_record AS(SELECT max(date) as date, heure FROM (SELECT date, MAX(heure) as heure FROM Gonet GROUP BY date))
+					SELECT * FROM Gonet WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"))
 
   DBI::dbDisconnect(mydb)
 
@@ -423,11 +426,11 @@ getGonet <- function() {
                                   sym_yahoo=dplyr::first(sym_yahoo),
                                   ### orig_date is the oldest date in all trades related to sym_ibkr
                                   orig_date=dplyr::first(as.Date(orig_date,"%d.%m.%Y")),
-                                               position=sum(position), price=dplyr::first(price),
+                                               position=sum(position),
                                                cost=sum(cost),currency=dplyr::first(currency),
                                                exchange=dplyr::first(exchange))
   portf <- dplyr::filter(portf, position != 0)
-  portf$date <- format(Sys.Date(),"%d.%m.%Y")
+  portf$date <- format(Sys.Date(),"%Y%m%d")
   portf$heure <- format(Sys.time(),"%H:%M:%S")  ### Allows for several recordings in the same day
 
   if (any(portf$position <0)) {
@@ -440,13 +443,25 @@ getGonet <- function() {
                                           function(sym_yahoo,orig_date,...){getSymPrice(sym_yahoo, orig_date)}))
 
   ### get prices from IBKR using list_sec= "STK", and otherwise values from GonetTrades
-  portf$last_price <- getIBKRPrice(list_sym = portf$sym_ibkr, list_currency = portf$currency,
+  last_price <- getIBKRPrice(list_sym = portf$sym_ibkr, list_currency = portf$currency,
                               list_exchange = portf$exchange)
 
+  #### Request user to enter prices where price = NaN
+  price_user <- last_price[is.nan(last_price$price),]
+
+  ### Replace NaN values with price entered by user in price_user
+  price_user$price <- Tbasics::enter_numerical_data(price_user$sym)
+
+  ### Merge prices with value retrieved from IBKR plus prices with values entered by user
+  last_price <- rbind(last_price[!is.nan(last_price$price),],
+                      price_user)
+
+  ### Use these last_price as price for portf
+  portf = dplyr::left_join(portf, last_price, by = c("sym_ibkr"="sym"))
 
   ### Compute all necessary fields for storing in CSV/DB
   portf <- dplyr::mutate(portf, secType="STK", symbol=sym_ibkr, pos=position, type="Stock",
-                    mktPrice=last_price, mktValue=round(pos*mktPrice,2),
+                    mktPrice=price, mktValue=round(pos*mktPrice,2),
                     avgCost=round(pos*orig_adjusted_price,2),
                     unPnL=round(mktValue-avgCost,2))
 
@@ -457,9 +472,10 @@ getGonet <- function() {
   ## Make them available for other functions
   ### Open connection to user DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-  DBI::dbAppendTable(conn,"Gonet",portf)
+  DBI::dbAppendTable(conn,"Gonet", portf)
+  ### Non NaN prices already been stored in DB by getIBKRPrice function - so only price_user need to be stored in DB
+  DBI::dbAppendTable(conn,"Prices", price_user)
   DBI::dbDisconnect(conn)
-
 }
 
 
@@ -478,41 +494,40 @@ getGonet <- function() {
 #'}
 getAccountGonet <- function() {
 
-  account.var=c("account","date","heure","NetLiquidation","EquityWithLoanValue","FullAvailableFunds","FullInitMarginReq","FullMaintMarginReq","FullExcessLiquidity","OptionMarketValue","StockMarketValue","UnrealizedPnL","RealizedPnL","TotalCashBalance","CashFlow")
+  account.var = c("account","date","heure","NetLiquidation","EquityWithLoanValue","FullAvailableFunds","FullInitMarginReq","FullMaintMarginReq","FullExcessLiquidity","OptionMarketValue","StockMarketValue","UnrealizedPnL","RealizedPnL","TotalCashBalance","CashFlow")
   portf <- readLastPortfolio("Gonet")
 
   #### There are "portf_lines" opened positions in the GOnet portfolio (stocks)
   #### Some may be empty (NA lines) -> in this case the whole is considered as NA and therefore not stored
   #### ### DO not take into account days where one of the exchanges (NYSE, Euronext, SMI) is closed
 
-  acc = dplyr::summarize(portf, StockMarketValue = round(sum(USD_MktV, na.rm = FALSE),2),
-                UnrealizedPnL = round(sum(USD_unPnL, na.rm = FALSE)))
+  acc = dplyr::summarize(portf, StockMarketValue = round(sum(convert_to_usd_date(mktValue, currency, Sys.Date()), na.rm = FALSE),2),
+                UnrealizedPnL = round(sum(convert_to_usd_date(unPnL, currency, Sys.Date()), na.rm = FALSE),2))
   if (any(is.na(acc))) {
     Tbasics::display_error_message("Could not get a complete potfolio record - some prices are missing -> no account recorded")
     return()
   }
 
-    ### Create a cash position in Gonet where 26'000 EUR from June 1st, 2022 till March 15th
-    ### After March 15th, 2023 cash position is closed
-    Cash_EUR=xts(c(rep(26000,287),rep(0,Sys.Date()-as.Date("2022-06-01")-286)),
-                 order.by=seq(ymd("2022-06-01"),length=Sys.Date()-as.Date("2022-06-01")+1,by="days"))
-    names(Cash_EUR)="Cash_EUR"
-    Cash_EUR = data.frame(date=as.Date(index(Cash_EUR)),Cash_EUR=as.numeric(Cash_EUR))
+  ### Create a cash position in Gonet where 26'000 EUR from June 1st, 2022 till March 15th
+  ### After March 15th, 2023 cash position is closed
+  Cash_EUR = xts::xts(c(rep(26000,287),rep(0,Sys.Date()-as.Date("2022-06-01")-286)),
+               order.by = seq(as.Date("2022-06-01"), length=Sys.Date() - as.Date("2022-06-01") + 1,by="days"))
 
-    #### Create a USD Cash position - closed on March 15th, 2023
-    Cash_USD=xts(c(rep(33000,287),rep(0,Sys.Date()-as.Date("2022-06-01")-286)),
-                 order.by=seq(ymd("2022-06-01"),length=Sys.Date()-as.Date("2022-06-01")+1,by="days"))
-    names(Cash_USD)="Cash_USD"
-    Cash_USD = data.frame(date=as.Date(index(Cash_USD)),Cash_USD=as.numeric(Cash_USD))
+  #### Create a USD Cash position - closed on March 15th, 2023
+  Cash_USD = xts::xts(c(rep(33000,287), rep(0,Sys.Date()-as.Date("2022-06-01")-286)),
+               order.by = seq(as.Date("2022-06-01"), length = Sys.Date() - as.Date("2022-06-01") + 1, by="days"))
+  # names(Cash_USD)="Cash_USD"
+  # Cash_USD = data.frame(date=as.Date(zoo::index(Cash_USD)), Cash_USD=as.numeric(Cash_USD))
 
-    #### Add Cash positions to acc data frame using date as join
-    acc=suppressMessages(left_join(left_join(left_join(acc,Cash_EUR),usd),Cash_USD))
+  #### Add Cash positions to acc data frame using date as join
+ cash_balance <- round(convert_to_usd_date(as.numeric(Cash_EUR[Sys.Date()]), "EUR", Sys.Date()) +
+                  as.numeric(Cash_USD[Sys.Date()]), 2)
 
-    ### convert to USD all Gonet positions
-    acc %<>% mutate(account="Gonet",
-                    date = format(date,"%d.%m.%Y"),
-                    heure = heure,
-                    TotalCashBalance = round(convert_to_usd_date(Cash_EUR,"EUR", Sys.Date()) + Cash_USD, 2),
+  ### convert to USD all Gonet positions
+  acc <- dplyr::mutate(acc, account="Gonet",
+                    date = format(Sys.Date(),"%Y%m%d"),
+                    heure = format(Sys.time(),"%H:%M:%S"),
+                    TotalCashBalance = cash_balance,
                     NetLiquidation = round(TotalCashBalance + StockMarketValue, 2),
                     EquityWithLoanValue = NetLiquidation,
                     FullAvailableFunds = TotalCashBalance,
@@ -525,12 +540,12 @@ getAccountGonet <- function() {
     )
 
     ### Remove Cash positions
-    acc=select(acc,!any_of(c("Cash_EUR","Cash_CHF","Cash_USD")))
+    # acc=select(acc,!any_of(c("Cash_EUR","Cash_CHF","Cash_USD")))
 
     #### account;date;heure;NetLiquidation;EquityWithLoanValue;FullAvailableFunds;FullInitMarginReq;
     ####  FullMaintMarginReq;FullExcessLiquidity;OptionMarketValue;StockMarketValue;
     ####  UnrealizedPnL;RealizedPnL;TotalCashBalance;CashFlow
-    acc=select(acc,all_of(account.var))
+    acc = dplyr::select(acc, dplyr::all_of(account.var))
     conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
     DBI::dbAppendTable(conn,"Account",acc)
     DBI::dbDisconnect(conn)
@@ -553,7 +568,7 @@ getAccountLive <- function() {
 
   account.var=c("account","date","heure","NetLiquidation","EquityWithLoanValue","FullAvailableFunds","FullInitMarginReq","FullMaintMarginReq","FullExcessLiquidity","OptionMarketValue","StockMarketValue","UnrealizedPnL","RealizedPnL","TotalCashBalance","CashFlow")
   account.var.gonet = c(account.var[1:6],account.var[10:15])
-  s_date = Sys.Date()
+  s_date = format(Sys.Date(),"%Y%m%d")
 
   #### Assumes that Gonet and Uxxx are already in this file -
   #### This is a post processing function that computes Live data from these 2 accounts
@@ -563,17 +578,17 @@ getAccountLive <- function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   account_d <- DBI::dbReadTable(conn,"Account")
 
-  account_d$date=as.Date(account_d$date,format="%d.%m.%Y")
-  account_d %<>% filter(date >= s_date)
+  ### No need to transform date format, comparison done using character comparison
+  account_d <- dplyr::filter(account_d, date >= s_date)
 
-  acc1 = select(filter(account_d,account=="U1804173"),all_of(account.var))
-  acc2 = select(filter(account_d,account=="Gonet"),all_of(account.var.gonet))
+  acc1 = dplyr::select(dplyr::filter(account_d,account=="U1804173"), dplyr::all_of(account.var))
+  acc2 = dplyr::select(dplyr::filter(account_d,account=="Gonet"), dplyr::all_of(account.var.gonet))
 
-  data=inner_join(acc1,acc2,by="date",multiple="any",suffix=c(".1",".2"))
+  data = dplyr::inner_join(acc1, acc2, by="date", multiple="any", suffix=c(".1",".2"))
 
   #### Empty lines in Gonet account due to closed days in Europe that are not closed in US (ex: 10.04.2023 - Easter Monday)
   #### And vice-versa - in this case it is not possible to produce a Live account -> exit function
-  data=data[!is.na(data$NetLiquidation.2),]
+  data = data[!is.na(data$NetLiquidation.2),]
 
   if(!nrow(data)) {
       Tbasics::display_error_message("Not enough data to process for write_account_live function!!! Needs both Uxx and Gonet data")
@@ -583,18 +598,19 @@ getAccountLive <- function() {
   #### Add all the columns that are common to Gonet and Uxxx -
   #### knowing that Gonet columns is a subset of Uxxx columns
   ### Remove fields that can't be added: account, date, heure
-  sub.var.gonet=account.var.gonet[-(1:3)]
-  account.var.1=paste0(sub.var.gonet,".1")
-  account.var.2=paste0(sub.var.gonet,".2")
+  sub.var.gonet = account.var.gonet[-(1:3)]
+  account.var.1 = paste0(sub.var.gonet,".1")
+  account.var.2 = paste0(sub.var.gonet,".2")
 
-  sub_res= round(data[account.var.1]+data[account.var.2],2)
-  names(sub_res)=sub.var.gonet
+  ### Compute sum of fields - Live is a virtual account sum of Uxx and Gonet account
+  sub_res= round(data[account.var.1] + data[account.var.2],2)
+  names(sub_res) = sub.var.gonet
 
   #### Build Live account record from previous data
-  data=cbind(account="Live",date=format(data$date,"%d.%m.%Y"),heure=data["heure.1"],
-             data[c("FullInitMarginReq","FullMaintMarginReq","FullExcessLiquidity")],sub_res)
-  data = rename(data,heure=heure.1)
-  data= select(data,all_of(account.var))
+  data=cbind(account = "Live", date = data$date, heure = data["heure.1"],
+             data[c("FullInitMarginReq", "FullMaintMarginReq", "FullExcessLiquidity")], sub_res)
+  data = dplyr::rename(data, heure = heure.1)
+  data= dplyr::select(data,dplyr::all_of(account.var))
 
   ### Stored in DB the Live account record
   DBI::dbAppendTable(conn, "Account", data)

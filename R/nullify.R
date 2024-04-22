@@ -32,4 +32,8 @@ pos <- uPrice <- currency <- multiplier <- delta <- theta <- vega <- dnet <- ddn
 new_date <- heure <- strike <- optPrice <- pvDividend <- expdate <- type <- unrealizedPNL <- NULL
 
 ### for getGonet
-sym_ibkr <- sym_yahoo <- orig_date <- price <- cost <- NULL
+sym_ibkr <- sym_yahoo <- orig_date <- price <- mktPrice <- orig_adjusted_price <- NULL
+unPnL <- cost <- avgCost <- orig_adjusted_price <- mktValue <- NULL
+
+## add for getAccountGonet
+mktValue <- unPnL <- TotalCashBalance <- StockMarketValue <- NetLiquidation <- heure.1 <- NULL

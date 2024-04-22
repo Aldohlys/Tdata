@@ -28,11 +28,11 @@ if unknown then function returns -1}
 \item{close}{Boolean TRUE/FALSE, default is FALSE. if TRUE then retrieve last close price from IBKR, if FALSE then retrieve market price from IBKR}
 }
 \value{
-a data frmae with the following fields: \code{datetime} (formatted date and time), \code{sym} (ticker name), \code{price} (price as double)
+a data frame with the following fields: \code{datetime} (formatted date and time), \code{sym} (ticker name), \code{price} (price as double)
 }
 \description{
 Retrieves a price or a list of price from IBKR and
-returns a data frame with date and time (formatted), the list of tickers and corresponding prices.
+returns a data frame with date and time (formatted), the list of tickers and corresponding prices. Additionally store prices in DB Prices table (if different from NaN and not a close price)
 }
 \details{
 For a given ticker or a list of tickers, this function returns prices from IBKR.
@@ -41,8 +41,8 @@ If IBKR service is not available, it will return an error code and display an er
 \examples{
 \dontrun{
 getIBKRPrice(list_sym="SPY")
-getIBKRPrice(list_sec=c("IND","STK"), list_sym=c("ESTX50","USO"), list_currency=c("EUR","USD"),
-list_exchange = c("EUREX","SMART"))
+getIBKRPrice(list_sec=c("IND","STK","STK"), list_sym=c("ESTX50","USO","ABBN"),
+list_currency=c("EUR","USD","CHF"), list_exchange = c("EUREX","SMART","SMART"))
 getIBKRPrice(list_sym="USO",close=TRUE)
 }
 }
