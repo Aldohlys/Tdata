@@ -265,6 +265,55 @@ getIBKRPrice <- function(sec="STK", sym, currency="USD", exchange="SMART", reqTy
   ### Available readily if needed
   return(IBKRPrice)
 }
+
+
+#### Used by Ligne module
+###
+#'getOptPrice
+#'
+#'Retrieves an option price from IBKR. This function is not vectorized.
+#'
+#'For a given contract, this function returns a price from IBKR - it may be a last price or a mid price
+#'If IBKR service is not available, or option price not available, or contract does not exist, it will return an error code -1.
+#'@param sym string - IBKR style of ticker, if unknown then function returns -1
+#'@param right string - can be either P, C or Put, Call
+#'@param expiration string - expiration date, format is Y/M/D
+#'@param strike string or numeric - option strike
+#'@param currency string - either EUR, CHF or USD - default is USD
+#'@param exchange string - exchange like SMART, EUREX, CBOE,..., if unknown then function returns -1 - default is SMART
+#'@returns a number, either option value or -1 is not found
+#'@examples
+#'\dontrun{
+#'getOptPrice("SPX", "P", 5000, "20291220", "USD", "SMART", "SPX")
+#'getOptPrice("SPY", "Call", 500.0, as.Date("2026-12-18"), "USD", "SMART", "SPY")
+#'}
+#'@export
+getOptPrice = function(sym, right, strike, expiration, currency="USD", exchange="SMART", tradingClass) {
+  if (tradingClass == "Stock") {
+    Tbasics::display_error_message("A valid Trading Class must be provided!")
+    return(NA)
+  }
+
+  ### If necessary modify right
+  if (right =="Put") right = "P"
+  if (right == "Call") right = "C"
+
+  ### Case where expiration is a number
+  if (is.numeric(expiration)) expiration = as.character(expiration)
+  ### Case where expiration is a date
+  else if (lubridate::is.Date(expiration)) expiration = format(expiration,"%Y%m%d")
+  else if (!is.character(expiration)) stop("expiration date must be either a date, a number or a chracter string!")
+
+  strike=as.numeric(strike)
+  # message("NBBO Option value Sym:",sym," Type:",right," Strike:",strike," Expiration:",expiration,
+  #         " Currency:",currency," Exchange:",exchange," tradingClass:",tradingClass)
+  val = reticulate::py$getOptValue(sym=sym,strike=strike,expiration=expiration,
+                                 right=right,currency=currency,exchange=exchange,tradingClass=tradingClass)
+
+  if (is.null(val) || is.nan(val)) val=-1
+  return(val)
+}
+
 ####
 ###
 #' #'getStockPriceServer
