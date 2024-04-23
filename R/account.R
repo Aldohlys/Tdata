@@ -345,19 +345,21 @@ getIBKR <- function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
   #### 1. Process new currency data ##############
+  currency_pairs_data <- l[[4]]
+
   ### Retrieve last record date - date is in character format
   last_date <- as.Date(getCurrencyPairs()$date, "%Y%m%d")
 
   ### In case last record date is prior to today then look at the record
   ### Otherwise no reason to save it
   if (last_date != Sys.Date()) {
+    usd = data.frame(date = Sys.Date(),
+                     EUR = round(currency_pairs_data[1],4),
+                     CHF = round(currency_pairs_data[1],4))
+
     ### Verify that returned data from IBKR is correct
     if (!is.nan(usd$EUR) & !is.nan(usd$CHF)) {
-      currency_pairs_data <- l[[4]]
-      usd = data.frame(date = Sys.Date(),
-                       EUR = round(currency_pairs_data[1],4),
-                       CHF = round(currency_pairs_data[1],4))
-      DBI::dbAppendTable(conn, "CurrencyPairs", usd)
+     DBI::dbAppendTable(conn, "CurrencyPairs", usd)
     }
   }
 

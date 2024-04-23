@@ -153,10 +153,13 @@ convert_to_usd = function(amount,currency,EUR,CHF) {
 #'
 #' This function can be vectorized for \code{amount} and \code{currency}, but \code{date} MUST be unique.
 #'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF
-#'@param date date is the requested date, it can be in Date format or character. If format is character, then will be converted first.
+#'@param date date is the requested date, it can be a date, or character, or integer(numeric).
+#'If type is character/numeric, then \code{date} argument will be converted first to a date type using Y/M/D format.
 #'@keywords currency trading
 #'Examples
 #'convert_to_usd_date(100.45,"EUR",as.Date("2023-10-15"))
+#'convert_to_usd_date(200, "CHF", 20240421)
+#'convert_to_usd_date(200, "EUR", "20240421")
 #'convert_to_usd_date(c(10000,500),c("CHF","EUR"),as.Date("2021-01-09"))
 #'convert_to_usd_date(c(750.543,10),c("USD","EUR"),as.Date("2023-12-03"))
 #'convert_to_usd_date(c(750.543,10),"EUR",as.Date("2023-12-03"))
@@ -165,10 +168,14 @@ convert_to_usd_date = function(amount,currency,date) {
 
   if (length(date) != 1) stop("date must be of length 1!")
 
-  ### If date is of character type then convert it
+  ### If date is of numeric (i.e. integer) or character type then convert it
+  if (is.numeric(date)) date <- as.Date(as.character(date), "%Y%m%d")
   if (is.character(date)) date <- as.Date(date, "%Y%m%d")
 
+  ### Retrieve all currency pairs since beginning
   usd=getAllCurrencyPairs()
+
+  ### It is assumed here that dates are stored in character format in CurrencyPairs table
   usd$date = as.Date(usd$date,"%Y%m%d")
 
   ### This works only if date is of length 1

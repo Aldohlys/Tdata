@@ -31,6 +31,14 @@ test_that("Convert to USD a given amount in CHF and EUR", {
                c(1088.3, 2176.6))
 })
 
+###┼ Test currency convert using different date formats
+test_that("Convert to USD a given amount in CHF and EUR using different date formats", {
+  expect_equal(convert_to_usd_date(2000, "EUR", 20240421),
+              2133)
+  expect_equal(convert_to_usd_date(2000, "CHF", "20240421"),
+               2193)
+})
+
 ### 2021-01-08	EUR/USD 1.22714447975159	CHF/USD 1.12975203990936
 test_that("Convert to USD a vector of CHF and EUR as of 9.01.2023 - Value from 8.01.2023 is taken as 9.01 was not recorded",{
   expect_equal(round(convert_to_usd_date(c(10000,500),c("CHF","EUR"),as.Date("2021-01-09")),2),
