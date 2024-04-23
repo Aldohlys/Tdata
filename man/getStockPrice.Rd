@@ -15,13 +15,12 @@ getStockPrice(sym, close = FALSE)
 a value
 }
 \description{
-For a given ticker this function returns either the last close price from Yahoo service or the last stored price.
+For a given ticker or a vector of tickers, this function returns either the last close price from Yahoo service or the last stored price.
 }
 \details{
 This will depend upon close parameter. If close is TRUE then Yahoo service is used, otherwise data is retrieved from prices DB
 
-This function is not vectorized and accepts only one ticker at a time.
-If no price ticker exists in DB it will then return an empty line.
+This function is vectorized, if no price ticker exists in DB it will then return an empty line for the corresponding ticker.
 }
 \examples{
 \dontrun{

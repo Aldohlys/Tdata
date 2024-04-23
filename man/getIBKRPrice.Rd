@@ -5,23 +5,23 @@
 \title{getIBKRPrice}
 \usage{
 getIBKRPrice(
-  list_sec = "STK",
-  list_sym,
-  list_currency = "USD",
-  list_exchange = "SMART",
+  sec = "STK",
+  sym,
+  currency = "USD",
+  exchange = "SMART",
   reqType = 2,
   close = FALSE
 )
 }
 \arguments{
-\item{list_sec}{string or vector of strings- IBKR security type, either \code{STK} or \code{IND} or \code{OPT} or \code{FUT}, default is \code{STK}.
+\item{sec}{string or vector of strings- IBKR security type, either \code{STK} or \code{IND} or \code{OPT} or \code{FUT}, default is \code{STK}.
 if unknown then function returns -1}
 
-\item{list_sym}{string or vector of strings- IBKR style of ticker, if unknown then function returns -1}
+\item{sym}{string or vector of strings- IBKR style of ticker, if unknown then function returns -1}
 
-\item{list_currency}{string or vector of strings- list of currencies - either EUR, CHF or USD - default is USD}
+\item{currency}{string or vector of strings- list of currencies - either EUR, CHF or USD - default is USD}
 
-\item{list_exchange}{string or vector of strings- list of exchanges SMART, EUREX, CBOE,..., if unknown then function returns -1 - default is SMART}
+\item{exchange}{string or vector of strings- list of exchanges SMART, EUREX, CBOE,..., if unknown then function returns -1 - default is SMART}
 
 \item{reqType}{integer - should be either 2 or 4, default is 2}
 
@@ -40,9 +40,9 @@ If IBKR service is not available, it will return an error code and display an er
 }
 \examples{
 \dontrun{
-getIBKRPrice(list_sym="SPY")
-getIBKRPrice(list_sec=c("IND","STK","STK"), list_sym=c("ESTX50","USO","ABBN"),
-list_currency=c("EUR","USD","CHF"), list_exchange = c("EUREX","SMART","SMART"))
-getIBKRPrice(list_sym="USO",close=TRUE)
+getIBKRPrice(sym="SPY")
+getIBKRPrice(sec=c("IND","STK","STK"), sym=c("ESTX50","USO","ABBN"),
+lcurrency=c("EUR","USD","CHF"), exchange = c("EUREX","SMART","SMART"))
+getIBKRPrice(sym="USO",close=TRUE)
 }
 }

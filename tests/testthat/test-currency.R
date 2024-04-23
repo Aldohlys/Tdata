@@ -12,11 +12,11 @@ test_that("It is possible to retrieve CurrencyPairs table, and it contains more 
 #### Test getCurrencyPairs ########
 ## This one does not work well if one has to look up to IBKR
 test_that("Up to date currency pairs can be retrieved either from IBKR or from end-user.", {
-  expect_true({
-    skip("getCurrencyPairs")
-    tmp=getCurrencyPairs()
-    dplyr::is_tibble(tmp) && (nrow(tmp == 1))
-  })
+  last_currency_pairs = getCurrencyPairs()
+  expect_true(is.data.frame(last_currency_pairs))
+  expect_true(nrow(last_currency_pairs) == 1)
+  expect_true(is.character(last_currency_pairs$date))
+  expect_true(is.numeric(c(last_currency_pairs$EUR, last_currency_pairs$CHF)))
 })
 
 #### Test currency_convert #########

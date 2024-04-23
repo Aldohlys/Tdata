@@ -45,6 +45,17 @@ test_that("readLastPortfolio Live returns some data and columns are all authoriz
 })
 
 
+test_that("readLastPortfolio Gonet returns some data and columns are all authorized names", {
+  expect_true({
+    portf=readLastPortfolio("Gonet")
+    expect_true(identical(colnames(portf),
+                          c("TradeNr","date", "heure", "secType","symbol", "pos", "mktPrice",
+                            "mktValue", "avgCost", "unPnL",
+                            "currency", "type")))
+    expect_true(nrow(portf) >=1)
+  })
+})
+
 test_that("readAccount Simu  returns some data and columns look good", {
   expect_true({
     acc=readAccount("DU5221795")
@@ -59,7 +70,6 @@ test_that("readAccount Simu  returns some data and columns look good", {
 
 test_that("readAccount Gonet  returns some data and columns look good", {
   expect_true({
-    skip("Gonet")
     acc=readAccount("Gonet")
     identical(colnames(acc),  c("date","heure", "NetLiquidation",	"EquityWithLoanValue",	"FullAvailableFunds",
                                 "FullInitMarginReq",	"FullMaintMarginReq", "FullExcessLiquidity",

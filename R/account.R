@@ -20,7 +20,6 @@ readAccount = function(accountnr) {
   #                                            locale=locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   account_data = DBI::dbReadTable(conn,"Account")
-  DBI::dbDisconnect(conn)
 
   ### account	date	heure
   ### NetLiquidation	EquityWithLoanValue	FullAvailableFunds	FullInitMarginReq	FullMaintMarginReq
@@ -29,7 +28,12 @@ readAccount = function(accountnr) {
 
   ### Filter based upon account number and remove account number from result
   account_data = dplyr::filter(account_data,account==accountnr)
-  account_data = dplyr::select(account_data,-account)
+
+  #### Finalize SQL query to DB
+  account_data = dplyr::collect(dplyr::select(account_data,-account))
+
+  ### Close DB connection as no more necessary
+  DBI::dbDisconnect(conn)
 
   ### If there is at least one line then do conversion date and heure
   if (nrow(account_data) != 0) {
@@ -340,34 +344,34 @@ getIBKR <- function() {
   ### Open connection to user DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
-  currency_pairs_data <- l[[4]]
-  usd = data.frame(date = Sys.Date(),
-                   EUR = round(currency_pairs_data[1],4),
-                   CHF = round(currency_pairs_data[1],4))
-
-  ### Retrieve last record date
-  last_date <- getCurrencyPairs()$date
+  #### 1. Process new currency data ##############
+  ### Retrieve last record date - date is in character format
+  last_date <- as.Date(getCurrencyPairs()$date, "%Y%m%d")
 
   ### In case last record date is prior to today then look at the record
   ### Otherwise no reason to save it
   if (last_date != Sys.Date()) {
     ### Verify that returned data from IBKR is correct
     if (!is.nan(usd$EUR) & !is.nan(usd$CHF)) {
+      currency_pairs_data <- l[[4]]
+      usd = data.frame(date = Sys.Date(),
+                       EUR = round(currency_pairs_data[1],4),
+                       CHF = round(currency_pairs_data[1],4))
       DBI::dbAppendTable(conn, "CurrencyPairs", usd)
     }
   }
 
-  #### Process new account data
+  #### 2. Process new account data #################
   account_data = l[[1]]
   DBI::dbAppendTable(conn,"Account",account_data)
 
   account_type = switch(account_data$account,"U1804173"="Live","DU5221795"="Simu")
 
-  #### Process new prices for underlyings part of the portfolio
+  #### 3. Process new prices for underlyings part of the portfolio  ##########
   uprices_data = l[[2]]
   DBI::dbAppendTable(conn,"Prices",uprices_data)
 
-  #### Process portfolio last positions
+  #### Process portfolio last position #############
   portf_data = l[[3]]
 
   ### Retrieve opened trades
@@ -443,8 +447,8 @@ getGonet <- function() {
                                           function(sym_yahoo,orig_date,...){getSymPrice(sym_yahoo, orig_date)}))
 
   ### get prices from IBKR using list_sec= "STK", and otherwise values from GonetTrades
-  last_price <- getIBKRPrice(list_sym = portf$sym_ibkr, list_currency = portf$currency,
-                              list_exchange = portf$exchange)
+  last_price <- getIBKRPrice(sym = portf$sym_ibkr, currency = portf$currency,
+                              exchange = portf$exchange)
 
   #### Request user to enter prices where price = NaN
   price_user <- last_price[is.nan(last_price$price),]

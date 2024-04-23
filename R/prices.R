@@ -181,12 +181,11 @@ getLastTickerData = function(ticker) {
 ###
 #'getStockPrice
 #'
-#'For a given ticker this function returns either the last close price from Yahoo service or the last stored price.
+#'For a given ticker or a vector of tickers, this function returns either the last close price from Yahoo service or the last stored price.
 #'
 #'This will depend upon close parameter. If close is TRUE then Yahoo service is used, otherwise data is retrieved from prices DB
 #'
-#'This function is not vectorized and accepts only one ticker at a time.
-#'If no price ticker exists in DB it will then return an empty line.
+#'This function is vectorized, if no price ticker exists in DB it will then return an empty line for the corresponding ticker.
 #'@param sym string - IBKR style of ticker.
 #'@param close Boolean TRUE/FALSE if true then retrieve last close price else retrieve last stored price.
 #'@returns a value
@@ -228,43 +227,43 @@ getStockPrice = function(sym, close = FALSE) {
 #'
 #'For a given ticker or a list of tickers, this function returns prices from IBKR.
 #'If IBKR service is not available, it will return an error code and display an error message: 0 if no IBKR service, -1 if contract is unknown.
-#'@param list_sec string or vector of strings- IBKR security type, either \code{STK} or \code{IND} or \code{OPT} or \code{FUT}, default is \code{STK}.
+#'@param sec string or vector of strings- IBKR security type, either \code{STK} or \code{IND} or \code{OPT} or \code{FUT}, default is \code{STK}.
 #' if unknown then function returns -1
-#'@param list_sym string or vector of strings- IBKR style of ticker, if unknown then function returns -1
-#'@param list_currency string or vector of strings- list of currencies - either EUR, CHF or USD - default is USD
-#'@param list_exchange string or vector of strings- list of exchanges SMART, EUREX, CBOE,..., if unknown then function returns -1 - default is SMART
+#'@param sym string or vector of strings- IBKR style of ticker, if unknown then function returns -1
+#'@param currency string or vector of strings- list of currencies - either EUR, CHF or USD - default is USD
+#'@param exchange string or vector of strings- list of exchanges SMART, EUREX, CBOE,..., if unknown then function returns -1 - default is SMART
 #'@param reqType integer - should be either 2 or 4, default is 2
 #'@param close Boolean TRUE/FALSE, default is FALSE. if TRUE then retrieve last close price from IBKR, if FALSE then retrieve market price from IBKR
 #'@returns a data frame with the following fields: \code{datetime} (formatted date and time), \code{sym} (ticker name), \code{price} (price as double)
 #'@examples
 #'\dontrun{
-#'getIBKRPrice(list_sym="SPY")
-#'getIBKRPrice(list_sec=c("IND","STK","STK"), list_sym=c("ESTX50","USO","ABBN"),
-#'list_currency=c("EUR","USD","CHF"), list_exchange = c("EUREX","SMART","SMART"))
-#'getIBKRPrice(list_sym="USO",close=TRUE)
+#'getIBKRPrice(sym="SPY")
+#'getIBKRPrice(sec=c("IND","STK","STK"), sym=c("ESTX50","USO","ABBN"),
+#'lcurrency=c("EUR","USD","CHF"), exchange = c("EUREX","SMART","SMART"))
+#'getIBKRPrice(sym="USO",close=TRUE)
 #'}
 #'@export
-getIBKRPrice <- function(list_sec="STK", list_sym, list_currency="USD", list_exchange="SMART", reqType=2, close=FALSE) {
+getIBKRPrice <- function(sec="STK", sym, currency="USD", exchange="SMART", reqType=2, close=FALSE) {
 
   ### This will work even if list_sym is a vector and not the other IBKR contract components
-  list_price <- reticulate::py$getValue(list_sec, list_sym, list_currency, list_exchange, reqType, close)
+  IBKRPrice <- reticulate::py$getValue(sec, sym, currency, exchange, reqType, close)
 
   ### Error case do not go further on###
-  if (length(list_price) == 1) {
+  if (length(IBKRPrice) == 1) {
     Tbasics::display_error_message("IBKR data retrieval did not work - either no connection or contract does not exist")
-    return (list_price)
+    return (IBKRPrice)
   }
 
   ### Last close price should not be stored as date and time will be wrong (IBKR returned last day close data...)
   ### Also only prices that are different from NaN will be stored in DB
   if (!close) {
     myconn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-    DBI::dbAppendTable(myconn, "Prices", list_price[!is.nan(list_price$price),])
+    DBI::dbAppendTable(myconn, "Prices", IBKRPrice[!is.nan(IBKRPrice$price),])
     DBI::dbDisconnect(myconn)
   }
 
   ### Available readily if needed
-  return(list_price)
+  return(IBKRPrice)
 }
 ####
 ###

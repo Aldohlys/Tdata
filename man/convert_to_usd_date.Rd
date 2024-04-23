@@ -9,7 +9,7 @@ convert_to_usd_date(amount, currency, date)
 \arguments{
 \item{amount, currency}{amount is the number to be converted, currency is a string whose value is either EUR, CHF}
 
-\item{date}{date is the requested date, it must be in Date format}
+\item{date}{date is the requested date, it can be in Date format or character. If format is character, then will be converted first.}
 }
 \description{
 This function converts the amount of currency into USD, using EUR and CHF currency pairs values for a given date
