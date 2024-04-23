@@ -10,8 +10,9 @@
 #'@param sym one or a vector of symbols
 #'@param from_date a start date from which to retrieve symbols
 #'@param to_date a end date to which to retrieve symbols - Default is today
-#'@returns a list of list: each list contains the list of prices and volume: Open, Close, Low, High, Volume and Adjusted
+#'@returns a list of list: each list contains for one symbol the list of prices and volume: Open, Close, Low, High, Volume and Adjusted
 #'@keywords Yahoo
+#'@export
 getSymIntervalDate = function(sym, from_date, to_date = Sys.Date()) {
 
   if (length(from_date) != 1) stop("length from_date must be equal to 1!")

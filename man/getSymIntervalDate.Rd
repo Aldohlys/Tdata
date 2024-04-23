@@ -14,7 +14,7 @@ getSymIntervalDate(sym, from_date, to_date = Sys.Date())
 \item{to_date}{a end date to which to retrieve symbols - Default is today}
 }
 \value{
-a list of list: each list contains the list of prices and volume: Open, Close, Low, High, Volume and Adjusted
+a list of list: each list contains for one symbol the list of prices and volume: Open, Close, Low, High, Volume and Adjusted
 }
 \description{
 This function gets from Yahoo service all values (Open, High, Low, Close, Volume and Adjusted)

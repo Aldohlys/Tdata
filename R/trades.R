@@ -136,8 +136,8 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
 #' It works by matching all trade number arguments against corresponding trade dates found in Trades.csv
 #' Then the oldest date per trade is returned, plus still active expiration/active opening date (for existing position only)
 #' plus strategy.
-#' If the same trade number is present multiple times, then risk and reward data will be repeated
-#' This is useful for mass getRnR calls
+#' If the same trade number is present multiple times as input, then all output data will be repeated as many times
+#' This is useful for mass getOpenDate calls
 #'
 #'@param trade_nr an integer or a vector of integers
 #'@return a data frame including:
