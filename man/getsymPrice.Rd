@@ -7,22 +7,24 @@
 getSymPrice(sym, report_date = Sys.Date() - 1)
 }
 \arguments{
-\item{sym}{ticker name, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.}
+\item{sym}{ticker name or list of tickers, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.}
 
-\item{report_date}{date, any date prior to today. Default is yesterday.}
+\item{report_date}{date ot list of dates, any date prior to today. Default is yesterday.}
 }
 \description{
-This function retrieves an historical price of one or several tickers from Yahoo download service at a given date
+This function retrieves an historical price of one or several tickers
+from Yahoo download service for one date or for a vector of dates.
 }
 \details{
 It will look for adjusted price from Yahoo. This function works only for previous days, not for today.
 It will look around \code{report_date} to make sure it grasps at least one date with values from Yahoo.
-It can be a closed day. In this case, nearest day will be taken (i.e. Monday for Sunday and Friday for Saturday)
+It can be a closed day. In this case, nearest day will be taken (i.e. Monday for Sunday and Friday for Saturday).
 }
 \examples{
 \dontrun{
 getSymPrice("SPY")
 getSymPrice(c("SPY","XSP"))
 getSymPrice(c("ESTX50","DTLA"),as.Date("2024-04-15"))
+getSymPrice(c("SPY","USO",as.Date("2024-04-15"), as.Date("2024-04-17")))
 }
 }

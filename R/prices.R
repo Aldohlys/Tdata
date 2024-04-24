@@ -40,18 +40,18 @@ getSym = function(sym){
 #'
 #' This function retrieves all values from Yahoo starting from CurrentTradesInitialDate - see config.yml file at user level directory
 #' This function calls \code{getSymFromDate} with one or a vector of tickers.
-#'@param sym_list one or a vector of symbols
+#'@param sym one or a vector of symbols
 #'@param from_date a start date from which to retrieve symbols
 #'@param to_date a end date to which to retrieve symbols - Default is today
 #'@returns a xts matrix: each column of data contains the adjusted prices - column name is the symbol name
-#'@examples getSymPriceIntervalDate(sym_list=c("SPY","FNV","USO"),as.Date("2023-01-02"))
+#'@examples getSymPriceIntervalDate(sym=c("SPY","FNV","USO"),as.Date("2023-01-02"))
 #'@export
-getSymPriceIntervalDate = function(sym_list, from_date, to_date = Sys.Date()){
+getSymPriceIntervalDate = function(sym, from_date, to_date = Sys.Date()){
 
   if (length(from_date) != 1) stop("length from_date must be equal to 1!")
   if (length(to_date) != 1) stop("length to_date must be equal to 1!")
 
-  sym_OHLC = getSymIntervalDate(sym_list, from_date, to_date)
+  sym_OHLC = getSymIntervalDate(sym, from_date, to_date)
 
   sym_all = purrr::reduce(sym_OHLC, \(acc, x) cbind(acc, x) )
   adj_sym = sym_all[,grepl("Adjusted", names(sym_all))]
@@ -64,40 +64,63 @@ getSymPriceIntervalDate = function(sym_list, from_date, to_date = Sys.Date()){
 
 #'   getSymPrice
 #'
-#'This function retrieves an historical price of one or several tickers from Yahoo download service at a given date
+#'This function retrieves an historical price of one or several tickers
+#'from Yahoo download service for one date or for a vector of dates.
 #'
 #'It will look for adjusted price from Yahoo. This function works only for previous days, not for today.
 #'It will look around \code{report_date} to make sure it grasps at least one date with values from Yahoo.
-#'It can be a closed day. In this case, nearest day will be taken (i.e. Monday for Sunday and Friday for Saturday)
+#'It can be a closed day. In this case, nearest day will be taken (i.e. Monday for Sunday and Friday for Saturday).
 #'
-#'@param sym ticker name, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.
-#'@param report_date date, any date prior to today. Default is yesterday.
+#'
+#'@param sym ticker name or list of tickers, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.
+#'@param report_date date ot list of dates, any date prior to today. Default is yesterday.
 #'@examples \dontrun{
 #'getSymPrice("SPY")
 #'getSymPrice(c("SPY","XSP"))
 #'getSymPrice(c("ESTX50","DTLA"),as.Date("2024-04-15"))
+#'getSymPrice(c("SPY","USO",as.Date("2024-04-15"), as.Date("2024-04-17")))
 #'}
 #'@export
 getSymPrice = function(sym, report_date = Sys.Date() - 1){
 
-  if (length(report_date) != 1) stop("report_date must be equal to 1!")
-  if (report_date > Sys.Date() - 1) stop("report_date must be prior today!")
+  ### If only one date as input then recycle it to symbols list length
+  if (length(report_date) == 1) report_date = rep(report_date, length(sym))
 
-  ### First case - requested date is an holiday or requested date is not today
-  ### Get last close price in this case
-  ### Take prices list 5 days before report_date to be sure to grasp at least one business day among these 5 days
-  if (report_date == Sys.Date() - 1) prices_list <- getSymPriceIntervalDate(sym, report_date - 5, report_date + 1)
-  else prices_list <- getSymPriceIntervalDate(sym, report_date - 5, report_date + 2)
+  ### IN all other cases both lengths must be equal
+  if (length(sym) != length(report_date)) stop("report_date and sym must have same length or report date length must be equal to 1!")
 
-  #### find nearest date to report_date, report_date becomes the nearest recorded day in Yahoo
-  #### Monday date will be taken for Sunday, and Friday for Saturday
-  report_date = Tbasics::findNearestNumberOrDate(as.Date(zoo::index(prices_list)), report_date)
+  #if (length(report_date) != 1) stop("report_date must be equal to 1!")
+  if (any(report_date > Sys.Date() - 1)) stop("report_date must be prior today!")
 
-  ### Extract prices line for report_date
-  prices = prices_list[report_date]
+  getSymPriceOneDate <- function(sym, one_date) {
+    ### First case - requested date is an holiday or requested date is not today
+    ### Get last close price in this case
+    ### Take prices list 5 days before one_date to be sure to grasp at least one business day among these 5 days
+    if (one_date == Sys.Date() - 1) prices_list <- getSymPriceIntervalDate(sym, one_date - 5, one_date + 1)
+    else prices_list <- getSymPriceIntervalDate(sym, one_date - 5, one_date + 2)
 
-  ### convert xts object to numeric vector
-  return(as.numeric(prices))
+    ### Find nearest date to one_date, one_date becomes the nearest recorded day in Yahoo
+    ### Monday date will be taken for Sunday, and Friday for Saturday
+    one_date = Tbasics::findNearestNumberOrDate(as.Date(zoo::index(prices_list)), one_date)
+
+    ### Extract prices line for one_date
+    prices = prices_list[one_date]
+
+    ### Convert xts object to numeric vector
+    prices_num = as.numeric(prices)
+
+    return(prices_num)
+  }
+
+
+  l_prices <- unlist(purrr::map2(sym, report_date, function(sym, date){
+    prices <- getSymPriceOneDate(sym, date)
+  }))
+
+  l_prices
+  ### print(l_prices)
+  ### xts::xts(l_prices, order.by = report_date)
+  ### data.frame(l_prices, row.names = NULL)
 }
 
 ###

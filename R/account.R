@@ -445,8 +445,7 @@ getGonet <- function() {
   }
 
   ### compute the average cost using adjusted Yahoo prices - this may have changed since last call due to dividend payout
-  portf$orig_adjusted_price = unlist(purrr::pmap_dbl(portf,
-                                          function(sym_yahoo,orig_date,...){getSymPrice(sym_yahoo, orig_date)}))
+  portf = dplyr::mutate(portf, orig_adjusted_price = getSymPrice(sym_yahoo, orig_date))
 
   ### get prices from IBKR using list_sec= "STK", and otherwise values from GonetTrades
   last_price <- getIBKRPrice(sym = portf$sym_ibkr, currency = portf$currency,

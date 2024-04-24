@@ -4,10 +4,10 @@
 \alias{getSymPriceIntervalDate}
 \title{getSymPriceIntervalDate}
 \usage{
-getSymPriceIntervalDate(sym_list, from_date, to_date = Sys.Date())
+getSymPriceIntervalDate(sym, from_date, to_date = Sys.Date())
 }
 \arguments{
-\item{sym_list}{one or a vector of symbols}
+\item{sym}{one or a vector of symbols}
 
 \item{from_date}{a start date from which to retrieve symbols}
 
@@ -21,5 +21,5 @@ This function retrieves all values from Yahoo starting from CurrentTradesInitial
 This function calls \code{getSymFromDate} with one or a vector of tickers.
 }
 \examples{
-getSymPriceIntervalDate(sym_list=c("SPY","FNV","USO"),as.Date("2023-01-02"))
+getSymPriceIntervalDate(sym=c("SPY","FNV","USO"),as.Date("2023-01-02"))
 }
