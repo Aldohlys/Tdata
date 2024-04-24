@@ -353,9 +353,9 @@ getIBKR <- function() {
   ### In case last record date is prior to today then look at the record
   ### Otherwise no reason to save it
   if (last_date != Sys.Date()) {
-    usd = data.frame(date = Sys.Date(),
+    usd = data.frame(date = as.integer(format(Sys.Date(),"%Y%m%d")),
                      EUR = round(currency_pairs_data[1],4),
-                     CHF = round(currency_pairs_data[1],4))
+                     CHF = round(currency_pairs_data[2],4))
 
     ### Verify that returned data from IBKR is correct
     if (!is.nan(usd$EUR) & !is.nan(usd$CHF)) {
