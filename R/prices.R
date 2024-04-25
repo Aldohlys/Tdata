@@ -74,24 +74,35 @@ getSymPriceIntervalDate = function(sym, from_date, to_date = Sys.Date()){
 #'
 #'@param sym ticker name or list of tickers, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.
 #'@param report_date date ot list of dates, any date prior to today. Default is yesterday.
+#'@return a vector of prices (even if multiple dates and multiple symbols), ordered by symbols and then by date for each symbol.
+#'If no data could be retrieved (for instance report_date is today) then display error message and returns NA
 #'@examples \dontrun{
 #'getSymPrice("SPY")
 #'getSymPrice(c("SPY","XSP"))
 #'getSymPrice(c("ESTX50","DTLA"),as.Date("2024-04-15"))
-#'getSymPrice(c("SPY","USO",as.Date("2024-04-15"), as.Date("2024-04-17")))
+#'getSymPrice(c("SPY","USO"),c(as.Date("2024-04-15"), as.Date("2024-04-17")))
 #'}
 #'@export
 getSymPrice = function(sym, report_date = Sys.Date() - 1){
 
+  ### Keep only report_date that is prior to today
+  report_date <- report_date[report_date < Sys.Date()]
+
+  ### test if there is no report_date prior to today - in this case dispaly error message and returns NA
+  if (length(report_date) == 0) {
+    Tbasics::display_error_message("report_date must be prior today!")
+    return(NA)
+  }
   ### If only one date as input then recycle it to symbols list length
   if (length(report_date) == 1) report_date = rep(report_date, length(sym))
 
-  ### IN all other cases both lengths must be equal
-  if (length(sym) != length(report_date)) stop("report_date and sym must have same length or report date length must be equal to 1!")
+  ### In any case both lengths must be equal
+  if (length(sym) != length(report_date)) {
+    Tbasics::display_error_message("report_date and sym must have same length or report date length must be equal to 1!")
+    return(NA)
+  }
 
-  #if (length(report_date) != 1) stop("report_date must be equal to 1!")
-  if (any(report_date > Sys.Date() - 1)) stop("report_date must be prior today!")
-
+  ### Define a function for getSymPrice purpose as getSymPriceIntervalDate cannot be vectorized
   getSymPriceOneDate <- function(sym, one_date) {
     ### First case - requested date is an holiday or requested date is not today
     ### Get last close price in this case

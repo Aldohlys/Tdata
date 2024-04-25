@@ -12,6 +12,12 @@ test_that("It is possible to retrieve correctly a price for a ticker and a given
   )
 })
 
+test_that("If I try to retrieve a price for a date in the future then it returns NA and display error message", {
+  expect_true(
+    is.na(getSymPrice(c("SPY","USO"),c(as.Date("2099-04-26"))))
+  )
+})
+
 test_that("It is possible to retrieve correctly prices for a list of tickers for a given date", {
   expect_equal(
     round(getSymPrice(c("GOOG","AAPL","ESTX50"),c(as.Date("2023-11-03"), as.Date("2023-11-03"), as.Date("2023-11-03")))),

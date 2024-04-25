@@ -11,6 +11,10 @@ getSymPrice(sym, report_date = Sys.Date() - 1)
 
 \item{report_date}{date ot list of dates, any date prior to today. Default is yesterday.}
 }
+\value{
+a vector of prices (even if multiple dates and multiple symbols), ordered by symbols and then by date for each symbol.
+If no data could be retrieved (for instance report_date is today) then display error message and returns NA
+}
 \description{
 This function retrieves an historical price of one or several tickers
 from Yahoo download service for one date or for a vector of dates.
@@ -25,6 +29,6 @@ It can be a closed day. In this case, nearest day will be taken (i.e. Monday for
 getSymPrice("SPY")
 getSymPrice(c("SPY","XSP"))
 getSymPrice(c("ESTX50","DTLA"),as.Date("2024-04-15"))
-getSymPrice(c("SPY","USO",as.Date("2024-04-15"), as.Date("2024-04-17")))
+getSymPrice(c("SPY","USO"),c(as.Date("2024-04-15"), as.Date("2024-04-17")))
 }
 }
