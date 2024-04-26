@@ -120,7 +120,7 @@ readPortfolio = function(portfname) {
 #'
 #'
 #' Data wrangling:
-#' 1. format with right internal R Date format and heure HMS format: date and expdate fields
+#' 1. format with right internal R Date format and heure HMS format: date and expdate (if it exists) fields
 #'
 #'
 #'@param portfname is a string whose value is actual portfolio table name in DB
@@ -163,7 +163,7 @@ readLastPortfolio <- function(portfname) {
   ### NB date is stored as integer in DB so conversion to character is really necessary - not to be fancy
   last_portf$date <- as.Date(as.character(last_portf$date),"%Y%m%d")
   last_portf$heure <- hms::parse_hms(last_portf$heure)
-  last_portf$expdate <- as.Date(as.character(last_portf$expdate),"%Y%m%d")
+  if ("expdate" %in% colnames(last_portf)) last_portf$expdate <- as.Date(as.character(last_portf$expdate),"%Y%m%d")
 
   return(last_portf)
 }
