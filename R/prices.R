@@ -103,12 +103,12 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1){
   }
 
   ### Define a function for getSymPrice purpose as getSymPriceIntervalDate cannot be vectorized
-  getSymPriceOneDate <- function(sym, one_date) {
+  getSymPriceOne <- function(one_sym, one_date) {
     ### First case - requested date is an holiday or requested date is not today
     ### Get last close price in this case
     ### Take prices list 5 days before one_date to be sure to grasp at least one business day among these 5 days
-    if (one_date == Sys.Date() - 1) prices_list <- getSymPriceIntervalDate(sym, one_date - 5, one_date + 1)
-    else prices_list <- getSymPriceIntervalDate(sym, one_date - 5, one_date + 2)
+    if (one_date == Sys.Date() - 1) prices_list <- getSymPriceIntervalDate(one_sym, one_date - 5, one_date + 1)
+    else prices_list <- getSymPriceIntervalDate(one_sym, one_date - 5, one_date + 2)
 
     ### Find nearest date to one_date, one_date becomes the nearest recorded day in Yahoo
     ### Monday date will be taken for Sunday, and Friday for Saturday
@@ -123,13 +123,10 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1){
     return(prices_num)
   }
 
-
-  l_prices <- unlist(purrr::map2(sym, report_date, function(sym, date){
-    prices <- getSymPriceOneDate(sym, date)
-  }))
-
-  l_prices
+  l_prices <- unlist(purrr::map2(sym, report_date, getSymPriceOne))
+  return(l_prices)
   ### print(l_prices)
+  ### Other possible return value types: as dor now it is a simple vector of double
   ### xts::xts(l_prices, order.by = report_date)
   ### data.frame(l_prices, row.names = NULL)
 }

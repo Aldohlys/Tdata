@@ -5,6 +5,10 @@ test_that("It is possible to retrieve correctly list of prices for a ticker and 
   })
 })
 
+test_that("It is possible to retrieve correctly a price for a ticker without date", {
+  expect_type(getSymPrice("ESTX50"), "double")
+})
+
 test_that("It is possible to retrieve correctly a price for a ticker and a given date", {
   expect_equal(
     round(getSymPrice("GOOG",as.Date("2023-11-03"))),
@@ -20,8 +24,15 @@ test_that("If I try to retrieve a price for a date in the future then it returns
 
 test_that("It is possible to retrieve correctly prices for a list of tickers for a given date", {
   expect_equal(
-    round(getSymPrice(c("GOOG","AAPL","ESTX50"),c(as.Date("2023-11-03"), as.Date("2023-11-03"), as.Date("2023-11-03")))),
+    round(getSymPrice(c("GOOG","AAPL","ESTX50"),
+                      as.Date("2023-11-03"))),
     c(130, 176, 4175)
+  )
+})
+
+test_that("Trying to return one ticker for a set of dates will not work",{
+  expect_true(
+    is.na(getSymPrice(c("SPY"),c(as.Date("2024-01-10"), as.Date("2024-02-15"), as.Date("2024-02-18"))))
   )
 })
 
