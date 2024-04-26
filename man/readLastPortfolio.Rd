@@ -11,8 +11,8 @@ readLastPortfolio(portfname)
 }
 \value{
 a data frame with the following columns:
-\code{TradeNr; date; heure; secType; symbol; expdate; strike; right(*); pos}
-\code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend}
+\code{TradeNr; date; heure; secType; symbol; expdate; strike; right(*); pos; }
+\code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend; }
 \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument}
 
 \code{right} comes only for simulated account
@@ -24,7 +24,7 @@ and performs a bit of data wrangling before returning a data frame with all data
 \details{
 Data wrangling:
 \enumerate{
-\item formats it with right internal R Date format and heure HMS format
+\item format with right internal R Date format and heure HMS format: date and expdate (if it exists) fields
 }
 }
 \examples{

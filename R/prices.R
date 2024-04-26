@@ -313,6 +313,7 @@ getIBKRPrice <- function(sec="STK", sym, currency="USD", exchange="SMART", reqTy
 #'@param strike string or numeric - option strike
 #'@param currency string - either EUR, CHF or USD - default is USD
 #'@param exchange string - exchange like SMART, EUREX, CBOE,..., if unknown then function returns -1 - default is SMART
+#'@param tradingClass string - this is ncessary to retrieve the correct chain for determining price - no default
 #'@returns a number, either option value or -1 is not found
 #'@examples
 #'\dontrun{

@@ -37,3 +37,8 @@ unPnL <- cost <- avgCost <- orig_adjusted_price <- mktValue <- NULL
 
 ## add for getAccountGonet
 mktValue <- unPnL <- TotalCashBalance <- StockMarketValue <- NetLiquidation <- heure.1 <- NULL
+
+### add for getInstrument
+InitialTradeDate <- Ssjacent <- u_price <- interest_rate <- DTE <- Prix <- IV <- NULL
+
+

@@ -622,5 +622,4 @@ getAccountLive <- function() {
   ### Stored in DB the Live account record
   DBI::dbAppendTable(conn, "Account", data)
   DBI::dbDisconnect(conn)
-
 }
