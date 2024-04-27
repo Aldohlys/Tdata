@@ -26,6 +26,8 @@ getOptPrice(
 \item{currency}{string - either EUR, CHF or USD - default is USD}
 
 \item{exchange}{string - exchange like SMART, EUREX, CBOE,..., if unknown then function returns -1 - default is SMART}
+
+\item{tradingClass}{string - this is ncessary to retrieve the correct chain for determining price - no default}
 }
 \value{
 a number, either option value or -1 is not found

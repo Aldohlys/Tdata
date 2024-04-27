@@ -7,15 +7,17 @@
 getInstrument(account, instrument)
 }
 \arguments{
-\item{account}{string, account name to filter into trades for the right account}
+\item{account}{string or a vector of strings, account names in order to filter trades with the right account}
 
 \item{instrument}{an instrument or a list of instruments as input data}
 }
 \value{
-a data frame, and for each instrument the following fields: \code{InitialTradeDate, startPrice, DTE, u_price} and \code{IV}.
+a data frame, and for each instrument the following fields: \code{initial_trade_date, startPrice, DTE, u_price} and \code{startIV}.
+If an instrument does not exist or is closed, then NA will be returned for this instrument
 }
 \description{
-This function returns price, implied volatility information related to the openning trade for an instrument that is currently opened/adjuste.
+This function returns initial trade date, price, implied volatility and DTE at initial trade time
+information related to the opening trade for an instrument that is currently opened/adjuste.
 }
 \details{
 It queries the Trades table and gets the initial trade opening date, as well as its price (without commission though).

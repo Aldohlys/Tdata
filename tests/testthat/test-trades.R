@@ -10,6 +10,13 @@ getTestTrades = function() {
   alltrades
 }
 
+getTestInstrumentQuery <- function(conn, account, instr) {
+  return(DBI::dbGetQuery(conn,
+                         "SELECT Prix As startPrice,`Exp.Date` as expdate, Ssjacent as symbol, min(TradeDate) AS initial_trade_date FROM TestTrades WHERE Account = ? AND Instrument = ? AND (Statut ='Ouvert' OR Statut = 'Ajust\U00e9')",
+                         params=list(account, instr)))
+
+}
+
 
 # This function returns TRUE wherever elements are the same, including NA's,
 # and FALSE everywhere else.
@@ -18,6 +25,46 @@ compareNA <- function(v1,v2) {
   same[is.na(same)] <- FALSE
   return(same)
 }
+
+test_that("It is possible to retrieve one instrument in one account", {
+  with_mocked_bindings(
+    getInstrumentQuery = getTestInstrumentQuery, {
+      df = getInstrument(account=c("U1804173"),instrument=c("CCJ 19APR24 36 P"))
+      expect_equal(df,
+                   data.frame(initial_trade_date= as.Date("2024-02-23"),
+                              startPrice= 0.69,  DTE=56.88, u_price =40.189999,
+                              startIV=  0.379))
+    })
+})
+
+test_that("getInstrument is checked for account and instrument lengths",{
+  with_mocked_bindings(
+    getInstrumentQuery = getTestInstrumentQuery, {
+      df = getInstrument(account=c("U1804173","U1804173"),instrument=c("SPY 21JUN24 525 P"))
+      expect_true(is.na(df))
+    })
+})
+
+test_that("getInstrument returns NA for instrument that are closed",{
+  with_mocked_bindings(
+    getInstrumentQuery = getTestInstrumentQuery, {
+      df = getInstrument(account="U1804173",instrument="SLV 17MAR23 20 P")
+      expect_true(all(is.na(df)))
+    })
+})
+
+test_that("It is possible to retrieve multiple instruments from one account", {
+  with_mocked_bindings(
+    getInstrumentQuery = getTestInstrumentQuery, {
+      df = getInstrument(account=c("U1804173","U1804173"),instrument=c("CCJ 19APR24 36 P",
+                                                                       "SPY 21JUN24 525 P"))
+      expect_equal(df,
+                   data.frame(initial_trade_date= c(as.Date("2024-02-23"),as.Date("2024-03-21")),
+                              startPrice= c(0.69, 11.37),  DTE= c(56.88, 92.88), u_price = c(40.19,522.20),
+                              startIV=  c(0.379, 0.129)),
+                   tolerance = 0.001)
+    })
+})
 
 test_that("It is possible to retrieve a trade number for a single instrument", {
   with_mocked_bindings(

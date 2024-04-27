@@ -68,17 +68,27 @@ getToday = function() {
   Sys.Date()
 }
 
+### This function is useful for test purposes
+getInstrumentQuery <- function(conn, account, instr) {
+  return(DBI::dbGetQuery(conn,
+                          "SELECT Prix As startPrice,`Exp.Date` as expdate, Ssjacent as symbol, min(TradeDate) AS initial_trade_date FROM Trades WHERE Account = ? AND Instrument = ? AND (Statut ='Ouvert' OR Statut = 'Ajust\U00e9')",
+                          params=list(account, instr)))
+
+}
+
 ############################
 #'   getInstrument
 #'
-#'This function returns price, implied volatility information related to the openning trade for an instrument that is currently opened/adjuste.
+#'This function returns initial trade date, price, implied volatility and DTE at initial trade time
+#'information related to the opening trade for an instrument that is currently opened/adjuste.
 #'
 #'It queries the Trades table and gets the initial trade opening date, as well as its price (without commission though).
 #'It then retrieves interest rate at the time of opening, computes DTE and then deduce its implied volatility. It assumes dividend = 0 in IV computation.
 #'
-#'@param account string, account name to filter into trades for the right account
+#'@param account string or a vector of strings, account names in order to filter trades with the right account
 #'@param instrument an instrument or a list of instruments as input data
-#'@returns a data frame, and for each instrument the following fields: \code{InitialTradeDate, startPrice, DTE, u_price} and \code{IV}.
+#'@returns a data frame, and for each instrument the following fields: \code{initial_trade_date, startPrice, DTE, u_price} and \code{startIV}.
+#'If an instrument does not exist or is closed, then NA will be returned for this instrument
 #'@export
 #'@examples
 #'\dontrun{
@@ -86,46 +96,65 @@ getToday = function() {
 #'}
 getInstrument <- function(account, instrument) {
 
-  get_init_info <- function(instr) {
-    data <- DBI::dbGetQuery(conn,
-                            "SELECT Prix,`Exp.Date`, Ssjacent, min(TradeDate) AS InitialTradeDate FROM Trades WHERE Account = ? AND Instrument = ? AND (Statut ='Ouvert' OR Statut = 'Ajust\U00e9')",
-                            params=list(account, instr))
+  get_init_info <- function(account, instr) {
+    ### Convert account name to Live/Simu as per trade
+    account = switch(account, "U1804173"="Live", "DU5221795"="Simu")
+    na_data = data.frame(initial_trade_date=NA, startPrice=NA, DTE=NA, u_price=NA, startIV=NA)
+    data = getInstrumentQuery(conn, account, instr)
     type= strsplit(instr, "\\s+")[[1]][4]
 
+    if (is.na(data$initial_trade_date)) {
+      Tbasics::display_error_message("getInstrument: instrument does not exist or is closed!")
+      return(na_data)
+    }
+    else if (is.na(type)) {
+      Tbasics::display_error_message("getInstrument: one instrument is not a Call or a Put!")
+      return(na_data)
+    }
+
     ### If type is not NA then it is a call or a put
-    if(!is.na(type)) {
+    else {
       ## Rewrite option type into Call or Put
       type= switch(type, "C"="Call", "P"="Put")
 
       ### Retrieve strike
       strike = as.numeric(strsplit(instr, "\\s+")[[1]][3])
 
-      data = dplyr::mutate(data, Exp.Date = as.Date(Exp.Date,"%d.%m.%Y"), InitialTradeDate = as.Date(as.character(InitialTradeDate),"%Y%m%d"))
-      data = dplyr::mutate(data, interest_rate = Tbasics::getInterestRate(InitialTradeDate,
-                                                                          difftime(Exp.Date, InitialTradeDate, units="weeks")))
+      data = dplyr::mutate(data, expdate = as.Date(expdate,"%d.%m.%Y"),
+                           initial_trade_date = as.Date(as.character(initial_trade_date),"%Y%m%d"))
+      data = dplyr::mutate(data, interest_rate = Tbasics::getInterestRate(initial_trade_date,
+                                                                          difftime(expdate, initial_trade_date, units="weeks")))
       ### Compute DTE from InitialStartDate till Exp.Date
-      data = dplyr::mutate(data, DTE = Tbasics::getDTE(InitialTradeDate, Exp.Date))
-      data = dplyr::mutate(data, u_price = getSymPrice(Ssjacent, report_date=InitialTradeDate))
-      data = dplyr::mutate(data, IV = Tbasics::getImpliedVolOpt(type, u_price, strike, interest_rate, DTE, div=0, Prix))
+      data = dplyr::mutate(data, DTE = Tbasics::getDTE(initial_trade_date, expdate))
+      data = dplyr::mutate(data, u_price = getSymPrice(symbol, report_date=initial_trade_date))
+      data = dplyr::mutate(data, startIV = Tbasics::getImpliedVolOpt(type, u_price, strike, interest_rate, DTE, div=0, startPrice))
+
+      ### Select and return information of interest only
+      data = dplyr::select(data, initial_trade_date, startPrice, DTE, u_price, startIV)
       return(data)
     }
-    return(NA)
   }
 
-  ### Convert account name to Live/Simu as per trade
-  account = switch(account, "U1804173"="Live", "DU5221795"="Simu")
 
   ### Open connection with DB to query trades table in get_init_info
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
+  ### Recycle account up to instrument length
+  if (length(account) == 1) account = rep(account, length(instrument))
+
+  #### Error case handling
+  if (length(account) != length(instrument)) {
+    Tbasics::display_error_message("getInstrument: Account and instrument must have the same length!")
+    DBI::dbDisconnect(conn)
+    return(NA)
+  }
+
   ### Apply get_init_info to each member of instrument vector
-  v_instr <- dplyr::bind_rows(purrr::map(instrument,  get_init_info))
+  v_instr <- dplyr::bind_rows(purrr::map2(account, instrument,  get_init_info))
 
   ### CLose DB connection
   DBI::dbDisconnect(conn)
 
-  ### Return information of interest only
-  v_instr <- dplyr::select(v_instr, InitialTradeDate, startPrice=Prix, DTE, u_price, IV)
   return(v_instr)
 }
 
