@@ -271,7 +271,8 @@ greeksNet = function(portf) {
     usd=getCurrencyPairs()
     EUR=usd$EUR
     CHF=usd$CHF
-    portf=dplyr::mutate(portf,uPrice=as.numeric(purrr::map2(uPrice,currency,convert_to_usd,EUR,CHF)))
+    CAD=usd$CAD
+    portf=dplyr::mutate(portf,uPrice=as.numeric(purrr::map2(uPrice, currency, convert_to_usd, EUR, CHF, CAD)))
 
     #### portf is grouped by datetime
     #### Therefore summarize will do the computation per datetime
