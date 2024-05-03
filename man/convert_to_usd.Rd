@@ -4,12 +4,12 @@
 \alias{convert_to_usd}
 \title{convert_to_usd}
 \usage{
-convert_to_usd(amount, currency, EUR, CHF)
+convert_to_usd(amount, currency, EUR, CHF, CAD)
 }
 \arguments{
 \item{amount, currency}{amount is the number to be converted, currency is a string whose value is either EUR, CHF}
 
-\item{EUR, CHF}{EUR is the value of 1 euro in USD, CHF is the value of 1 CHF in USD}
+\item{EUR, CHF, CAD}{EUR (resp. CHF, CAD) is the value of 1 euro (resp. CHF, CAD) in USD}
 }
 \description{
 This function converts the amount of currency into USD, using EUR and CHF currency pairs values
@@ -20,6 +20,7 @@ It merely performs a multiplication of the amount by currency pair value. This f
 \keyword{Examples}
 \keyword{convert_to_usd(100.45,"EUR",1.09,1.14)}
 \keyword{convert_to_usd(c(10000,500),c("CHF","EUR"),1.09,1.14)}
+\keyword{convert_to_usd(c(500,10),c("CAD","EUR"),0.788,1.14)}
 \keyword{convert_to_usd(c(750.543,10),c("USD","EUR"),1.09,1.14)}
 \keyword{currency}
 \keyword{trading}

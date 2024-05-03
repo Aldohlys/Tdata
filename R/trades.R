@@ -17,11 +17,11 @@
 #'@export
 saveTrades = function(trades) {
 
-  file.copy(from=paste0(config::get("DirNewTrading"),"Trades.csv"),
-            to=paste0(config::get("DirNewTrading"),"Trades-old.csv"),overwrite = T)
-
-  utils::write.table(trades,file=paste0(config::get("DirNewTrading"),"Trades.csv"),append=F,
-              col.names=TRUE,row.names=FALSE,sep=";",dec=".",quote=TRUE)
+  # file.copy(from=paste0(config::get("DirNewTrading"),"Trades.csv"),
+  #           to=paste0(config::get("DirNewTrading"),"Trades-old.csv"),overwrite = T)
+  #
+  # utils::write.table(trades,file=paste0(config::get("DirNewTrading"),"Trades.csv"),append=F,
+  #             col.names=TRUE,row.names=FALSE,sep=";",dec=".",quote=TRUE)
 
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   DBI::dbWriteTable(conn, "Trades", trades, overwrite = TRUE,

@@ -20,7 +20,8 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date()) {
 
   lookup_yahoo = c("ESTX50"="^STOXX50E","MC"="MC.PA","OR"="OR.PA","TTE"="TTE.PA","AI"="AI.PA",
                    "SPX"="^SPX","XSP"="^XSP","RUT"="^RUT","NESN"="NESN.SW","HOLN"="HOLN.SW","SLHN"="SLHN.SW",
-                   "CSBGU0"="CSBGU0.SW","DTLA"="DTLA.L","EUR.USD"="EURUSD=X","EUR.CHF"="EURCHF=X")
+                   "CSBGU0"="CSBGU0.SW","DTLA"="DTLA.L","U.UN"="U-UN.TO", "USD.CAD"="USDCAD=X",
+                   "EUR.USD"="EURUSD=X","CHF.USD"="CHFUSD=X","EUR.CHF"="EURCHF=X")
   sym = dplyr::if_else(sym %in% names(lookup_yahoo), lookup_yahoo[sym], sym)
   lapply(sym, function(x) { suppressMessages(quantmod::getSymbols(x, from = from_date, to = to_date, auto.assign = F, warnings=FALSE))})
 }
@@ -131,6 +132,32 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1){
   ### data.frame(l_prices, row.names = NULL)
 }
 
+
+######################
+
+#'   getLastSymPrice
+#'
+#'This function retrieves the last available adjusted prices of a vector of tickers from Yahoo service
+#'
+#'It is based upon \code{getSymPriceIntervalDate} with from date argument equal to yesterday
+#'
+#'@param sym ticker name or list of tickers, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.
+#'@return a tibble with tidyr type of column names: \code{date, sym, value}, sym column contains the original sym list.
+#'@examples
+#'getLastSymPrice(c("EUR.USD","USD.CAD","CHF.USD"))
+#'getLastSymPrice(c("SPY","XSP"))
+#'getLastSymPrice(c("ESTX50","DTLA"))
+#'@export
+getLastSymPrice <- function(sym) {
+  last_prices = utils::tail(getSymPriceIntervalDate(sym=sym, from_date=Sys.Date()-3)
+                            , 1)
+  data = broom::tidy(last_prices)
+  names(data) = c("date", "sym", "value")
+  data$sym = sym
+  return(data)
+}
+
+
 ###
 #' getLastAdjustedPrice
 #'
@@ -233,7 +260,7 @@ getStockPrice = function(sym, close = FALSE) {
 
   if (close) {
     line <- data.frame(
-      datetime = format(lubridate::ymd_hms(paste(Sys.Date() - 1,"22:00:00")), "%d %b %Y %Hh%M"),
+      datetime = paste(format(Sys.Date() - 1,"%d %b %Y"), "22:00:00"),
       sym = sym,
       price = getLastAdjustedPrice(sym)
     )
@@ -333,9 +360,10 @@ getOptPrice = function(sym, right, strike, expiration, currency="USD", exchange=
 
   ### Case where expiration is a number
   if (is.numeric(expiration)) expiration = as.character(expiration)
-  ### Case where expiration is a date
-  else if (lubridate::is.Date(expiration)) expiration = format(expiration,"%Y%m%d")
-  else if (!is.character(expiration)) stop("expiration date must be either a date, a number or a chracter string!")
+
+  ### Case where expiration has a date class - convert it into a string with IBKR format for expiration date
+  else if (inherits(expiration,"Date")) expiration = format(expiration,"%Y%m%d")
+  else if (!is.character(expiration)) stop("expiration date must be either a date, a number or a character string!")
 
   strike=as.numeric(strike)
   # message("NBBO Option value Sym:",sym," Type:",right," Strike:",strike," Expiration:",expiration,

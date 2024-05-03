@@ -349,15 +349,17 @@ getIBKR <- function() {
   #### 1. Process new currency data ##############
   currency_pairs_data <- l[[4]]
 
-  ### Retrieve last record date - date is in character format
-  last_date <- as.Date(getCurrencyPairs()$date, "%Y%m%d")
+  ### Retrieve last record date either from DB or from Yahoo - date is in character/integer format
+  last_date <- as.Date(as.character(getLastCurrencyPairs()$date), "%Y%m%d")
 
   ### In case last record date is prior to today then look at the record
   ### Otherwise no reason to save it
   if (last_date != Sys.Date()) {
-    usd = data.frame(date = as.integer(format(Sys.Date(),"%Y%m%d")),
-                     EUR = round(currency_pairs_data[1],4),
-                     CHF = round(currency_pairs_data[2],4))
+    usd = data.frame(date = as.integer(format(Sys.Date(), "%Y%m%d")),
+                     EUR = round(currency_pairs_data[1], 4),
+                     CHF = round(currency_pairs_data[2], 4),
+                     #### As the pair USD/CAD is retrieved and not CAD/USD - needs to invert value returned
+                     CAD = round(1/currency_pairs_data[3], 4))
 
     ### Verify that returned data from IBKR is correct
     if (!is.nan(usd$EUR) & !is.nan(usd$CHF)) {

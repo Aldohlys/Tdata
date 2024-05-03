@@ -7,7 +7,7 @@
 getCurrencyPairs()
 }
 \description{
-This function provides a pair EUR/USD, CHF/USD.
+This function returns pairs EUR/USD, CHF/USD, CAD/USD.
 }
 \details{
 It looks into CurrencyPairs table and requests

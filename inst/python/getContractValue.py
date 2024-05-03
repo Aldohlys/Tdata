@@ -59,6 +59,7 @@ def determine_exch(sym):
   if (sym=="ESTX50"): return "EUREX"
   if (sym=="DTLA"): return "LSEETF"
   if (sym=="CSBGU0"): return "EBS"
+  if (sym == "U.UN"): return "TSE"
   return "SMART"
 
 def determine_sym(sym):
@@ -336,13 +337,13 @@ def getStrikesfromExpDate(sym,currency,exchange,tradingClass,expdate,strikes):
   return(updated_strikes)
 
 def retrieveCurrencyPairs(ib):
-  contracts = [Forex("EURUSD"), Forex("CHFUSD")] # Simple contract
+  contracts = [Forex("EURUSD"), Forex("CHFUSD"), Forex("USDCAD")] # Simple contract
   if(ib.qualifyContracts(*contracts)):
     ib.reqMarketDataType(2) ### Request type - Should be 2 or 4
     tickers = ib.reqTickers(*contracts)
     ib.sleep(1)
     l=[ticker.marketPrice() for ticker in tickers]
-    print("\nEUR/USD, CHF/USD: ",l)
+    print("\nEUR/USD, CHF/USD: USD/CAD",l)
   else: 
     l= float('nan')
   return l
@@ -485,11 +486,6 @@ def getIBKRData():
   ##### If EUR or CHF are not defined so be it - user will try again anyway #####
   ##### As everything is done into Python at this stage nothing is requested from user
   currency_pairs_data = retrieveCurrencyPairs(ib)
-  # if (math.isnan(EUR)):
-  #   EUR = input("Enter EUR/USD pair: ")
-  # if (math.isnan(CHF)):
-  #   CHF = input("Enter EUR/USD pair: ")
-  
 
   #### Get account related data first #########
 

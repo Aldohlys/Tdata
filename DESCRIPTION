@@ -8,11 +8,11 @@ Description: This package contains various R and Python functions that are to be
 License: MIT + file LICENSE
 Encoding: UTF-8
 Imports:
+    broom,
     scales,
     reticulate,
     dplyr,
     purrr,
-    utils,
     readr,
     config,
     quantmod,
@@ -21,7 +21,8 @@ Imports:
     DBI,
     RSQLite,
     Tbasics,
-    lubridate,
+    tidyr,
+    utils,
     zoo
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.1

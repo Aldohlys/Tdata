@@ -15,8 +15,8 @@ test_that("Up to date currency pairs can be retrieved either from IBKR or from e
   last_currency_pairs = getCurrencyPairs()
   expect_true(is.data.frame(last_currency_pairs))
   expect_true(nrow(last_currency_pairs) == 1)
-  expect_true(is.character(last_currency_pairs$date))
-  expect_true(is.numeric(c(last_currency_pairs$EUR, last_currency_pairs$CHF)))
+  expect_true(is.integer(last_currency_pairs$date))
+  expect_true(is.numeric(c(last_currency_pairs$EUR, last_currency_pairs$CHF, last_currency_pairs$CAD)))
 })
 
 #### Test currency_convert #########
@@ -29,6 +29,8 @@ test_that("Convert to USD a given amount in CHF and EUR", {
                round(100.45*1.0925,2))
   expect_equal(convert_to_usd_date(c(1000,2000),"EUR",as.Date("2023-12-03")),
                c(1088.3, 2176.6))
+  expect_equal(convert_to_usd_date(c(1000,2000),c("EUR","CHF"),as.Date("2023-12-03")),
+               c(1088.3, 2285.0))
 })
 
 ###┼ Test currency convert using different date formats

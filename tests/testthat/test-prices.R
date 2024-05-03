@@ -42,3 +42,11 @@ test_that("It is possible to retrieve a vector of prices corresponding to a vect
     c(475 , 73 , 21)
   )
 })
+
+test_that("Retrieve a tibble with all last prices from a vector of tickers",{
+  df <- getLastSymPrice(c("ESTX50","DTLA"))
+  expect_true(is.data.frame(df))
+  expect_true(all(df$sym == c("ESTX50","DTLA")))
+  expect_true(all(is.numeric(df$value)))
+  expect_true(all(class(df$date) == "Date"))
+})

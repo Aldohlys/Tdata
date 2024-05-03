@@ -39,6 +39,9 @@ unPnL <- cost <- avgCost <- orig_adjusted_price <- mktValue <- NULL
 mktValue <- unPnL <- TotalCashBalance <- StockMarketValue <- NetLiquidation <- heure.1 <- NULL
 
 ### add for getInstrument
-InitialTradeDate <- Ssjacent <- u_price <- interest_rate <- DTE <- Prix <- IV <- NULL
+initial_trade_date <- Ssjacent <- u_price <- interest_rate <- DTE <- startPrice <- startIV <- NULL
+
+### add for getLastSymPrice
+
 
 
