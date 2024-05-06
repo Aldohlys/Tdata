@@ -514,7 +514,12 @@ def getIBKRData():
   print("\n#####  Retrieving underlying price data... \n")
   
   #### Remove underlying symbol duplicates
-  u_prices_data = retrievePricesData(ib, df.drop_duplicates(subset='symbol',keep="first"))
+  du = df.drop_duplicates(subset='symbol',keep="first")
+  
+  ### Retrieve only prices for secType = OPT not other types (for STK, FUT, data is already present in retrieved portfolio data)
+  du = du.loc[du["secType"] == "OPT"]
+
+  u_prices_data = retrievePricesData(ib, du)
   print(u_prices_data)
 
   print("\n#####  Retrieving portfolio data... \n")

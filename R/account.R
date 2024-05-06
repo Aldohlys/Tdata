@@ -355,7 +355,8 @@ getIBKR <- function() {
 
   ### In case last record date is prior to today then look at the record
   ### Otherwise no reason to save it
-  if (last_date != Sys.Date()) {
+  ### It will be saved even if one or two are equal to NA - if all equal to NaN then do not save
+  if ((last_date != Sys.Date()) && (!(all(is.nan(currency_pairs_data))))) {
     usd = data.frame(date = as.integer(format(Sys.Date(), "%Y%m%d")),
                      EUR = round(currency_pairs_data[1], 4),
                      CHF = round(currency_pairs_data[2], 4),
@@ -403,6 +404,14 @@ getIBKR <- function() {
 
   ### Move TradeNr to 1st place
   portf_data = dplyr::select(portf_data, TradeNr, dplyr::everything())
+
+  ### Verify that all portf_data have been matched by a TradeNr
+  ### If it is not the case then display a warning message to end-user
+  if (any(is.na(portf_data$TradeNr))) {
+    unmatched_instruments = portf_data[is.na(portf_data$TradeNr),"Instrument"]
+    Tbasics::display_message("One or several instrument could not be matched in DB Trades table !!")
+    cat(unmatched_instruments)
+  }
 
   ### Append to DB
   DBI::dbAppendTable(conn,account_data$account,portf_data)
