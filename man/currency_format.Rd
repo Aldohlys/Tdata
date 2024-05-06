@@ -14,7 +14,7 @@ If length(currency) is 1, then it is recycled}
 This function returns a string with amount and currency symbol
 }
 \details{
-It defines local labeling functions for CHF, EUR and USD.
+It defines local labeling functions for CHF, EUR, CAD and USD.
 
 Currency symbol (for EUR and USD) are also taken into consideration.
 
@@ -23,6 +23,7 @@ Only 2 digits after decimal are displayed. Big mark (3 digits separator) is empt
 \examples{
 currency_format(100.45,"EUR")
 currency_format(10000,"CHF")
+currency_format(1000,"CAD")
 currency_format(758.458,"USD")
 currency_format(100000.455,"EUR")
 currency_format(c(100,40),c("EUR","USD"))

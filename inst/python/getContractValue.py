@@ -343,7 +343,7 @@ def retrieveCurrencyPairs(ib):
     tickers = ib.reqTickers(*contracts)
     ib.sleep(1)
     l=[ticker.marketPrice() for ticker in tickers]
-    print("\nEUR/USD, CHF/USD: USD/CAD",l)
+    print("\nEUR/USD, CHF/USD, USD/CAD",l)
   else: 
     l= float('nan')
   return l

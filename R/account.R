@@ -335,7 +335,7 @@ getIBKR <- function() {
   # else if (is.na(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
   #
   # Sys.sleep(1)
-  Tbasics::display_message("Call IBKR to retrieve data!!")
+  Tbasics::display_message("Call IBKR to retrieve data...")
 
   l = reticulate::py$getIBKRData()
 

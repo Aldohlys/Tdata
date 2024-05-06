@@ -9,6 +9,6 @@
 #> Start up message will be displayed only when library Tdata is loaded by user, not when calling individual function with ::
 #> Hence -onLoad is preferred way
 .onAttach <- function(libname, pkgname) {
-  packageStartupMessage("Welcome Tdata package!")
+  packageStartupMessage("Welcome Tdata version ", utils::packageVersion(pkgname)," !" )
 }
 
