@@ -393,6 +393,9 @@ getIBKR <- function() {
                                                                  "FUT" ~ "Future",
                                                                  .default = secType))
 
+  ### In case of stocks set multiplier to 1
+  portf_data$multiplier = dplyr::if_else(portf_data$type == "Stock", 1, portf_data$multiplier)
+
   ### field right not needed anymore - removed
   portf_data$right=NULL
 
