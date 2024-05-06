@@ -148,17 +148,17 @@ currency_format = function(amount,currency){
 
 #'  convert_to_usd
 #'
-#' This function converts the amount of currency into USD, using EUR and CHF currency pairs values
+#' This function converts the amount of currency into USD, using EUR, CAD and CHF currency pairs values
 #'
 #' It merely performs a multiplication of the amount by currency pair value. This function can be vectorized
 #'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF
 #'@param EUR,CHF,CAD EUR (resp. CHF, CAD) is the value of 1 euro (resp. CHF, CAD) in USD
 #'@keywords currency trading
-#'Examples
-#'convert_to_usd(100.45,"EUR",1.09,1.14)
-#'convert_to_usd(c(10000,500),c("CHF","EUR"),1.09,1.14)
-#'convert_to_usd(c(750.543,10),c("USD","EUR"),1.09,1.14)
-#'convert_to_usd(c(500,10),c("CAD","EUR"),0.788,1.14)
+#'@examples
+#'convert_to_usd(100.45,"EUR",1.09,1.14,0.785)
+#'convert_to_usd(c(10000,500),c("CHF","EUR"),1.09,1.14,0.785)
+#'convert_to_usd(c(750.543,10),c("USD","EUR"),1.09,1.14,0.785)
+#'convert_to_usd(c(500,10),c("CAD","EUR"),0.788,1.14,0.785)
 #'@export
 convert_to_usd = function(amount, currency, EUR, CHF, CAD) {
   round(dplyr::case_match(currency,
@@ -170,7 +170,7 @@ convert_to_usd = function(amount, currency, EUR, CHF, CAD) {
 
 #'  convert_to_usd_date
 #'
-#' This function converts the amount of currency into USD, using EUR and CHF currency pairs values for a given date
+#' This function converts the amount of currency into USD, using CAD, EUR and CHF currency pairs values for a given date
 #'
 #' First it loads all currency pairs that have been stored for a while, then looks up for the nearest date in the CurrencyPairs table, compared with input date.
 #' It retrieves the EUR and CHF corresponding values.
@@ -179,18 +179,19 @@ convert_to_usd = function(amount, currency, EUR, CHF, CAD) {
 #'
 #' This function can be vectorized for \code{amount} and \code{currency}, but \code{date} MUST be unique.
 #'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF
-#'@param date date is the requested date, it can be a date, or character, or integer(numeric).
+#'@param date Can be a date, or character, or integer(numeric). By defaut it is today.
 #'If type is character/numeric, then \code{date} argument will be converted first to a date type using Y/M/D format.
 #'@keywords currency trading
-#'Examples
+#'@examples
 #'convert_to_usd_date(100.45,"EUR",as.Date("2023-10-15"))
 #'convert_to_usd_date(200, "CHF", 20240421)
 #'convert_to_usd_date(200, "EUR", "20240421")
+#'convert_to_usd_date(200, "CAD")
 #'convert_to_usd_date(c(10000,500),c("CHF","EUR"),as.Date("2021-01-09"))
 #'convert_to_usd_date(c(750.543,10),c("USD","EUR"),as.Date("2023-12-03"))
 #'convert_to_usd_date(c(750.543,10),"EUR",as.Date("2023-12-03"))
 #'@export
-convert_to_usd_date = function(amount,currency,date) {
+convert_to_usd_date = function(amount, currency, date = Sys.Date()) {
 
   if (length(date) != 1) stop("date must be of length 1!")
 

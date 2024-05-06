@@ -4,16 +4,16 @@
 \alias{convert_to_usd_date}
 \title{convert_to_usd_date}
 \usage{
-convert_to_usd_date(amount, currency, date)
+convert_to_usd_date(amount, currency, date = Sys.Date())
 }
 \arguments{
 \item{amount, currency}{amount is the number to be converted, currency is a string whose value is either EUR, CHF}
 
-\item{date}{date is the requested date, it can be a date, or character, or integer(numeric).
+\item{date}{Can be a date, or character, or integer(numeric). By defaut it is today.
 If type is character/numeric, then \code{date} argument will be converted first to a date type using Y/M/D format.}
 }
 \description{
-This function converts the amount of currency into USD, using EUR and CHF currency pairs values for a given date
+This function converts the amount of currency into USD, using CAD, EUR and CHF currency pairs values for a given date
 }
 \details{
 First it loads all currency pairs that have been stored for a while, then looks up for the nearest date in the CurrencyPairs table, compared with input date.
@@ -23,15 +23,14 @@ Last it calls the convert_to_usd function.
 
 This function can be vectorized for \code{amount} and \code{currency}, but \code{date} MUST be unique.
 }
-\keyword{"20240421")}
-\keyword{"CHF",}
-\keyword{"EUR",}
-\keyword{20240421)}
-\keyword{Examples}
-\keyword{convert_to_usd_date(100.45,"EUR",as.Date("2023-10-15"))}
-\keyword{convert_to_usd_date(200,}
-\keyword{convert_to_usd_date(c(10000,500),c("CHF","EUR"),as.Date("2021-01-09"))}
-\keyword{convert_to_usd_date(c(750.543,10),"EUR",as.Date("2023-12-03"))}
-\keyword{convert_to_usd_date(c(750.543,10),c("USD","EUR"),as.Date("2023-12-03"))}
+\examples{
+convert_to_usd_date(100.45,"EUR",as.Date("2023-10-15"))
+convert_to_usd_date(200, "CHF", 20240421)
+convert_to_usd_date(200, "EUR", "20240421")
+convert_to_usd_date(200, "CAD")
+convert_to_usd_date(c(10000,500),c("CHF","EUR"),as.Date("2021-01-09"))
+convert_to_usd_date(c(750.543,10),c("USD","EUR"),as.Date("2023-12-03"))
+convert_to_usd_date(c(750.543,10),"EUR",as.Date("2023-12-03"))
+}
 \keyword{currency}
 \keyword{trading}

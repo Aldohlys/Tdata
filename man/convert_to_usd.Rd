@@ -12,15 +12,16 @@ convert_to_usd(amount, currency, EUR, CHF, CAD)
 \item{EUR, CHF, CAD}{EUR (resp. CHF, CAD) is the value of 1 euro (resp. CHF, CAD) in USD}
 }
 \description{
-This function converts the amount of currency into USD, using EUR and CHF currency pairs values
+This function converts the amount of currency into USD, using EUR, CAD and CHF currency pairs values
 }
 \details{
 It merely performs a multiplication of the amount by currency pair value. This function can be vectorized
 }
-\keyword{Examples}
-\keyword{convert_to_usd(100.45,"EUR",1.09,1.14)}
-\keyword{convert_to_usd(c(10000,500),c("CHF","EUR"),1.09,1.14)}
-\keyword{convert_to_usd(c(500,10),c("CAD","EUR"),0.788,1.14)}
-\keyword{convert_to_usd(c(750.543,10),c("USD","EUR"),1.09,1.14)}
+\examples{
+convert_to_usd(100.45,"EUR",1.09,1.14,0.785)
+convert_to_usd(c(10000,500),c("CHF","EUR"),1.09,1.14,0.785)
+convert_to_usd(c(750.543,10),c("USD","EUR"),1.09,1.14,0.785)
+convert_to_usd(c(500,10),c("CAD","EUR"),0.788,1.14,0.785)
+}
 \keyword{currency}
 \keyword{trading}
