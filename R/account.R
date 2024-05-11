@@ -363,10 +363,7 @@ getIBKR <- function() {
                      #### As the pair USD/CAD is retrieved and not CAD/USD - needs to invert value returned
                      CAD = round(1/currency_pairs_data[3], 4))
 
-    ### Verify that returned data from IBKR is correct
-    if (!is.nan(usd$EUR) & !is.nan(usd$CHF)) {
-     DBI::dbAppendTable(conn, "CurrencyPairs", usd)
-    }
+    DBI::dbAppendTable(conn, "CurrencyPairs", usd)
   }
 
   #### 2. Process new account data #################
@@ -393,8 +390,8 @@ getIBKR <- function() {
                                                                  "FUT" ~ "Future",
                                                                  .default = secType))
 
-  ### In case of stocks set multiplier to 1
-  portf_data$multiplier = dplyr::if_else(portf_data$type == "Stock", 1, portf_data$multiplier)
+  ### In case of stocks set multiplier to 1 and have everything set as integer
+  portf_data$multiplier = dplyr::if_else(portf_data$type == "Stock", 1, as.integer(portf_data$multiplier))
 
   ### field right not needed anymore - removed
   portf_data$right=NULL

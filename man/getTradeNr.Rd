@@ -22,6 +22,6 @@ This function retrieves one or a vector of trade numbers, all pertaining to open
 including instruments listed in \code{v_instrument} argument.
 }
 \details{
-It works by matching all instruments in Trades.csv file argument,
+It works by matching all instruments with Trades table in DB,
 If no instruments are retrieved then NA is returned and an error message is displayed.
 }

@@ -158,14 +158,40 @@ getInstrument <- function(account, instrument) {
   return(v_instr)
 }
 
+### This function is useful for test purposes
+getTradeQuery <- function(conn) {
+  return(DBI::dbGetQuery(conn,
+                         "SELECT DISTINCT TradeNr from Trades WHERE Statut = 'Ouvert' OR Statut = 'Ajust\u00e9'",
+                         ))
+}
 
+
+#' isTradeOpened
+#'
+#' This function retrieves the status of a vector of trade numers and returns a boolean vector
+#'
+#' It works by querying the Trades table in DB and comparing active trades in DB with argument.
+#' If TradeNr does not exist yet it will return FALSE just like if it were closed.
+#'
+#'@param TradeNr an integer or vector of integers
+#'@return a boolean or a vector of booleans
+#'@export
+isTradeOpened = function(TradeNr) {
+  ### Get the list of all trade numbers currently active
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  ### getTradeQuery returns a list
+  active_trade_nr <- getTradeQuery(conn)[[1]]
+  DBI::dbDisconnect(conn)
+  ### Returns matching status of TradeNr
+  return(TradeNr %in% active_trade_nr)
+}
 
 #' getTradeNr
 #'
 #' This function retrieves one or a vector of trade numbers, all pertaining to open/adjusted trades
 #' including instruments listed in \code{v_instrument} argument.
 #'
-#' It works by matching all instruments in Trades.csv file argument,
+#' It works by matching all instruments with Trades table in DB,
 #' If no instruments are retrieved then NA is returned and an error message is displayed.
 #'
 #'@param v_instrument String on IBKR format, or vector of strings. Such as "SPY 15DEC23 400 P"

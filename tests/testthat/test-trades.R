@@ -17,6 +17,12 @@ getTestInstrumentQuery <- function(conn, account, instr) {
 
 }
 
+getTestTradeQuery <- function(conn) {
+  return(DBI::dbGetQuery(conn,
+                         "SELECT DISTINCT TradeNr from TestTrades WHERE Statut = 'Ouvert' OR Statut = 'Ajust\u00e9'"
+                         ))
+}
+
 
 # This function returns TRUE wherever elements are the same, including NA's,
 # and FALSE everywhere else.
@@ -65,6 +71,27 @@ test_that("It is possible to retrieve multiple instruments from one account", {
                    tolerance = 0.001)
     })
 })
+
+
+test_that("Retrieve trade number status for a single trade",{
+  with_mocked_bindings(
+    getTradeQuery = getTestTradeQuery, {
+      expect_false(isTradeOpened(397))
+      expect_true(isTradeOpened(396)) ### Ajusté case
+      expect_true(isTradeOpened(401)) ### Ouvert case
+    }
+  )
+})
+
+test_that("Retrieve trade number status for numerous trades including non existing trade",{
+  with_mocked_bindings(
+    getTradeQuery = getTestTradeQuery, {
+      expect_true(all(isTradeOpened(c(397, 396, 401, 405)) == c(FALSE, TRUE, TRUE, FALSE)))
+    }
+  )
+})
+
+
 
 test_that("It is possible to retrieve a trade number for a single instrument", {
   with_mocked_bindings(
