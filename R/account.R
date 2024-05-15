@@ -433,6 +433,7 @@ getIBKR <- function() {
 #'}
 getGonet <- function() {
   gonet_trades = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetTrades.csv",delim=";",
+                                                    show_col_types = FALSE,
                                              locale=readr::locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
 
   ### Get the list of trades and deduce what are the remaining positions - see Gonet.R
@@ -635,3 +636,4 @@ getAccountLive <- function() {
   DBI::dbAppendTable(conn, "Account", data)
   DBI::dbDisconnect(conn)
 }
+
