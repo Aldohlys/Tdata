@@ -390,8 +390,10 @@ getIBKR <- function() {
                                                                  "FUT" ~ "Future",
                                                                  .default = secType))
 
-  ### In case of stocks set multiplier to 1 and have everything set as integer
+  ### In case of stocks set multiplier to 1 and have multipliers of other types of instrument set as integer
   portf_data$multiplier = dplyr::if_else(portf_data$type == "Stock", 1, as.integer(portf_data$multiplier))
+  ### For stocks set delta to 1
+  portf_data$delta = dplyr::if_else(portf_data$type == "Stock", 1, portf_data$delta)
 
   ### field right not needed anymore - removed
   portf_data$right=NULL
