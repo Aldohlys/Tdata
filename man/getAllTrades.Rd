@@ -12,7 +12,7 @@ All trades stored in Trades table from mydb DB. Format is the following:
 Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
 }
 \description{
-This function work only for IBKR accounts not for Gonet account
+This function works only for IBKR accounts not for Gonet account
 This function is used by other Tdata functions but also for RReporting directly.
 No argument - takes its source from config::get()
 }

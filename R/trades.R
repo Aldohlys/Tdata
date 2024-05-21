@@ -38,7 +38,7 @@ saveTrades = function(trades) {
 
 #' getAllTrades
 #'
-#' This function work only for IBKR accounts not for Gonet account
+#' This function works only for IBKR accounts not for Gonet account
 #' This function is used by other Tdata functions but also for RReporting directly.
 #' No argument - takes its source from config::get()
 #'
@@ -49,9 +49,7 @@ saveTrades = function(trades) {
 #'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
 #'@export
 getAllTrades = function() {
-  # suppressMessages(read_delim(file=config::get("Trades"),
-  #                                    delim=";",locale=locale(date_names="en",decimal_mark=".",
-  #                                                            grouping_mark="",encoding="UTF-8")))
+  ### Read all trades from DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   alltrades = DBI::dbReadTable(conn, "Trades")
   DBI::dbDisconnect(conn)
@@ -62,6 +60,39 @@ getAllTrades = function() {
   }
   alltrades
 }
+
+#' getActiveTrades
+#'
+#' This function works only for IBKR accounts not for Gonet account.
+#' It reads active trades from given selected account and returns all corresponding records from table Trades in DB.
+#'
+#' It retrieves all trades whose \code{Statut} is different from closed. It also verifies that \code{TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward, PnL} are all numeric,
+#' and if not, displays an error message and converts them
+#'@param account string account selection, either Live or Simu
+#'@return All trades related to active position stored in Trades table from mydb DB. Format is the following:
+#'\code{TradeNr, Account, TradeDate, Strategy, Instrument, Ssjacent, Pos, Prix,
+#'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
+#'@export
+getActiveTrades = function(account) {
+  ### Convert account selection to right account name
+  account <- switch(account, "U1804173"="Live", "DU5221795"="Simu")
+  if (is.null(account)) display_error_message("No account exists !")
+
+  else {
+    conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+    activetrades = DBI::dbGetQuery(conn,
+                                   "Select * from Trades WHERE Statut != 'Ferm\U00e9' AND Account = ?",
+                                   params=list(account))
+    DBI::dbDisconnect(conn)
+
+    if (any(with(activetrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL))))) {
+      Tbasics::display_error_message("Trades input data had to be converted!")
+      with(activetrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
+    }
+    activetrades
+  }
+}
+
 
 ### This function is useful for test_that test functions as getToday will then be changed for mocking test
 getToday = function() {
