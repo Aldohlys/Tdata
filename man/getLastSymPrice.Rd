@@ -21,5 +21,4 @@ It is based upon \code{getSymPriceIntervalDate} with from date argument equal to
 \examples{
 getLastSymPrice(c("EUR.USD","USD.CAD","CHF.USD"))
 getLastSymPrice(c("SPY","XSP"))
-getLastSymPrice(c("ESTX50","DTLA"))
 }

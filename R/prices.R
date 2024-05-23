@@ -146,7 +146,6 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1){
 #'@examples
 #'getLastSymPrice(c("EUR.USD","USD.CAD","CHF.USD"))
 #'getLastSymPrice(c("SPY","XSP"))
-#'getLastSymPrice(c("ESTX50","DTLA"))
 #'@export
 getLastSymPrice <- function(sym) {
   last_prices = utils::tail(getSymPriceIntervalDate(sym=sym, from_date=Sys.Date()-3)
