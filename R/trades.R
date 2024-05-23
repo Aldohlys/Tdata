@@ -76,7 +76,7 @@ getAllTrades = function() {
 getActiveTrades = function(account) {
   ### Convert account selection to right account name
   account <- switch(account, "U1804173"="Live", "DU5221795"="Simu")
-  if (is.null(account)) display_error_message("No account exists !")
+  if (is.null(account)) Tbasics::display_error_message("No account exists !")
 
   else {
     conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
