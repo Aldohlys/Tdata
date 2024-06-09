@@ -6,3 +6,5 @@
 .quarto
 
 .Rprofile
+
+inst/python/BracketOrderExample.py
