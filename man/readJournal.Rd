@@ -4,7 +4,10 @@
 \alias{readJournal}
 \title{readJournal}
 \usage{
-readJournal()
+readJournal(windowDate = NA)
+}
+\arguments{
+\item{windowDate}{an integer, with the format YYYYmmdd. If not provided then it will return all records from current date - 300 days.}
 }
 \value{
 a tibble with the following fields: \code{ entryId	theme	date
@@ -13,7 +16,7 @@ text}
 }
 \description{
 This function reads the Journal table.
-It returns all entries from the journal
+It returns all entries from the journal starting from windowDate
 }
 \examples{
 \dontrun{

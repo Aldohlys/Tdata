@@ -2,7 +2,8 @@
 #'   readJournal
 #'
 #' This function reads the Journal table.
-#' It returns all entries from the journal
+#' It returns all entries from the journal starting from windowDate
+#'@param windowDate an integer, with the format YYYYmmdd. If not provided then it will return all records from current date - 300 days.
 #'@returns a tibble with the following fields: \code{ entryId	theme	date
 #' sym	close	change	mkt_price	mkt_change
 #' text}
@@ -11,9 +12,10 @@
 #'readJournal()
 #'}
 #'@export
-readJournal <- function() {
+readJournal <- function(windowDate = NA) {
+  if (is.na(windowDate)) windowDate = as.numeric(format(Sys.Date() - 300,"%Y%m%d"))
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-  journal = DBI::dbReadTable(conn, "Journal")
+  journal = DBI::dbGetQuery(conn, "SELECT * FROM Journal WHERE date >= ?", list(windowDate))
   DBI::dbDisconnect(conn)
   journal
 }
