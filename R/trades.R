@@ -86,12 +86,53 @@ getActiveTrades = function(account) {
     DBI::dbDisconnect(conn)
 
     if (any(with(activetrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL))))) {
-      Tbasics::display_error_message("Trades input data had to be converted!")
+      Tbasics::display_message("Trades input data had to be converted!")
       with(activetrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
     }
     activetrades
   }
 }
+
+#' getClosedTrades
+#'
+#' This function works only for IBKR accounts not for Gonet account.
+#' It retrieves closed trades from given selected account, after a given window date, and returns all corresponding records from table Trades in DB.
+#'
+#' It retrieves all trades whose \code{Statut} is equal to closed.
+#' It also verifies that \code{TradeNr, TradeDate, Pos, Prix, Comm., Total, Risk, Reward, PnL} are all numeric,
+#' and if not, displays an error message and converts them
+#'@param account string account selection, either Live or Simu
+#'@param windowDate Integer, format is YYYYmmdd. Only records whose original date is greater than window date will be returned. Default value is today minus 200 days.
+#'@return All trades related to closed position stored in Trades table from mydb DB. Format is the following:
+#'\code{TradeNr, Account, TradeDate, Strategy, Instrument, Ssjacent, Pos, Prix,
+#'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
+#'@export
+getClosedTrades = function(account, windowDate = Sys.Date()-200) {
+  ### Convert account selection to right account name
+  account <- switch(account, "U1804173"="Live", "DU5221795"="Simu")
+  if (is.null(account)) Tbasics::display_error_message("No account exists !")
+  if (!is.numeric(windowDate)) Tbasics::display_error_message("window date must be a integer !")
+
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  closed_trades = DBI::dbGetQuery(conn,
+                                 "Select * from Trades WHERE Statut = 'Ferm\U00e9' AND Account = ? AND TradeDate >= ?",
+                                 params=list(account, windowDate))
+  DBI::dbDisconnect(conn)
+
+
+
+  ### If necessary display a warning message and convert data
+  if (any(with(closed_trades, !is.numeric(c(TradeNr, TradeDate, Pos, Prix, Comm., Total, Risk, Reward, PnL))))) {
+      Tbasics::display_message("Trades input data had to be converted!")
+      with(closed_trades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
+  }
+
+  window_date_info <- getOpenDate(unique(closed_trades$TradeNr))
+  closed_trades <- dplyr::left_join(closed_trades, window_date_info, by = "TradeNr")
+  closed_trades <- dplyr::filter(closed_trades, orig_date >= as.Date(as.character(windowDate),"%Y%m%d"))
+  closed_trades
+}
+
 
 
 ### This function is useful for test_that test functions as getToday will then be changed for mocking test
