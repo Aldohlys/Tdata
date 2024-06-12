@@ -7,7 +7,7 @@
 getActiveTrades(account)
 }
 \arguments{
-\item{account}{string account selection, either Live or Simu}
+\item{account}{string, account name}
 }
 \value{
 All trades related to active position stored in Trades table from mydb DB. Format is the following:
@@ -21,4 +21,9 @@ It reads active trades from given selected account and returns all corresponding
 \details{
 It retrieves all trades whose \code{Statut} is different from closed. It also verifies that \code{TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward, PnL} are all numeric,
 and if not, displays an error message and converts them
+}
+\examples{
+\dontrun{
+getActiveTrades("DUxxx")
+}
 }

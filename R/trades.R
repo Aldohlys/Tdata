@@ -114,12 +114,12 @@ getActiveTrades = function(account) {
 #'@return All trades related to closed position stored in Trades table from mydb DB. Format is the following:
 #'\code{TradeNr, Account, TradeDate, Strategy, Instrument, Ssjacent, Pos, Prix,
 #'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
+#'@export
 #'@examples
 #'\dontrun{
 #'getClosedTrades("DUxxx")
-#'getClosedTrades("DUxxx", as.Date("2024-02-01))
+#'getClosedTrades("DUxxx", as.Date("2024-02-01"))
 #'}
-#'@export
 getClosedTrades = function(account, windowDate = Sys.Date()-200) {
   ### Convert account selection to right account name
   account <- switch(account, "U1804173"="Live", "DU5221795"="Simu")

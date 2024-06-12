@@ -7,9 +7,9 @@
 getClosedTrades(account, windowDate = Sys.Date() - 200)
 }
 \arguments{
-\item{account}{string account selection, either Live or Simu}
+\item{account}{string, account name}
 
-\item{windowDate}{Integer, format is YYYYmmdd. Only records whose original date is greater than window date will be returned. Default value is today minus 200 days.}
+\item{windowDate}{date, only records whose original date is greater than window date will be returned. Default value is today minus 200 days.}
 }
 \value{
 All trades related to closed position stored in Trades table from mydb DB. Format is the following:
@@ -24,4 +24,10 @@ It retrieves closed trades from given selected account, after a given window dat
 It retrieves all trades whose \code{Statut} is equal to closed.
 It also verifies that \code{TradeNr, TradeDate, Pos, Prix, Comm., Total, Risk, Reward, PnL} are all numeric,
 and if not, displays an error message and converts them
+}
+\examples{
+\dontrun{
+getClosedTrades("DUxxx")
+getClosedTrades("DUxxx", as.Date("2024-02-01"))
+}
 }
