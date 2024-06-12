@@ -146,7 +146,9 @@ getClosedTrades = function(account, windowDate = Sys.Date()-200) {
   window_date_info <- getOpenDate(unique(closed_trades$TradeNr))
   closed_trades <- dplyr::left_join(closed_trades, window_date_info, by = "TradeNr")
   closed_trades <- dplyr::filter(closed_trades, orig_date >= as.Date(as.character(windowDate),"%Y%m%d"))
-  closed_trades
+
+  ### Remove all date related information - has been useful to filter data
+  dplyr::select(closed_trades, -c(strategy, exp_date, orig_date, last_date))
 }
 
 
