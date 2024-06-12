@@ -61,6 +61,16 @@ getAllTrades = function() {
   alltrades
 }
 
+### Not to be exported - for test purposes
+getActiveTradeQuery <- function(account) {
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  activetrades = DBI::dbGetQuery(conn,
+                                 "Select * from Trades WHERE Statut != 'Ferm\U00e9' AND Account = ?",
+                                 params=list(account))
+  DBI::dbDisconnect(conn)
+  activetrades
+}
+
 #' getActiveTrades
 #'
 #' This function works only for IBKR accounts not for Gonet account.
@@ -68,29 +78,27 @@ getAllTrades = function() {
 #'
 #' It retrieves all trades whose \code{Statut} is different from closed. It also verifies that \code{TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward, PnL} are all numeric,
 #' and if not, displays an error message and converts them
-#'@param account string account selection, either Live or Simu
+#'@param account string, account name
 #'@return All trades related to active position stored in Trades table from mydb DB. Format is the following:
 #'\code{TradeNr, Account, TradeDate, Strategy, Instrument, Ssjacent, Pos, Prix,
 #'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
+#'@examples
+#'\dontrun{
+#'getActiveTrades("DUxxx")
+#'}
 #'@export
 getActiveTrades = function(account) {
   ### Convert account selection to right account name
   account <- switch(account, "U1804173"="Live", "DU5221795"="Simu")
   if (is.null(account)) Tbasics::display_error_message("No account exists !")
 
-  else {
-    conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-    activetrades = DBI::dbGetQuery(conn,
-                                   "Select * from Trades WHERE Statut != 'Ferm\U00e9' AND Account = ?",
-                                   params=list(account))
-    DBI::dbDisconnect(conn)
+  activetrades = getActiveTradeQuery(account)
 
-    if (any(with(activetrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL))))) {
+  if (any(with(activetrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL))))) {
       Tbasics::display_message("Trades input data had to be converted!")
       with(activetrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
-    }
-    activetrades
   }
+  activetrades
 }
 
 #' getClosedTrades
@@ -101,17 +109,25 @@ getActiveTrades = function(account) {
 #' It retrieves all trades whose \code{Statut} is equal to closed.
 #' It also verifies that \code{TradeNr, TradeDate, Pos, Prix, Comm., Total, Risk, Reward, PnL} are all numeric,
 #' and if not, displays an error message and converts them
-#'@param account string account selection, either Live or Simu
-#'@param windowDate Integer, format is YYYYmmdd. Only records whose original date is greater than window date will be returned. Default value is today minus 200 days.
+#'@param account string, account name
+#'@param windowDate date, only records whose original date is greater than window date will be returned. Default value is today minus 200 days.
 #'@return All trades related to closed position stored in Trades table from mydb DB. Format is the following:
 #'\code{TradeNr, Account, TradeDate, Strategy, Instrument, Ssjacent, Pos, Prix,
 #'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
+#'@examples
+#'\dontrun{
+#'getClosedTrades("DUxxx")
+#'getClosedTrades("DUxxx", as.Date("2024-02-01))
+#'}
 #'@export
 getClosedTrades = function(account, windowDate = Sys.Date()-200) {
   ### Convert account selection to right account name
   account <- switch(account, "U1804173"="Live", "DU5221795"="Simu")
   if (is.null(account)) Tbasics::display_error_message("No account exists !")
-  if (!is.numeric(windowDate)) Tbasics::display_error_message("window date must be a integer !")
+  if (!inherits(windowDate,"Date")) Tbasics::display_error_message("window date must be a date !")
+
+  ### Transform windowDate from Date to integer
+  windowDate = as.numeric(format(windowDate,"%Y%m%d"))
 
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   closed_trades = DBI::dbGetQuery(conn,

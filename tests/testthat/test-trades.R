@@ -10,6 +10,12 @@ getTestTrades = function() {
   alltrades
 }
 
+getActiveTestTradeQuery <- function(account) {
+  DBI::dbGetQuery(conn,
+                                 "Select * from TestTrades WHERE Statut != 'Ferm\U00e9' AND Account = ?",
+                                 params=list(account))
+}
+
 getTestInstrumentQuery <- function(conn, account, instr) {
   return(DBI::dbGetQuery(conn,
                          "SELECT Prix As startPrice,`Exp.Date` as expdate, Ssjacent as symbol, min(TradeDate) AS initial_trade_date FROM TestTrades WHERE Account = ? AND Instrument = ? AND (Statut ='Ouvert' OR Statut = 'Ajust\U00e9')",
@@ -22,6 +28,8 @@ getTestTradeQuery <- function(conn) {
                          "SELECT DISTINCT TradeNr from TestTrades WHERE Statut = 'Ouvert' OR Statut = 'Ajust\u00e9'"
                          ))
 }
+
+
 
 
 # This function returns TRUE wherever elements are the same, including NA's,
@@ -324,5 +332,23 @@ test_that("getRnR works with multiple trades",{
     })
 })
 
+test_that("getActiveTrades returns correct trades", {
+  with_mocked_bindings(
+    getActiveTradeQuery = getActiveTestTradeQuery, {
+      active_trades <- unique(getActiveTrades("U1804173")$TradeNr)
+      expect_true(380 %in% active_trades)  ### Ajusté dans Uxxx
+      expect_true(392 %in% active_trades) ### Ouvert dans Uxxx
+      expect_false(384 %in% active_trades) ### Fermé dans Uxxx
+      expect_false(383 %in% active_trades) ### Ajusté dans DUxxx
+    }
+  )
+})
+
+test_that("getClosedTrades does not return trades whose trade dates are across window date", {
+  closed_trades <- getClosedTrades("U1804173", windowDate = as.Date("20240201", "%Y%m%d"))
+  trade_nr <- unique(closed_trades$TradeNr)
+  expect_false(371 %in% trade_nr)
+  expect_true(380 %in% trade_nr)
+})
 
 DBI::dbDisconnect(conn)
