@@ -434,7 +434,7 @@ getIBKR <- function() {
 #'getGonet()
 #'}
 getGonet <- function() {
-  gonet_trades = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetTrades.csv",delim=";",
+  gonet_trades = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetPos.csv",delim=";",
                                                     show_col_types = FALSE,
                                              locale=readr::locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
 
@@ -450,7 +450,7 @@ getGonet <- function() {
                                   ### orig_date is the oldest date in all trades related to sym_ibkr
                                   orig_date=dplyr::first(as.Date(orig_date,"%d.%m.%Y")),
                                                position=sum(position),
-                                               cost=sum(cost),currency=dplyr::first(currency),
+                                               currency=dplyr::first(currency),
                                                exchange=dplyr::first(exchange))
   portf <- dplyr::filter(portf, position != 0)
   portf$date <- format(Sys.Date(),"%Y%m%d")
