@@ -19,7 +19,7 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date()) {
   if (length(to_date) != 1) stop("length to_date must be equal to 1!")
 
   lookup_yahoo = c("ESTX50"="^STOXX50E","MC"="MC.PA","OR"="OR.PA","TTE"="TTE.PA","AI"="AI.PA",
-                   "SPX"="^SPX","XSP"="^XSP","RUT"="^RUT","NESN"="NESN.SW","HOLN"="HOLN.SW","SLHN"="SLHN.SW",
+                   "SPX"="^SPX","XSP"="^XSP","RUT"="^RUT","NESN"="NESN.SW", "ABBN" = "ABBN.SW", "HOLN"="HOLN.SW","SLHN"="SLHN.SW",
                    "CSBGU0"="CSBGU0.SW","DTLA"="DTLA.L","U.UN"="U-UN.TO", "USD.CAD"="USDCAD=X",
                    "EUR.USD"="EURUSD=X","CHF.USD"="CHFUSD=X","EUR.CHF"="EURCHF=X")
   sym = dplyr::if_else(sym %in% names(lookup_yahoo), lookup_yahoo[sym], sym)

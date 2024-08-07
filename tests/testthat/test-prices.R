@@ -38,8 +38,8 @@ test_that("Trying to return one ticker for a set of dates will not work",{
 
 test_that("It is possible to retrieve a vector of prices corresponding to a vector of sym for a vector of dates",{
   expect_equal(
-    round(getSymPrice(c("SPY","USO","SLV"), c(as.Date("2024-01-10"), as.Date("2024-02-15"), as.Date("2024-02-18")))),
-    c(475 , 73 , 21)
+    round(getSymPrice(c("USO","SLV","GLD"), c(as.Date("2024-01-10"), as.Date("2024-02-15"), as.Date("2024-02-18")))),
+    c(67 , 21, 186)
   )
 })
 

@@ -71,11 +71,11 @@ test_that("It is possible to retrieve multiple instruments from one account", {
   with_mocked_bindings(
     getInstrumentQuery = getTestInstrumentQuery, {
       df = getInstrument(account=c("U1804173","U1804173"),instrument=c("CCJ 19APR24 36 P",
-                                                                       "SPY 21JUN24 525 P"))
+                                                                       "SMH 19APR24 240 C"))
       expect_equal(df,
                    data.frame(initial_trade_date= c(as.Date("2024-02-23"),as.Date("2024-03-21")),
-                              startPrice= c(0.69, 11.37),  DTE= c(56.88, 92.88), u_price = c(40.19,522.20),
-                              startIV=  c(0.379, 0.129)),
+                              startPrice= c(0.69, 3.05),  DTE= c(56.88, 29.88), u_price = c(40.19,226.31),
+                              startIV=  c(0.379, 0.294)),
                    tolerance = 0.001)
     })
 })
