@@ -10,8 +10,23 @@ getGonet()
 No value
 }
 \description{
-This function retrieves trades from GonetTrades.CSV and deduces current Gonet portfolio positions.
-It he retrieves prices from IBKR and then store updated Gonet portfolio positions into DB "Gonet" table.
+This function loads current Gonet positions, retrieves current price information from IBKR (or end-user)
+and opening adjusted price information from Yahoo service.
+It computes average cost and unrealized PnL.
+It stores result in DB "Gonet" table.
+}
+\details{
+Once Gonet position is retrieved from GonetPos.csv file, it retrieves adjusted price at open position date from Yahoo service, equal to average cost.
+This is stored as \code{avgCost}.
+
+It then retrieves prices (named \code{mktPrice}) from IBKR and compute \code{mktValue = mktPrice*pos},
+\code{unPnL = mktValue - avgCost*pos}
+Finally it stores updated Gonet portfolio positions into DB "Gonet" table.
+
+Resulting columns in Gonet table are \code{TradeNr, date, heure, secType, symbol,
+pos, mktPrice, mktValue, avgCost, unPnL, currency and type}.
+
+Notice that \code{secType} = "STK" and \code{type} = "Stock"
 }
 \examples{
 \dontrun{
