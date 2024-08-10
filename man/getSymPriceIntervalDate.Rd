@@ -4,7 +4,12 @@
 \alias{getSymPriceIntervalDate}
 \title{getSymPriceIntervalDate}
 \usage{
-getSymPriceIntervalDate(sym, from_date, to_date = Sys.Date())
+getSymPriceIntervalDate(
+  sym,
+  from_date,
+  to_date = Sys.Date(),
+  OHLCVA = "Adjusted"
+)
 }
 \arguments{
 \item{sym}{one or a vector of symbols}
@@ -12,12 +17,14 @@ getSymPriceIntervalDate(sym, from_date, to_date = Sys.Date())
 \item{from_date}{a start date from which to retrieve symbols}
 
 \item{to_date}{a end date to which to retrieve symbols - Default is today}
+
+\item{OHLCVA}{column to retrieve from Yahoo service, can be any of: "Open" "High" "Low" "Close" "Volume" "Adjusted". Default value is "Adjusted".}
 }
 \value{
 a xts matrix: each column of data contains the adjusted prices - column name is the symbol name
 }
 \description{
-This function retrieves all values from Yahoo starting from CurrentTradesInitialDate - see config.yml file at user level directory
+This function retrieves all values from \code{from_date} till today (or yesterday depending upon tickers)
 This function calls \code{getSymFromDate} with one or a vector of tickers.
 }
 \examples{

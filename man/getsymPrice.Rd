@@ -4,12 +4,14 @@
 \alias{getSymPrice}
 \title{getSymPrice}
 \usage{
-getSymPrice(sym, report_date = Sys.Date() - 1)
+getSymPrice(sym, report_date = Sys.Date() - 1, OHLCVA = "Adjusted")
 }
 \arguments{
 \item{sym}{ticker name or list of tickers, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.}
 
 \item{report_date}{date ot list of dates, any date prior to today. Default is yesterday.}
+
+\item{OHLCVA}{column to retrieve from Yahoo service, can be any of: "Open" "High" "Low" "Close" "Volume" "Adjusted". Default value is "Adjusted".}
 }
 \value{
 a vector of prices (even if multiple dates and multiple symbols), ordered by symbols and then by date for each symbol.

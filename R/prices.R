@@ -39,15 +39,16 @@ getSym = function(sym){
 
 #' getSymPriceIntervalDate
 #'
-#' This function retrieves all values from Yahoo starting from CurrentTradesInitialDate - see config.yml file at user level directory
+#' This function retrieves all values from \code{from_date} till today (or yesterday depending upon tickers)
 #' This function calls \code{getSymFromDate} with one or a vector of tickers.
 #'@param sym one or a vector of symbols
 #'@param from_date a start date from which to retrieve symbols
 #'@param to_date a end date to which to retrieve symbols - Default is today
+#'@param OHLCVA column to retrieve from Yahoo service, can be any of: "Open" "High" "Low" "Close" "Volume" "Adjusted". Default value is "Adjusted".
 #'@returns a xts matrix: each column of data contains the adjusted prices - column name is the symbol name
 #'@examples getSymPriceIntervalDate(sym=c("SPY","FNV","USO"),as.Date("2023-01-02"))
 #'@export
-getSymPriceIntervalDate = function(sym, from_date, to_date = Sys.Date()){
+getSymPriceIntervalDate = function(sym, from_date, to_date = Sys.Date(), OHLCVA = "Adjusted"){
 
   if (length(from_date) != 1) stop("length from_date must be equal to 1!")
   if (length(to_date) != 1) stop("length to_date must be equal to 1!")
@@ -55,8 +56,8 @@ getSymPriceIntervalDate = function(sym, from_date, to_date = Sys.Date()){
   sym_OHLC = getSymIntervalDate(sym, from_date, to_date)
 
   sym_all = purrr::reduce(sym_OHLC, \(acc, x) cbind(acc, x) )
-  adj_sym = sym_all[,grepl("Adjusted", names(sym_all))]
-  colnames(adj_sym) = sub(".Adjusted","", colnames(adj_sym))
+  adj_sym = sym_all[,grepl(OHLCVA, names(sym_all))]
+  colnames(adj_sym) = sub(paste0(".",OHLCVA),"", colnames(adj_sym))
   adj_sym
 }
 
@@ -75,6 +76,7 @@ getSymPriceIntervalDate = function(sym, from_date, to_date = Sys.Date()){
 #'
 #'@param sym ticker name or list of tickers, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.
 #'@param report_date date ot list of dates, any date prior to today. Default is yesterday.
+#'@param OHLCVA column to retrieve from Yahoo service, can be any of: "Open" "High" "Low" "Close" "Volume" "Adjusted". Default value is "Adjusted".
 #'@return a vector of prices (even if multiple dates and multiple symbols), ordered by symbols and then by date for each symbol.
 #'If no data could be retrieved (for instance report_date is today) then display error message and returns NA
 #'@examples \dontrun{
@@ -84,7 +86,7 @@ getSymPriceIntervalDate = function(sym, from_date, to_date = Sys.Date()){
 #'getSymPrice(c("SPY","USO"),c(as.Date("2024-04-15"), as.Date("2024-04-17")))
 #'}
 #'@export
-getSymPrice = function(sym, report_date = Sys.Date() - 1){
+getSymPrice = function(sym, report_date = Sys.Date() - 1, OHLCVA = "Adjusted"){
 
   ### Keep only report_date that is prior to today
   report_date <- report_date[report_date < Sys.Date()]
@@ -108,8 +110,8 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1){
     ### First case - requested date is an holiday or requested date is not today
     ### Get last close price in this case
     ### Take prices list 5 days before one_date to be sure to grasp at least one business day among these 5 days
-    if (one_date == Sys.Date() - 1) prices_list <- getSymPriceIntervalDate(one_sym, one_date - 5, one_date + 1)
-    else prices_list <- getSymPriceIntervalDate(one_sym, one_date - 5, one_date + 2)
+    if (one_date == Sys.Date() - 1) prices_list <- getSymPriceIntervalDate(one_sym, one_date - 5, one_date + 1, OHLCVA)
+    else prices_list <- getSymPriceIntervalDate(one_sym, one_date - 5, one_date + 2, OHLCVA)
 
     ### Find nearest date to one_date, one_date becomes the nearest recorded day in Yahoo
     ### Monday date will be taken for Sunday, and Friday for Saturday

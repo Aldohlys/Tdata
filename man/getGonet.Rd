@@ -10,17 +10,15 @@ getGonet()
 No value
 }
 \description{
-This function loads current Gonet positions, retrieves current price information from IBKR (or end-user)
-and opening adjusted price information from Yahoo service.
-It computes average cost and unrealized PnL.
+This function loads current Gonet positions, the list of all Gonet trades, and retrieves current price information from IBKR (or end-user).
+It then computes the unrealized PnL (as sum of current market value and total cost incurred), deduce then the average cost per current position.
 It stores result in DB "Gonet" table.
 }
 \details{
-Once Gonet position is retrieved from GonetPos.csv file, it retrieves adjusted price at open position date from Yahoo service, equal to average cost.
-This is stored as \code{avgCost}.
+Once Gonet trades are retrieved from GonetTrades.csv file, it computes total cost by summing all symbol-related cashflows, stores it in \code{cost}.
 
-It then retrieves prices (named \code{mktPrice}) from IBKR and compute \code{mktValue = mktPrice*pos},
-\code{unPnL = mktValue - avgCost*pos}
+It then retrieves last available prices (named \code{mktPrice}) from IBKR - or from end-user- and compute \code{mktValue = mktPrice * pos},
+\code{unPnL = mktValue + cost}, \code{avgCost = cost / pos}
 Finally it stores updated Gonet portfolio positions into DB "Gonet" table.
 
 Resulting columns in Gonet table are \code{TradeNr, date, heure, secType, symbol,

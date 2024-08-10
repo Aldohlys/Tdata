@@ -423,16 +423,14 @@ getIBKR <- function() {
 ##############################
 #'   getGonet
 #'
-#' This function loads current Gonet positions, retrieves current price information from IBKR (or end-user)
-#' and opening adjusted price information from Yahoo service.
-#' It computes average cost and unrealized PnL.
+#' This function loads current Gonet positions, the list of all Gonet trades, and retrieves current price information from IBKR (or end-user).
+#' It then computes the unrealized PnL (as sum of current market value and total cost incurred), deduce then the average cost per current position.
 #' It stores result in DB "Gonet" table.
 #'
-#' Once Gonet position is retrieved from GonetPos.csv file, it retrieves adjusted price at open position date from Yahoo service, equal to average cost.
-#' This is stored as \code{avgCost}.
+#' Once Gonet trades are retrieved from GonetTrades.csv file, it computes total cost by summing all symbol-related cashflows, stores it in \code{cost}.
 #'
-#' It then retrieves prices (named \code{mktPrice}) from IBKR and compute \code{mktValue = mktPrice*pos},
-#' \code{unPnL = mktValue - avgCost*pos}
+#' It then retrieves last available prices (named \code{mktPrice}) from IBKR - or from end-user- and compute \code{mktValue = mktPrice * pos},
+#' \code{unPnL = mktValue + cost}, \code{avgCost = cost / pos}
 #' Finally it stores updated Gonet portfolio positions into DB "Gonet" table.
 #'
 #' Resulting columns in Gonet table are \code{TradeNr, date, heure, secType, symbol,
@@ -448,7 +446,12 @@ getIBKR <- function() {
 #'getGonet()
 #'}
 getGonet <- function() {
-  gonet_trades = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetPos.csv",delim=";",
+
+   gonet_pos = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetPos.csv",delim=";",
+                                                    show_col_types = FALSE,
+                                                    locale=readr::locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
+
+   gonet_trades = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetTrades.csv",delim=";",
                                                     show_col_types = FALSE,
                                              locale=readr::locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
 
@@ -457,26 +460,15 @@ getGonet <- function() {
   ### Only position that exist (<>0) are taken into account for computations - incl. unrealized PnL
 
   ### This will build the portfolio current position
-  portf <- dplyr::summarize(dplyr::group_by(gonet_trades, sym_ibkr),
-                                  TradeNr=dplyr::first(TradeNr),
-                                  type=dplyr::first(type),
-                                  sym_yahoo=dplyr::first(sym_yahoo),
-                                  ### orig_date is the oldest date in all trades related to sym_ibkr
-                                  orig_date=dplyr::first(as.Date(orig_date,"%d.%m.%Y")),
-                                               position=sum(position),
-                                               currency=dplyr::first(currency),
-                                               exchange=dplyr::first(exchange))
-  portf <- dplyr::filter(portf, position != 0)
+  portf_cashflow <- dplyr::summarize(dplyr::group_by(gonet_trades, sym_yahoo),
+                                  TradeNr = dplyr::first(TradeNr),
+                                  cost = sum(init_cost),
+                                  currency = dplyr::first(currency))
+
+  portf <- dplyr::filter(gonet_pos, position > 0)
   portf$date <- format(Sys.Date(),"%Y%m%d")
   portf$heure <- format(Sys.time(),"%H:%M:%S")  ### Allows for several recordings in the same day
-
-  if (any(portf$position <0)) {
-    Tbasics::display_error_message("For any symbol all positions must be positive, or position sum is equal to 0")
-    return()
-  }
-
-  ### compute the average cost using adjusted Yahoo prices - this may have changed since last call due to dividend payout
-  portf = dplyr::mutate(portf, orig_adjusted_price = getSymPrice(sym_yahoo, orig_date))
+  portf = dplyr::left_join(portf, portf_cashflow, by = c("sym_yahoo" = "sym_yahoo"))
 
   ### get prices from IBKR using list_sec= "STK", and otherwise values from GonetTrades
   last_price <- getIBKRPrice(sym = portf$sym_ibkr, currency = portf$currency,
@@ -498,8 +490,8 @@ getGonet <- function() {
   ### Compute all necessary fields for storing in CSV/DB
   portf <- dplyr::mutate(portf, secType="STK", symbol=sym_ibkr, pos=position, type="Stock",
                     mktPrice=price, mktValue=round(pos*mktPrice,2),
-                    avgCost=round(orig_adjusted_price,2),
-                    unPnL=round(mktValue-pos*avgCost,2))
+                    unPnL=price*pos+cost,
+                    avgCost=round(-cost/pos,2))
 
   portf <- dplyr::select(portf, TradeNr, date, heure, secType, symbol, pos, mktPrice, mktValue,
                          avgCost, unPnL, currency, type)

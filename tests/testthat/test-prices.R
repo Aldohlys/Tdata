@@ -1,3 +1,14 @@
+
+
+test_that("It is possible to retrieve correctly list of closing prices for a ticker and an interval date", {
+  expect_equal(
+    as.numeric(getSymPriceIntervalDate("GOOG", as.Date("2023-11-01"),as.Date("2023-11-05"), "Close")),
+    c(127.57, 128.58, 130.37),
+    tolerance = 0.01
+  )
+})
+
+
 test_that("It is possible to retrieve correctly list of prices for a ticker and an interval date", {
   expect_true({
     p=getSymIntervalDate("GOOG",as.Date("2023-11-01"),as.Date("2023-11-05"))[[1]]
