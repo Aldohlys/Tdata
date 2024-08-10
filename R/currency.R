@@ -98,7 +98,7 @@ getLastCurrencyPairs = function() {
 #'
 #' Currency symbol (for EUR and USD) are also taken into consideration.
 #'
-#' Only 2 digits after decimal are displayed. Big mark (3 digits separator) is empty.
+#' Only 2 digits after decimal are displayed. Big mark (3 digits separator) equal to space.
 
 #'@param amount,currency amount is the number to be displayed, currency is a string whose value is either EUR, CHF or USD.
 #'If length(currency) is 1, then it is recycled
@@ -118,25 +118,25 @@ currency_format = function(amount,currency){
   euro <- scales::label_dollar(
     prefix = "",
     suffix = " \u20ac",
-    big.mark = "",
+    big.mark = " ",
     accuracy=0.01
   )
   chf <- scales::label_dollar(
     prefix = "",
     suffix = " CHF",
-    big.mark = "",
+    big.mark = " ",
     accuracy=0.01
   )
   cad <- scales::label_dollar(
     prefix = "",
     suffix = " CAD",
-    big.mark = "",
+    big.mark = " ",
     accuracy=0.01
   )
   dollar <- scales::label_dollar(
     prefix = "",
     suffix = " $",
-    big.mark = "",
+    big.mark = " ",
     accuracy=0.01
   )
 

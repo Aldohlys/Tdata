@@ -18,7 +18,7 @@ It defines local labeling functions for CHF, EUR, CAD and USD.
 
 Currency symbol (for EUR and USD) are also taken into consideration.
 
-Only 2 digits after decimal are displayed. Big mark (3 digits separator) is empty.
+Only 2 digits after decimal are displayed. Big mark (3 digits separator) equal to space.
 }
 \examples{
 currency_format(100.45,"EUR")
