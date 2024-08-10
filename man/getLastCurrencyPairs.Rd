@@ -10,7 +10,8 @@ getLastCurrencyPairs()
 This function returns pairs EUR/USD, CHF/USD, CAD/USD and tries to get from Yahoo the latest available pair.
 }
 \details{
-It looks into CurrencyPairs table and retrieves last available pairs from Yahoo. If Yahoo pairs are more recent,
+It looks into CurrencyPairs table and retrieves last available pairs from Yahoo. If Yahoo pairs are all different from NA and
+if they are more recent, then
 it will update CurrencyPairs table in DB and return it. Otherwise it just returns
 the last record from DB.
 

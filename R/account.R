@@ -355,8 +355,8 @@ getIBKR <- function() {
 
   ### In case last record date is prior to today then look at the record
   ### Otherwise no reason to save it
-  ### It will be saved even if one or two are equal to NA - if all equal to NaN then do not save
-  if ((last_date != Sys.Date()) && (!(all(is.nan(currency_pairs_data))))) {
+  ### It will be saved only if all are different from NaN
+  if ((last_date != Sys.Date()) && (all(!is.nan(currency_pairs_data)))) {
     usd = data.frame(date = as.integer(format(Sys.Date(), "%Y%m%d")),
                      EUR = round(currency_pairs_data[1], 4),
                      CHF = round(currency_pairs_data[2], 4),

@@ -41,7 +41,8 @@ getCurrencyPairs = function() {
 #'
 #' This function returns pairs EUR/USD, CHF/USD, CAD/USD and tries to get from Yahoo the latest available pair.
 #'
-#' It looks into CurrencyPairs table and retrieves last available pairs from Yahoo. If Yahoo pairs are more recent,
+#' It looks into CurrencyPairs table and retrieves last available pairs from Yahoo. If Yahoo pairs are all different from NA and
+#' if they are more recent, then
 #' it will update CurrencyPairs table in DB and return it. Otherwise it just returns
 #' the last record from DB.
 #'
@@ -51,32 +52,41 @@ getCurrencyPairs = function() {
 getLastCurrencyPairs = function() {
   last_prices <- getLastSymPrice(c("EUR.USD", "CHF.USD", "USD.CAD"))
 
-  ### Rename sym for possible future storage in DB
-  last_prices$sym <- c("EUR", "CHF", "CAD")
-  last_prices$date <- as.integer(format(max(last_prices$date),"%Y%m%d"))
+  ### All currency pairs must be different from NA to store it in DB
+  ### If any is equal to NA then return last record from DB instead
+  if (any(is.na(last_prices$value))) {
+    Tbasics::display_message("Could not retrieve all currency pairs from Yahoo - one or several equal to NA!")
+    getCurrencyPairs()
+  }
 
-  ### Get CAD/USD value instead of USD/CAD
-  where_cad = (last_prices$sym == "CAD")
-  last_prices[where_cad, "value"] = 1 / last_prices[where_cad, "value"]
-
-  ### For future storage in DB
-  last_prices$value = round(last_prices$value, 4)
-
-  ### Most recent date retrieved
-  last_date = max(last_prices$date)
-
-  ### Get last record from CurrencyPairs table
-  usd <- getCurrencyPairs()
-
-  if (usd$date >= last_date) return(usd)
   else {
-    ### Only new prices are to be stored
-    new_prices = last_prices[last_prices$date > usd$date,]
-    usd <- tidyr::pivot_wider(new_prices, names_from="sym", values_from="value")
-    conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-    DBI::dbAppendTable(conn, "CurrencyPairs", usd)
-    DBI::dbDisconnect(conn)
-    return(usd)
+    ### Rename sym for possible future storage in DB
+    last_prices$sym <- c("EUR", "CHF", "CAD")
+    last_prices$date <- as.integer(format(max(last_prices$date),"%Y%m%d"))
+
+    ### Get CAD/USD value instead of USD/CAD
+    where_cad = (last_prices$sym == "CAD")
+    last_prices[where_cad, "value"] = 1 / last_prices[where_cad, "value"]
+
+    ### For future storage in DB
+    last_prices$value = round(last_prices$value, 4)
+
+    ### Most recent date retrieved
+    last_date = max(last_prices$date)
+
+    ### Get last record from CurrencyPairs table
+    usd <- getCurrencyPairs()
+
+    if (usd$date >= last_date) return(usd)
+    else {
+      ### Only new prices are to be stored
+      new_prices = last_prices[last_prices$date > usd$date,]
+      usd <- tidyr::pivot_wider(new_prices, names_from="sym", values_from="value")
+      conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+      DBI::dbAppendTable(conn, "CurrencyPairs", usd)
+      DBI::dbDisconnect(conn)
+      return(usd)
+    }
   }
 }
 
