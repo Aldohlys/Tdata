@@ -470,7 +470,7 @@ def retrievePortfolioData(ib, df):
   df=df.join(option_c)
   
   ### Extract meaningful columns
-  cols = ["date","heure","secType", "symbol", "lastTradeDateOrContractMonth",  "strike", "right" ,"position", 
+  cols = ["date","heure","secType", "conId", "symbol", "lastTradeDateOrContractMonth",  "strike", "right" ,"position", 
   "marketPrice", "optPrice", "marketValue",  "averageCost", "unrealizedPNL", "impliedVol", "pvDividend",
   "delta",   "gamma", "vega", "theta", "undPrice","multiplier","currency"]
   df = df[[c for c in df.columns if c in cols]]

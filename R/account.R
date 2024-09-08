@@ -377,9 +377,30 @@ getIBKR <- function() {
   ### In case one single instrument has been used in several trades - I choose first trade as trade number
   ### It is also possible that trades not yet recorded appear in portf_data and that closed trades are still opened in trades recorded
   ### portf_data should come first - if necessary trade_nr will be equal to NA
+
+  portf_data = dplyr::mutate(portf_data,
+                             Instrument = dplyr::if_else(type=="TreasuryBill",
+                                                         as.character(conId),
+                                                         Tbasics::buildInstrumentName(symbol,as.Date(as.character(expdate),"%Y%m%d"),
+                                                                                      strike,
+                                                                                      type)),
+                             symbol = dplyr::if_else(type=="TreasuryBill", "US-T", symbol),
+                             conId = NULL)
+
+  ### field conId not needed anymore - removed
+  portf_data$conId=NULL
+
   portf_data = dplyr::left_join(portf_data, open_trades_instrument, multiple="first")
 
-  ### Move TradeNr to 1st place
+  portf_data = dplyr::mutate(portf_data,
+                             currency = dplyr::if_else(type=="TreasuryBill", Currency, currency),
+                             expdate = dplyr::if_else(type=="TreasuryBill", format(as.Date(Exp.Date,format="%d.%m.%Y"),"%Y%m%d"),
+                                                      expdate),
+                             Currency = NULL,
+                             Exp.Date = NULL)
+
+
+  ### Move TradeNr column as first column
   portf_data = dplyr::select(portf_data, TradeNr, dplyr::everything())
 
   ### Verify that all portf_data have been matched by a TradeNr
@@ -484,12 +505,12 @@ getGonet <- function() {
   portf = dplyr::left_join(portf, last_price, by = c("sym_ibkr"="sym"))
 
   ### Compute all necessary fields for storing in CSV/DB
-  portf <- dplyr::mutate(portf, secType="STK", symbol=sym_ibkr, pos=position, type="Stock",
+  portf <- dplyr::mutate(portf, symbol=sym_ibkr, pos=position, type="Stock",
                     mktPrice=price, mktValue=round(pos*mktPrice,2),
                     unPnL=price*pos+cost,
                     avgCost=round(-cost/pos,2))
 
-  portf <- dplyr::select(portf, TradeNr, date, heure, secType, symbol, pos, mktPrice, mktValue,
+  portf <- dplyr::select(portf, TradeNr, date, heure, symbol, pos, mktPrice, mktValue,
                          avgCost, unPnL, currency, type)
 
   ### store prices in .CSV / DB

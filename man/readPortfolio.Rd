@@ -12,11 +12,9 @@ local DB path is retrieved through config.yaml file}
 }
 \value{
 a data frame with the following columns:
-\code{TradeNr; date; heure; secType; symbol; expdate; strike; right(*); pos}
+\code{TradeNr; date; heure; symbol; expdate; strike; pos}
 \code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend}
 \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument}
-
-\code{right} comes only for simulated account
 }
 \description{
 This function reads a portfolio table given as entry

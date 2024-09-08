@@ -21,10 +21,8 @@ It then retrieves last available prices (named \code{mktPrice}) from IBKR - or f
 \code{unPnL = mktValue + cost}, \code{avgCost = cost / pos}
 Finally it stores updated Gonet portfolio positions into DB "Gonet" table.
 
-Resulting columns in Gonet table are \code{TradeNr, date, heure, secType, symbol,
+Resulting columns in Gonet table are \code{TradeNr, date, heure, symbol,
 pos, mktPrice, mktValue, avgCost, unPnL, currency and type}.
-
-Notice that \code{secType} = "STK" and \code{type} = "Stock"
 }
 \examples{
 \dontrun{
