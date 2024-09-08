@@ -76,6 +76,7 @@ getSymPriceIntervalDate = function(sym, from_date, to_date = Sys.Date(), OHLCVA 
 #'
 #'@param sym ticker name or list of tickers, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.
 #'@param report_date date ot list of dates, any date prior to today. Default is yesterday.
+#'It can be also numeric or character, in which case it will be converted to Date format.
 #'@param OHLCVA column to retrieve from Yahoo service, can be any of: "Open" "High" "Low" "Close" "Volume" "Adjusted". Default value is "Adjusted".
 #'@return a vector of prices (even if multiple dates and multiple symbols), ordered by symbols and then by date for each symbol.
 #'If no data could be retrieved (for instance report_date is today) then display error message and returns NA
@@ -88,7 +89,10 @@ getSymPriceIntervalDate = function(sym, from_date, to_date = Sys.Date(), OHLCVA 
 #'@export
 getSymPrice = function(sym, report_date = Sys.Date() - 1, OHLCVA = "Adjusted"){
 
-  ### Keep only report_date that is prior to today
+  if (is.numeric(report_date)) report_date = as.character(report_date)
+  if (is.character(report_date)) report_date = as.Date(report_date, "%Y%m%d")
+
+  ### Keep only report_date values that are prior to today
   report_date <- report_date[report_date < Sys.Date()]
 
   ### test if there is no report_date prior to today - in this case dispaly error message and returns NA
@@ -98,6 +102,9 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, OHLCVA = "Adjusted"){
   }
   ### If only one date as input then recycle it to symbols list length
   if (length(report_date) == 1) report_date = rep(report_date, length(sym))
+
+  ### If only one symbol as input then recycle it to report_date list length
+  if (length(sym) == 1) sym = rep(sym, length(report_date))
 
   ### In any case both lengths must be equal
   if (length(sym) != length(report_date)) {
@@ -123,6 +130,7 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, OHLCVA = "Adjusted"){
     ### Convert xts object to numeric vector
     prices_num = as.numeric(prices)
 
+    ### No round as precision is unknown at this point - could be a currency or a stock
     return(prices_num)
   }
 
@@ -144,7 +152,7 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, OHLCVA = "Adjusted"){
 #'It is based upon \code{getSymPriceIntervalDate} with from date argument equal to yesterday
 #'
 #'@param sym ticker name or list of tickers, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.
-#'@return a tibble with tidyr type of column names: \code{date, sym, value}, sym column contains the original sym list.
+#'@return a tibble with tidy type of column names: \code{date, sym, value}, sym column contains the original sym list.
 #'@examples
 #'getLastSymPrice(c("EUR.USD","USD.CAD","CHF.USD"))
 #'getLastSymPrice(c("SPY","XSP"))
