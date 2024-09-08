@@ -336,17 +336,33 @@ def getStrikesfromExpDate(sym,currency,exchange,tradingClass,expdate,strikes):
 
   return(updated_strikes)
 
-def retrieveCurrencyPairs(ib):
-  contracts = [Forex("EURUSD"), Forex("CHFUSD"), Forex("USDCAD")] # Simple contract
-  if(ib.qualifyContracts(*contracts)):
-    ib.reqMarketDataType(2) ### Request type - Should be 2 or 4
-    tickers = ib.reqTickers(*contracts)
-    ib.sleep(1)
-    l=[ticker.marketPrice() for ticker in tickers]
-    print("\nEUR/USD, CHF/USD, USD/CAD",l)
-  else: 
-    l= float('nan')
-  return l
+def retrieveCurrencyPairs(ib, currencies):
+  
+  ### currencies is a list of currencies to which to convert from/to USD
+  ### this function will return values in the same order as sorted currencies list
+  contracts=[]
+  currencies.sort()
+  
+  ### Assumes that curencies are given in this order (alphabetical)
+  if "CAD" in currencies : contracts.append(Forex("USDCAD"))
+  if "CHF" in currencies : contracts.append(Forex("CHFUSD"))
+  if "EUR" in currencies : contracts.append(Forex("EURUSD"))
+  if "JPY" in currencies : contracts.append(Forex("USDJPY"))
+  
+  ib.qualifyContracts(*contracts)
+  
+  ib.reqMarketDataType(2) ### Request type - Should be 2 or 4
+  tickers = ib.reqTickers(*contracts)
+  ib.sleep(1)
+  
+  res = []
+  ### This assumes that currencies and tickers are in the same order
+  for ticker, currency in zip(tickers, currencies):
+    if ((currency == "CAD") or (currency == "JPY")): res.append(round(1/ticker.marketPrice(), 4))
+    else: res.append(round(ticker.marketPrice(), 4))
+    
+  print(currencies,res)
+  return [currencies, res]
 
 def retrieveAccountData(ib):
   df=util.df(ib.accountSummary())
@@ -480,13 +496,6 @@ def getIBKRData():
   except ConnectionError:
     return 0
   
-  ##### Forex dataretrieval ###############
-  print("#####  Retrieving CurrencyPairs... ")
-  
-  ##### If EUR or CHF are not defined so be it - user will try again anyway #####
-  ##### As everything is done into Python at this stage nothing is requested from user
-  currency_pairs_data = retrieveCurrencyPairs(ib)
-
   #### Get account related data first #########
 
   print("\n#####  Retrieving account data... \n")
@@ -526,6 +535,19 @@ def getIBKRData():
   portf_data= retrievePortfolioData(ib, df)
   print(portf_data)
   
+  ##### Forex data retrieval ###############
+  print("#####  Retrieving CurrencyPairs... ")
+  
+  ### List all currencies present in portfolio data (except USD which is base currency) 
+  ### If no currency (ex: T-Bill) do not take into account
+  ### Do not repeat the same currency twice as well
+  currencies = []
+  [currencies.append(x) for x in portf_data.currency if x not in currencies and x != "USD" and x != ""]
+  
+  ##### If EUR or CHF are not defined so be it - user will try again anyway #####
+  ##### As everything is done into Python at this stage nothing is requested from user
+  currency_pairs_data = retrieveCurrencyPairs(ib, currencies)
+
   ### Wait until all data has been received
   ib.sleep(1)
   

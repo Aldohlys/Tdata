@@ -26,15 +26,19 @@ getAllCurrencyPairs = function() {
 #' See \code{getIBKR()} to get more up to date data from IBKR
 #'@export
 getCurrencyPairs = function() {
-  ### euro_usd and chf_usd data frames - values for the day- are already retrieved
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
-  ### Get last record from CurrencyPairs table
-  usd <- DBI::dbGetQuery(conn, "SELECT *
-                                      FROM CurrencyPairs
-                                      WHERE ROWID = (SELECT MAX(ROWID)  FROM CurrencyPairs);")
-  DBI::dbDisconnect(conn)
-  return(usd)
+  usd = getAllCurrencyPairs()
+  usd = dplyr::group_by(usd, currency)
+  usd_last = dplyr::filter(usd, date == max(date))
+
+  ### This will remove duplicate for currency and date
+  usd_last = usd_last[!duplicated(usd_last[, 1:2]),]
+
+  ### This is an approximation - hopefully dates at which currencies were retrieved are not too different
+  ### - ideally they should be all equal !!
+  usd_last$date = max(usd_last$date)
+  usd_last = tidyr::pivot_wider(usd_last, names_from="currency", values_from="usd_value")
+  return(usd_last)
 }
 
 #'  getLastCurrencyPairs
@@ -81,7 +85,10 @@ getLastCurrencyPairs = function() {
     else {
       ### Only new prices are to be stored
       new_prices = last_prices[last_prices$date > usd$date,]
-      usd <- tidyr::pivot_wider(new_prices, names_from="sym", values_from="value")
+      usd$date = last_date
+      usd$currency = last_prices$sym
+      usd$usd_value = last_prices$value
+
       conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
       DBI::dbAppendTable(conn, "CurrencyPairs", usd)
       DBI::dbDisconnect(conn)
@@ -188,9 +195,10 @@ convert_to_usd = function(amount, currency, EUR, CHF, CAD) {
 #' Last it calls the convert_to_usd function.
 #'
 #' This function can be vectorized for \code{amount} and \code{currency}, but \code{date} MUST be unique.
-#'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF
-#'@param date Can be a date, or character, or integer(numeric). By defaut it is today.
-#'If type is character/numeric, then \code{date} argument will be converted first to a date type using Y/M/D format.
+#'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF, CAD, etc..
+#'@param convert_date Can be a date, or character, or integer(numeric). By default it is today.
+#'If type is character/date, then \code{convert_date} argument will be first converted to an integer type with Y/M/D format
+#'- this is the format in CurrencyPairs DB table
 #'@keywords currency trading
 #'@examples
 #'convert_to_usd_date(100.45,"EUR",as.Date("2023-10-15"))
@@ -201,43 +209,39 @@ convert_to_usd = function(amount, currency, EUR, CHF, CAD) {
 #'convert_to_usd_date(c(750.543,10),c("USD","EUR"),as.Date("2023-12-03"))
 #'convert_to_usd_date(c(750.543,10),"EUR",as.Date("2023-12-03"))
 #'@export
-convert_to_usd_date = function(amount, currency, date = Sys.Date()) {
+convert_to_usd_date = function(amount, currency, convert_date = Sys.Date()) {
 
-  if (length(date) != 1) stop("date must be of length 1!")
+  if (length(convert_date) != 1) stop("convert_date must be of length 1!")
 
-  ### Prepare call to bind_cols
-  amount = data.frame(amount = amount)
-
-  ### If date is of numeric (i.e. integer) or character type then convert it
-  if (is.numeric(date)) date <- as.Date(as.character(date), "%Y%m%d")
-  if (is.character(date)) date <- as.Date(date, "%Y%m%d")
-
-  ### Retrieve all currency pairs since beginning
-  usd = getAllCurrencyPairs()
-
-  ### It is assumed here that dates are stored in integer/character format in CurrencyPairs table
-  usd$date = as.Date(as.character(usd$date),"%Y%m%d")
-
-  ### This works only if date is of length 1
-  ### because which.min returns one single index, even if date is a vector
-  ### if date is not recorded yet, it will provide the values of yesterday or before
-  ### If it falls on a closed day and day before and after are business days, then it provides the oldest day
-  nearest_index = which.min(abs(usd$date-date))
-
-  usd_nearest = usd[nearest_index,]
-
-  ### Prepare call to bind_cols - remove date column
-  currency = data.frame(currency = currency)
-  usd_nearest$date = NULL
-
+  ### If currency is of length 1 - it will be recycled
+  ### If amount is of length 1 - it will be recycled
   #### tidyverse rules should apply :
   ####  Recycling describes the concept of repeating elements of one vector to match the size of another.
   #### There are two rules that underlie the “tidyverse” recycling rules:
   #### -  Vectors of size 1 will be recycled to the size of any other vector
   #### - Otherwise, all vectors must have the same size
-  data <- dplyr::bind_cols(amount, currency, usd_nearest)
+  result = data.frame(amount = amount, currency = currency)
 
-  do.call(convert_to_usd, data)
+  ### If convert_date is of Date type or character type then convert it
+  if (inherits(convert_date,"Date")) convert_date <- as.numeric(format(convert_date,"%Y%m%d"))
+  if (is.character(convert_date)) convert_date <- as.numeric(convert_date)
+
+  ### Retrieve all currency pairs since beginning
+  ### It is assumed here that dates are stored in integer/character format in CurrencyPairs table
+  usd = getAllCurrencyPairs()
+
+  ### This works only if date is of length 1
+  ### if date is not recorded yet, it will provide the values of yesterday or before
+  ### If it falls on a closed day and day before and after are business days, then it provides the oldest day
+  usd = dplyr::group_by(usd, currency)
+  usd = dplyr::ungroup(dplyr::filter(usd, abs(date-convert_date) == min(abs(date-convert_date))))
+  usd$date = NULL
+
+  ### If convert to USD - always equal to 1
+  usd = dplyr::add_row(usd, currency="USD", usd_value = 1)
+
+  result = dplyr::left_join(result, usd)
+  return(as.numeric(result$amount * result$usd_value))
 }
 
 

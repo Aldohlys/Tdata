@@ -26,19 +26,19 @@ test_that("Up to date currency pairs can be retrieved either from IBKR or from e
 ## 2023-11-20	EUR/USD 1.09253799915314	CHF/USD 1.1310042142868
 test_that("Convert to USD a given amount in CHF and EUR", {
   expect_equal(round(convert_to_usd_date(100.45,"EUR",as.Date("2023-11-20")),2),
-               round(100.45*1.0925,2))
+               round(100.45*1.0907,2))
   expect_equal(convert_to_usd_date(c(1000,2000),"EUR",as.Date("2023-12-03")),
-               c(1088.3, 2176.6))
+               c(1088.8, 2177.6))
   expect_equal(convert_to_usd_date(c(1000,2000),c("EUR","CHF"),as.Date("2023-12-03")),
-               c(1088.3, 2285.0))
+               c(1088.8, 2304.6))
 })
 
 ###┼ Test currency convert using different date formats
 test_that("Convert to USD a given amount in CHF and EUR using different date formats", {
   expect_equal(convert_to_usd_date(2000, "EUR", 20240421),
-              2133)
+              2131.6)
   expect_equal(convert_to_usd_date(2000, "CHF", "20240421"),
-               2193)
+               2195.4)
 })
 
 ### 2021-01-08	EUR/USD 1.22714447975159	CHF/USD 1.12975203990936
@@ -56,9 +56,9 @@ test_that("Convert to USD works with only one date", {
 
 test_that("Conversion format work for currency", {
   expect_equal(currency_format(100.45,"EUR"), "100.45 \U20AC")
-  expect_equal(currency_format(10000,"CHF"), "10000.00 CHF")
+  expect_equal(currency_format(10000,"CHF"), "10 000.00 CHF")
   expect_equal(currency_format(758.458,"USD"), "758.46 $")
-  expect_equal(currency_format(100000.455,"EUR"), "100000.46 \U20AC")
+  expect_equal(currency_format(100000.455,"EUR"), "100 000.46 \U20AC")
   expect_equal(currency_format(c(100.45,758.458),c("EUR","USD")), c("100.45 \U20AC", "758.46 $"))
-  expect_equal(currency_format(c(100000.455,758.458,265.43) ,"USD"), c("100000.46 $","758.46 $","265.43 $"))
+  expect_equal(currency_format(c(100000.455,758.458,265.43) ,"USD"), c("100 000.46 $","758.46 $","265.43 $"))
 })

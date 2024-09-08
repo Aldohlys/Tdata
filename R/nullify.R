@@ -30,10 +30,11 @@ pos <- uPrice <- currency <- multiplier <- delta <- theta <- vega <- dnet <- ddn
 
 ### for getIBKR
 new_date <- heure <- strike <- optPrice <- pvDividend <- expdate <- type <- unrealizedPNL <- NULL
+Currency <- conId <- NULL
 
 ### for getGonet
 sym_ibkr <- sym_yahoo <- orig_date <- price <- mktPrice <- orig_adjusted_price <- NULL
-unPnL <- cost <- avgCost <- orig_adjusted_price <- mktValue <- NULL
+unPnL <- cost <- avgCost <- orig_adjusted_price <- mktValue <- init_cost <- NULL
 
 ## add for getAccountGonet
 mktValue <- unPnL <- TotalCashBalance <- StockMarketValue <- NetLiquidation <- heure.1 <- NULL
@@ -41,7 +42,11 @@ mktValue <- unPnL <- TotalCashBalance <- StockMarketValue <- NetLiquidation <- h
 ### add for getInstrument
 initial_trade_date <- Ssjacent <- u_price <- interest_rate <- DTE <- startPrice <- startIV <- NULL
 
-### add for getLastSymPrice
+### add for getClosedTrades
+strategy <- last_date <- NULL
+
+### add for getClosedTrades
+
 
 
 

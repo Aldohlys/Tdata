@@ -41,9 +41,11 @@ test_that("It is possible to retrieve correctly prices for a list of tickers for
   )
 })
 
-test_that("Trying to return one ticker for a set of dates will not work",{
-  expect_true(
-    is.na(getSymPrice(c("SPY"),c(as.Date("2024-01-10"), as.Date("2024-02-15"), as.Date("2024-02-18"))))
+test_that("Trying to return one ticker for a set of dates will work",{
+  expect_equal(
+    getSymPrice(c("SPY"),c(as.Date("2024-01-10"), as.Date("2024-02-15"), as.Date("2024-02-18"))),
+    c(473.56, 498.85, 496.36),
+    tolerance = 0.01
   )
 })
 

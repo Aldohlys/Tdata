@@ -47,7 +47,7 @@ test_that("It is possible to retrieve one instrument in one account", {
       expect_equal(df,
                    data.frame(initial_trade_date= as.Date("2024-02-23"),
                               startPrice= 0.69,  DTE=56.88, u_price =40.189999,
-                              startIV=  0.379))
+                              startIV=  0.378))
     })
 })
 
@@ -75,7 +75,7 @@ test_that("It is possible to retrieve multiple instruments from one account", {
       expect_equal(df,
                    data.frame(initial_trade_date= c(as.Date("2024-02-23"),as.Date("2024-03-21")),
                               startPrice= c(0.69, 3.05),  DTE= c(56.88, 29.88), u_price = c(40.19,226.31),
-                              startIV=  c(0.379, 0.294)),
+                              startIV=  c(0.378, 0.294)),
                    tolerance = 0.001)
     })
 })

@@ -4,13 +4,16 @@
 \alias{convert_to_usd_date}
 \title{convert_to_usd_date}
 \usage{
-convert_to_usd_date(amount, currency, date = Sys.Date())
+convert_to_usd_date(amount, currency, convert_date = Sys.Date())
 }
 \arguments{
-\item{amount, currency}{amount is the number to be converted, currency is a string whose value is either EUR, CHF}
+\item{amount, currency}{amount is the number to be converted, currency is a string whose value is either EUR, CHF, CAD, etc..}
 
-\item{date}{Can be a date, or character, or integer(numeric). By defaut it is today.
-If type is character/numeric, then \code{date} argument will be converted first to a date type using Y/M/D format.}
+\item{convert_date}{Can be a date, or character, or integer(numeric). By default it is today.
+If type is character/date, then \code{convert_date} argument will be first converted to an integer type with Y/M/D format
+\itemize{
+\item this is the format in CurrencyPairs DB table
+}}
 }
 \description{
 This function converts the amount of currency into USD, using CAD, EUR and CHF currency pairs values for a given date

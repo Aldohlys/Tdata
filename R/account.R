@@ -61,12 +61,10 @@ readAccount = function(accountnr) {
 #'@param portfname is a string that is a name of a portfolio table into local DB.
 #'local DB path is retrieved through config.yaml file
 #'@returns a data frame with the following columns:
-#' \code{TradeNr; date; heure; secType; symbol; expdate; strike; right(*); pos}
+#' \code{TradeNr; date; heure; symbol; expdate; strike; pos}
 #' \code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend}
 #' \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument}
 #'
-#'
-#' \code{right} comes only for simulated account
 #'@examples
 #'\dontrun{
 #'readPortfolio("DU5555")
@@ -94,7 +92,7 @@ readPortfolio = function(portfname) {
     ### With DB it is not necessary to convert position into an integer (this is not a float)
     ### portf$position=as.integer(portf$position)
     ## There are no CASH positions that are virtual
-    ### portf = dplyr::filter(portf, secType!="CASH")
+    ### portf = dplyr::filter(portf, type!="CASH")
 
     ### Case where there are options in the portfolio - these field names come from IBKR - cannot be changed
 
@@ -125,12 +123,10 @@ readPortfolio = function(portfname) {
 #'
 #'@param portfname is a string whose value is actual portfolio table name in DB
 #'@returns a data frame with the following columns:
-#' \code{TradeNr; date; heure; secType; symbol; expdate; strike; right(*); pos; }
+#' \code{TradeNr; date; heure; symbol; expdate; strike; pos; }
 #' \code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend; }
 #' \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument}
 #'
-#'
-#' \code{right} comes only for simulated account
 #'@examples
 #'\dontrun{
 #'readLastPortfolio("DU5555")
@@ -347,32 +343,11 @@ getIBKR <- function() {
   ### Open connection to user DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
-  #### 1. Process new currency data ##############
-  currency_pairs_data <- l[[4]]
-
-  ### Retrieve last record date either from DB or from Yahoo - date is in character/integer format
-  last_date <- as.Date(as.character(getLastCurrencyPairs()$date), "%Y%m%d")
-
-  ### In case last record date is prior to today then look at the record
-  ### Otherwise no reason to save it
-  ### It will be saved only if all are different from NaN
-  if ((last_date != Sys.Date()) && (all(!is.nan(currency_pairs_data)))) {
-    usd = data.frame(date = as.integer(format(Sys.Date(), "%Y%m%d")),
-                     EUR = round(currency_pairs_data[1], 4),
-                     CHF = round(currency_pairs_data[2], 4),
-                     #### As the pair USD/CAD is retrieved and not CAD/USD - needs to invert value returned
-                     CAD = round(1/currency_pairs_data[3], 4))
-
-    DBI::dbAppendTable(conn, "CurrencyPairs", usd)
-  }
-
-  #### 2. Process new account data #################
+  #### 1. Process new account data #################
   account_data = l[[1]]
-  DBI::dbAppendTable(conn,"Account",account_data)
+  DBI::dbAppendTable(conn,"Account", account_data)
 
-  account_type = switch(account_data$account,"U1804173"="Live","DU5221795"="Simu")
-
-  #### 3. Process new prices for underlyings part of the portfolio  ##########
+  #### 2. Process new prices for underlyings part of the portfolio  ##########
   uprices_data = l[[2]]
   DBI::dbAppendTable(conn,"Prices",uprices_data)
 
@@ -380,25 +355,25 @@ getIBKR <- function() {
   portf_data = l[[3]]
 
   ### Retrieve opened trades
-  open_trades = dplyr::filter(getAllTrades(), Statut == "Ajust\U00e9" | Statut ==  "Ouvert", Account == account_type)
-  ### Extract TradeNr and Instrument - some instrument may have been part of the trade but closed and still appear here
-  open_trades_instrument=dplyr::distinct(dplyr::select(open_trades,TradeNr, Instrument))
+  open_trades = getActiveTrades(account_data$account)
 
-  ### Transform fresh data from IBKR
+  ### Extract TradeNr and Instrument - some instrument may have been part of the trade but closed and still appear here
+  ### currency, expdate is empty for treasury bills
+  open_trades_instrument=dplyr::distinct(dplyr::select(open_trades, TradeNr, Instrument, Currency, Exp.Date))
+
+  ### Generate type field from secType IBKR field - default case it is equal to secType
   portf_data = dplyr::mutate(portf_data, type= dplyr::case_match(secType,"STK" ~ "Stock",
                                                                  c("OPT","FOP") ~ dplyr::if_else(right=="P","Put","Call"),
-                                                                 "FUT" ~ "Future",
-                                                                 .default = secType))
+                                                                 "FUT" ~ "Future", "BILL" ~ "TreasuryBill",
+                                                                 .default = secType),
+                                        .keep="unused")
 
   ### In case of stocks set multiplier to 1 and have multipliers of other types of instrument set as integer
   portf_data$multiplier = dplyr::if_else(portf_data$type == "Stock", 1, as.integer(portf_data$multiplier))
   ### For stocks set delta to 1
   portf_data$delta = dplyr::if_else(portf_data$type == "Stock", 1, portf_data$delta)
 
-  ### field right not needed anymore - removed
-  portf_data$right=NULL
 
-  portf_data = dplyr::mutate(portf_data,Instrument=Tbasics::buildInstrumentName(symbol,as.Date(as.character(expdate),"%Y%m%d"),strike,type))
   ### In case one single instrument has been used in several trades - I choose first trade as trade number
   ### It is also possible that trades not yet recorded appear in portf_data and that closed trades are still opened in trades recorded
   ### portf_data should come first - if necessary trade_nr will be equal to NA
@@ -417,6 +392,29 @@ getIBKR <- function() {
 
   ### Append to DB
   DBI::dbAppendTable(conn,account_data$account,portf_data)
+
+
+  #### 3. Process new currency data ##############
+  currency_pairs_data <- l[[4]]
+  currencies_list = currency_pairs_data[[1]]
+  currencies_values = currency_pairs_data[[2]]
+
+  ### Retrieve last record date either from DB or from Yahoo - date is in character/integer format
+  last_date <- as.Date(as.character(getLastCurrencyPairs()$date), "%Y%m%d")
+
+  ### In case last record date is prior to today then look at the record
+  ### Otherwise no reason to save it
+  ### It will be saved only if all are different from NaN
+  if ((last_date != Sys.Date()) && (!all(is.na(currencies_values)))) {
+    usd = data.frame(date = as.integer(format(Sys.Date(), "%Y%m%d")),
+                     currency = currencies_list,
+                     usd_value = currencies_values)
+    usd = usd[!is.na(usd$usd_value),]
+
+    DBI::dbAppendTable(conn, "CurrencyPairs", usd)
+  }
+
+
   DBI::dbDisconnect(conn)
 }
 
@@ -433,10 +431,8 @@ getIBKR <- function() {
 #' \code{unPnL = mktValue + cost}, \code{avgCost = cost / pos}
 #' Finally it stores updated Gonet portfolio positions into DB "Gonet" table.
 #'
-#' Resulting columns in Gonet table are \code{TradeNr, date, heure, secType, symbol,
+#' Resulting columns in Gonet table are \code{TradeNr, date, heure, symbol,
 #' pos, mktPrice, mktValue, avgCost, unPnL, currency and type}.
-#'
-#' Notice that \code{secType} = "STK" and \code{type} = "Stock"
 #'
 #'
 #'@returns No value

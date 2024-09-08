@@ -62,7 +62,7 @@ writeJournalEntry <- function(entry) {
 #'@param text, string - comment, remark
 #'@export
 modifyJournalEntry <- function(entryId, close, change, text) {
-  if( (!(is.numeric(close))) | (!(is.character(change))) ) display_error_message("Please provide numerical value for close and percentage for change")
+  if( (!(is.numeric(close))) | (!(is.character(change))) ) Tbasics::display_error_message("Please provide numerical value for close and percentage for change")
   else {
     conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
     status <- DBI::dbExecute(conn, "UPDATE Journal SET close = ?, change =?, text = ? WHERE entryId = ?;",

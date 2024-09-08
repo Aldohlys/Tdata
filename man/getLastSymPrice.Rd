@@ -10,7 +10,7 @@ getLastSymPrice(sym)
 \item{sym}{ticker name or list of tickers, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.}
 }
 \value{
-a tibble with tidyr type of column names: \code{date, sym, value}, sym column contains the original sym list.
+a tibble with tidy type of column names: \code{date, sym, value}, sym column contains the original sym list.
 }
 \description{
 This function retrieves the last available adjusted prices of a vector of tickers from Yahoo service
