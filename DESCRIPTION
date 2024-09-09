@@ -1,6 +1,6 @@
 Package: Tdata
 Title: Provide basic utilities for trading IBKR account
-Version: 2.7.1
+Version: 2.7.2
 Authors@R: 
     person("Alexis", "Martin", , "aldohlys@gmail.com", role = c("aut","cre"),
            comment = c(ORCID = ""))
