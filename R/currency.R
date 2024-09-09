@@ -235,7 +235,7 @@ convert_to_usd_date = function(amount, currency, convert_date = Sys.Date()) {
   ### If it falls on a closed day and day before and after are business days, then it provides the oldest day
   usd = dplyr::group_by(usd, currency)
   usd = dplyr::ungroup(dplyr::filter(usd, abs(date-convert_date) == min(abs(date-convert_date))))
-  usd$date = NUL
+  usd$date = NULL
 
   ### Remove duplicated currencies (take first one i.e. oldest same date)
   usd = usd[!duplicated(usd[,1]),]
