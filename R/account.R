@@ -331,17 +331,23 @@ getIBKR <- function() {
   # else if (is.na(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
   #
   # Sys.sleep(1)
+
+  ### Open connection to user DB
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+
+  Tbasics::display_message("Retrieve currencies from DB...")
+  currencies <- DBI::dbGetQuery(conn, "SELECT Name FROM ActiveCurrencies")[,1]
+  currency_pairs <- DBI::dbGetQuery(conn, "SELECT FXPair FROM ActiveCurrencies")[,1]
+  direct_conv <- DBI::dbGetQuery(conn, "SELECT DirectConversion FROM ActiveCurrencies")[,1]
+
   Tbasics::display_message("Call IBKR to retrieve data...")
 
-  l = reticulate::py$getIBKRData()
+  l = reticulate::py$getIBKRData(currencies, currency_pairs, direct_conv)
 
   if (typeof(l) != "list") {
     Tbasics::display_error_message("No IB connection possible!")
     return()
   }
-
-  ### Open connection to user DB
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
   #### 1. Process new account data #################
   account_data = l[[1]]
@@ -369,7 +375,11 @@ getIBKR <- function() {
                                         .keep="unused")
 
   ### In case of stocks set multiplier to 1 and have multipliers of other types of instrument set as integer
-  portf_data$multiplier = dplyr::if_else(portf_data$type == "Stock", 1, as.integer(portf_data$multiplier))
+  ### Price is 100 face value. but position is counted in 1000's so multiplier allows to have
+  ### mktValue = pos * mktPrice * multiplier - just like options
+  portf_data$multiplier = dplyr::if_else(portf_data$type == "Stock", 1,
+                                         dplyr::if_else(portf_data$type == "TreasuryBill", 10,
+                                                 as.integer(portf_data$multiplier)))
   ### For stocks set delta to 1
   portf_data$delta = dplyr::if_else(portf_data$type == "Stock", 1, portf_data$delta)
 
