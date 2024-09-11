@@ -336,9 +336,9 @@ getIBKR <- function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
   Tbasics::display_message("Retrieve currencies from DB...")
-  currencies <- DBI::dbGetQuery(conn, "SELECT Name FROM ActiveCurrencies")[,1]
-  currency_pairs <- DBI::dbGetQuery(conn, "SELECT FXPair FROM ActiveCurrencies")[,1]
-  direct_conv <- DBI::dbGetQuery(conn, "SELECT DirectConversion FROM ActiveCurrencies")[,1]
+  currencies <- DBI::dbGetQuery(conn, "SELECT Name FROM Currencies WHERE Active = 'Yes'")[,1]
+  currency_pairs <- DBI::dbGetQuery(conn, "SELECT FXPair FROM Currencies WHERE Active = 'Yes'")[,1]
+  direct_conv <- DBI::dbGetQuery(conn, "SELECT DirectConversion FROM Currencies WHERE Active = 'Yes'")[,1]
 
   Tbasics::display_message("Call IBKR to retrieve data...")
 

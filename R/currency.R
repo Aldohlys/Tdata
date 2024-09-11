@@ -10,92 +10,120 @@
 # }
 
 ### This assumes that mydb is declared
-getAllCurrencyPairs = function() {
+getAllCurrenciesUSDValues = function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-  all_pairs <- DBI::dbReadTable(conn, "CurrencyPairs")
+  all_values <- DBI::dbReadTable(conn, "ConvertToUSD")
   DBI::dbDisconnect(conn)
-  all_pairs
+  all_values
 }
 
-#'  getCurrencyPairs
+#'  getStoredUSDValue
 #'
-#' This function returns pairs EUR/USD, CHF/USD, CAD/USD.
+#' This function retrieves last USD value of a given currency from DB. This function can be vectorized.
 #'
-#' It looks into CurrencyPairs table and requests
+#' It looks into ConvertToUSD table and requests
 #' the last record. It does not try to retrieve more up to date value from IBKR or other sources.
 #' See \code{getIBKR()} to get more up to date data from IBKR
+#'@param currency string - possible values are EUR, CHF, USD...
+#'@returns a data frame with \code{date, usd_value} fields,
+#'where \code{date} is an integer format of YYYYMMDD and \code{usd_value} a numeric.
+#'@examples
+#'getStoredUSDValue("USD")
+#'getStoredUSDValue("EUR")
+#'getStoredUSDValue("CAD")
+#'getStoredUSDValue("CHF")
 #'@export
-getCurrencyPairs = function() {
-
-  usd = getAllCurrencyPairs()
-  usd = dplyr::group_by(usd, currency)
-  usd_last = dplyr::filter(usd, date == max(date))
-
-  ### This will remove duplicate for currency and date
-  usd_last = usd_last[!duplicated(usd_last[, 1:2]),]
-
-  ### This is an approximation - hopefully dates at which currencies were retrieved are not too different
-  ### - ideally they should be all equal !!
-  usd_last$date = max(usd_last$date)
-  usd_last = tidyr::pivot_wider(usd_last, names_from="currency", values_from="usd_value")
-  return(usd_last)
+getStoredUSDValue = function(currency) {
+  dplyr::if_else (currency == "USD",
+           data.frame(date = as.numeric(format(Sys.Date(),"%Y%m%d")), usd_value = 1.0),
+           {
+             conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+             usd <- DBI::dbGetQuery(conn, "SELECT max(date) as date, usd_value FROM ConvertToUSD WHERE currency = ?",
+                                    params=list(currency))
+             DBI::dbDisconnect(conn)
+             usd
+           })
 }
 
-#'  getLastCurrencyPairs
+
+  # usd = getAllCurrencyPairs()
+  # usd <- usd[usd$currency == currency,]
+  # usd_last = dplyr::filter(usd, date == max(date))
+  #
+  # ### This will remove duplicate for currency and date
+  # usd_last = usd_last[!duplicated(usd_last[, 1:2]),]
+  #
+  # ### This is an approximation - hopefully dates at which currencies were retrieved are not too different
+  # ### - ideally they should be all equal !!
+  # ### So looking at this date one knows worse case for currency value accuracy is this date
+  # usd_last$date = min(usd_last$date)
+  # usd_last = tidyr::pivot_wider(usd_last, names_from="currency", values_from="usd_value")
+  # return(usd_last)
+
+
+#'  getLastUSDValue
 #'
-#' This function returns pairs EUR/USD, CHF/USD, CAD/USD and tries to get from Yahoo the latest available pair.
+#' This function returns converted value of a given currency to USD
+#' by trying to get from Yahoo the latest available value and by default
+#' returning last value available in DB. This function cannot be vectorized.
 #'
-#' It looks into CurrencyPairs table and retrieves last available pairs from Yahoo. If Yahoo pairs are all different from NA and
-#' if they are more recent, then
-#' it will update CurrencyPairs table in DB and return it. Otherwise it just returns
-#' the last record from DB.
+#'
+#' It looks into ConvertToUSD table and then retrieves last available value from Yahoo.
+#' If Yahoo value is different from NA and if it is are more recent than stored value, then
+#' it will update ConvertToUSD table in DB. It returns the stored value anyhow.
 #'
 #' It does not try to retrieve more up to date value from IBKR.
 #' See \code{getIBKR()} to get more up to date data from IBKR
+#'@param currency string - possible values are EUR, CHF,...
+#'@returns a data frame with \code{date, usd_value} fields,
+#'where \code{date} is an integer format of YYYYMMDD and \code{usd_value} a numeric.
+#'@examples
+#'getLastUSDValue("USD")
+#'getLastUSDValue("EUR")
+#'getLastUSDValue("CAD")
+#'getLastUSDValue("CHF")
 #'@export
-getLastCurrencyPairs = function() {
-  last_prices <- getLastSymPrice(c("EUR.USD", "CHF.USD", "USD.CAD"))
+getLastUSDValue = function(currency) {
 
-  ### All currency pairs must be different from NA to store it in DB
-  ### If any is equal to NA then return last record from DB instead
-  if (any(is.na(last_prices$value))) {
-    Tbasics::display_message("Could not retrieve all currency pairs from Yahoo - one or several equal to NA!")
-    getCurrencyPairs()
+  usd = data.frame(date=NA, usd_value=NA)
+
+  if (currency == "USD") {
+    usd = data.frame(date = as.numeric(format(Sys.Date(),"%Y%m%d")), usd_value = 1.0)
+    return(usd)
   }
 
-  else {
-    ### Rename sym for possible future storage in DB
-    last_prices$sym <- c("EUR", "CHF", "CAD")
-    last_prices$date <- as.integer(format(max(last_prices$date),"%Y%m%d"))
+  Tbasics::display_message("Retrieve currencies from DB...")
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  currency_detail <- DBI::dbGetQuery(conn, "SELECT YahooPair, DirectConversion FROM Currencies WHERE Name = ?", params=list(currency))
+  DBI::dbDisconnect(conn)
 
-    ### Get CAD/USD value instead of USD/CAD
-    where_cad = (last_prices$sym == "CAD")
-    last_prices[where_cad, "value"] = 1 / last_prices[where_cad, "value"]
+  if (nrow(currency_detail) == 0){
+    Tbasics::display_error_message(paste0(currency, " currency undefined, not able to retrieve in Yahoo !!"))
+    return(usd)
+  }
 
-    ### For future storage in DB
-    last_prices$value = round(last_prices$value, 4)
+  last_price <- getLastSymPrice(currency_detail[,1])
 
-    ### Most recent date retrieved
-    last_date = max(last_prices$date)
+   ### convert date to compare
+  last_price$date <- as.integer(format(max(last_price$date),"%Y%m%d"))
 
-    ### Get last record from CurrencyPairs table
-    usd <- getCurrencyPairs()
+  ### Get last record from CurrencyPairs table
+  usd <- getStoredUSDValue(currency)
 
-    if (usd$date >= last_date) return(usd)
-    else {
+  if (last_price$date > usd$date) {
       ### Only new prices are to be stored
-      new_prices = last_prices[last_prices$date > usd$date,]
-      usd$date = last_date
-      usd$currency = last_prices$sym
-      usd$usd_value = last_prices$value
+      new_price <- dplyr::left_join(last_price, currency_detail, by = c("sym" = "YahooPair"))
+      new_price <- dplyr::mutate(new_price, value=round(dplyr::if_else(DirectConversion == "Yes", value, 1/value), 4))
+      new_price <- dplyr::mutate(new_price, date=date, currency=currency, usd_value=value, .keep="none")
 
       conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-      DBI::dbAppendTable(conn, "CurrencyPairs", usd)
+      DBI::dbAppendTable(conn, "ConvertToUSD", new_price)
       DBI::dbDisconnect(conn)
-      return(usd)
-    }
+      usd <- dplyr::select(new_price, date, usd_value)
   }
+  return(usd)
 }
+
 
 #'  currency_format
 #'
@@ -163,28 +191,25 @@ currency_format = function(amount,currency){
   })
 }
 
-#'  convert_to_usd
+#'  c_to_usd
 #'
-#' This function converts the amount of currency into USD, using EUR, CAD and CHF currency pairs values
+#' This function converts the amount of currency into USD, using currency pairs values stored in DB
 #'
-#' It merely performs a multiplication of the amount by currency pair value. This function can be vectorized
+#' It merely performs a multiplication of the amount by currency pair value, using getStoredValue.
+#' This function can be vectorized
 #'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF
-#'@param EUR,CHF,CAD EUR (resp. CHF, CAD) is the value of 1 euro (resp. CHF, CAD) in USD
 #'@keywords currency trading
 #'@examples
-#'convert_to_usd(100.45,"EUR",1.09,1.14,0.785)
-#'convert_to_usd(c(10000,500),c("CHF","EUR"),1.09,1.14,0.785)
-#'convert_to_usd(c(750.543,10),c("USD","EUR"),1.09,1.14,0.785)
-#'convert_to_usd(c(500,10),c("CAD","EUR"),0.788,1.14,0.785)
+#'c_to_usd(100.45,"EUR")
+#'c_to_usd(c(10000,500),c("CHF","EUR"))
+#'c_to_usd(c(750.543,10),c("USD","EUR"))
+#'c_to_usd(c(500,10),c("CAD","EUR"))
 #'@export
-convert_to_usd = function(amount, currency, EUR, CHF, CAD) {
-  round(dplyr::case_match(currency,
-                   "EUR" ~amount*EUR,
-                   "CHF" ~amount*CHF,
-                   "CAD" ~amount*CAD,
-                   "USD" ~amount),2)
+c_to_usd <- function(amount, currency) {
+  data <- data.frame(am=amount, cur=currency)
+  data <- dplyr::mutate(data, res = am*getStoredUSDValue(cur)$usd_value)
+  return(data$res)
 }
-
 #'  convert_to_usd_date
 #'
 #' This function converts the amount of currency into USD, using CAD, EUR and CHF currency pairs values for a given date
@@ -228,7 +253,7 @@ convert_to_usd_date = function(amount, currency, convert_date = Sys.Date()) {
 
   ### Retrieve all currency pairs since beginning
   ### It is assumed here that dates are stored in integer/character format in CurrencyPairs table
-  usd = getAllCurrencyPairs()
+  usd = getAllCurrenciesUSDValues()
 
   ### This works only if date is of length 1
   ### if date is not recorded yet, it will provide the values of yesterday or before

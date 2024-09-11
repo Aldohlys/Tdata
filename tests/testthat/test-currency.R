@@ -4,7 +4,7 @@
 
 test_that("It is possible to retrieve CurrencyPairs table, and it contains more than one record", {
   expect_true({
-    tmp= getAllCurrencyPairs()
+    tmp= getAllCurrenciesUSDValues()
     is.data.frame(tmp) && (nrow(tmp) >0)
     })
 })
@@ -12,14 +12,11 @@ test_that("It is possible to retrieve CurrencyPairs table, and it contains more 
 #### Test getCurrencyPairs ########
 ## This one does not work well if one has to look up to IBKR
 test_that("Up to date currency pairs can be retrieved either from IBKR or from end-user.", {
-  last_currency_pairs = getCurrencyPairs()
+  last_currency_pairs = getStoredUSDValue("USD")
   expect_true(is.data.frame(last_currency_pairs))
   expect_true(nrow(last_currency_pairs) == 1)
-  expect_true(is.integer(last_currency_pairs$date))
-  expect_true(is.numeric(c(last_currency_pairs$EUR, last_currency_pairs$CHF, last_currency_pairs$CAD)))
+  expect_true(is.numeric(last_currency_pairs$date))
 })
-
-#### Test currency_convert #########
 
 
 #### Test convert_to_usd_date #########

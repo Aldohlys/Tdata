@@ -21,7 +21,6 @@ Imports:
     DBI,
     RSQLite,
     Tbasics,
-    tidyr,
     utils,
     zoo
 Roxygen: list(markdown = TRUE)

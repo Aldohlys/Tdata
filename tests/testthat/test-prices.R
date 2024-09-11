@@ -35,7 +35,7 @@ test_that("If I try to retrieve a price for a date in the future then it returns
 
 test_that("It is possible to retrieve correctly prices for a list of tickers for a given date", {
   expect_equal(
-    round(getSymPrice(c("GOOG","AAPL","ESTX50"),
+    as.integer(getSymPrice(c("GOOG","AAPL","ESTX50"),
                       as.Date("2023-11-03"), OHLCVA = "Close")),
     c(130, 176, 4174)
   )
@@ -43,17 +43,17 @@ test_that("It is possible to retrieve correctly prices for a list of tickers for
 
 test_that("Trying to return one ticker for a set of dates will work",{
   expect_equal(
-    getSymPrice(c("SPY"),c(as.Date("2024-01-10"), as.Date("2024-02-15"), as.Date("2024-02-18"))),
-    c(473, 498, 496),
-    tolerance = 1
+    as.integer(getSymPrice(c("SPY"),
+                           c(as.Date("2024-01-10"), as.Date("2024-02-15"), as.Date("2024-02-18")))),
+    c(473, 498, 496)
   )
 })
 
 test_that("It is possible to retrieve a vector of prices corresponding to a vector of sym for a vector of dates",{
   expect_equal(
-    round(getSymPrice(c("USO","SLV","GLD"), c(as.Date("2024-01-10"), as.Date("2024-02-15"), as.Date("2024-02-18")))),
-    c(67 , 21, 186),
-    tolerance = 1
+    as.integer(getSymPrice(c("USO","SLV","GLD"),
+                           c(as.Date("2024-01-10"), as.Date("2024-02-15"), as.Date("2024-02-18")))),
+    c(66 , 20, 186)
   )
 })
 
