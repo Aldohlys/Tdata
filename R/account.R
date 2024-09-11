@@ -263,12 +263,8 @@ twr <- function(dates, e_nlv, cashflows) {
 greeksNet = function(portf) {
   if ("delta" %in% colnames(portf)) {
 
-    ### First converts underlying price from symbol's currency to USD
-    usd=getCurrencyPairs()
-    EUR=usd$EUR
-    CHF=usd$CHF
-    CAD=usd$CAD
-    portf=dplyr::mutate(portf,uPrice=as.numeric(purrr::map2(uPrice, currency, convert_to_usd, EUR, CHF, CAD)))
+    ## First converto to USD value
+    portf=dplyr::mutate(portf, uPrice=c_to_usd(uPrice, currency))
 
     #### portf is grouped by datetime
     #### Therefore summarize will do the computation per datetime
@@ -431,20 +427,19 @@ getIBKR <- function() {
   currencies_values = currency_pairs_data[[2]]
 
   ### Retrieve last record date either from DB or from Yahoo - date is in character/integer format
-  last_date <- as.Date(as.character(getLastCurrencyPairs()$date), "%Y%m%d")
+  #### last_date <- as.Date(as.character(getLastUSDValue()$date), "%Y%m%d")
 
   ### In case last record date is prior to today then look at the record
   ### Otherwise no reason to save it
   ### It will be saved only if all are different from NaN
-  if ((last_date != Sys.Date()) && (!all(is.na(currencies_values)))) {
+  if (!all(is.na(currencies_values))) {
     usd = data.frame(date = as.integer(format(Sys.Date(), "%Y%m%d")),
                      currency = currencies_list,
                      usd_value = currencies_values)
     usd = usd[!is.na(usd$usd_value),]
 
-    DBI::dbAppendTable(conn, "CurrencyPairs", usd)
+    DBI::dbAppendTable(conn, "ConvertToUSD", usd)
   }
-
 
   DBI::dbDisconnect(conn)
 }
