@@ -418,6 +418,29 @@ def retrieveAccountData(ib):
               })
   return df
 
+def retrieveAccountMarginData(contracts):
+  ib = IB()
+  try:
+    ib.connect('127.0.0.1', 7496, clientId=getPort())
+  except ConnectionError:
+    return 0
+ 
+  print("\n#####  Retrieving account margin data for contracts... \n")
+  
+  contracts = [Contract(conId=contract) for contract in contracts]
+  print(contracts)
+  ib.qualifyContracts(*contracts)
+
+  ### This will work only for short positions
+  ### Using BUY order is necessary as there may be already a pending order and then using a SELL order is not accepted by IBKR server
+  order = MarketOrder('BUY', 1)
+  order_state = [ib.whatIfOrder(contract, order) for contract in contracts]
+  
+  ib.sleep(1)
+  ib.disconnect()
+  
+  return([float(order_s.maintMarginChange) for order_s in order_state])
+
 def retrievePricesData(ib, du):
   
   ### Then build contract taking into account special cases (index type, SMART vs. EUREX exchange)
@@ -552,8 +575,9 @@ def getIBKRData():
   #### IB connection no more needed
   ib.disconnect()
   
-  return [account_data, u_prices_data, portf_data, currency_pairs_data] 
+  return [account_data, u_prices_data, portf_data] 
 
+  
 
 # def getExpDates(sym,secType,currency,exchange,tradingClass):
 #   ib = IB()
@@ -729,26 +753,3 @@ def getIBKRData():
 #   df.to_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv", mode='a', header=False, sep=";", index=False)
 #   return(df)
 
-# def getCurrencyPairValue(currency_pair,reqType):
-#   #print("\ngetCurrencyPairValue")
-#   ib = IB()
-#   try:
-#     ib.connect('127.0.0.1', 7496, clientId=getPort())    # use this one for TWS (Traders Workstation) acct mgt
-#   except ConnectionError:
-#     return float('nan')
-# 
-#   ##### INDIVIDUAL CONTRACTS
-#   contract = Forex(currency_pair) # Simple contract
-#   print("Contract:",contract)
-#   if(ib.qualifyContracts(contract)):
-#     ib.reqMarketDataType(int(reqType)) ### Request type - Should be 2 or 4
-#     [ticker] = ib.reqTickers(contract)
-#     ib.sleep(1)
-#     print("\nTicker:",ticker)
-#     value= ticker.marketPrice()
-#     print("\nValue:",value)
-#   else: 
-#     value=float('nan')
-#   
-#   ib.disconnect()
-#   return(value)

@@ -75,14 +75,14 @@ readPortfolio = function(portfname) {
 
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
-  #### Test if requested portfolio is present in DB (e.g. Live portfolio does not exist)
+  #### Check if requested portfolio is present in DB (e.g. Live portfolio does not exist)
   name = DBI::dbGetQuery(conn,"SELECT name FROM sqlite_master WHERE type='table' AND name=?",params=list(portfname))
 
   ### If portfolio exists there is one and only one portfolio name referred
   if (nrow(name)==1) {
 
     ### read table from DB - no collect function necessary as there is no lazy evaluation later implied (no dplyr)
-    portf = DBI::dbReadTable(conn,portfname)
+    portf = DBI::dbReadTable(conn, portfname)
     DBI::dbDisconnect(conn)
 
     ### Convert from European date format to internal R date format
@@ -94,16 +94,11 @@ readPortfolio = function(portfname) {
     ## There are no CASH positions that are virtual
     ### portf = dplyr::filter(portf, type!="CASH")
 
-    ### Case where there are options in the portfolio - these field names come from IBKR - cannot be changed
-
-    #### Remove special Gonet "USD_" fields if present
-    ###  portf = dplyr::select(portf,!dplyr::starts_with("USD_"))
     return(portf)
   }
   else {
     DBI::dbDisconnect(conn)
 
-    message("Portfolio doesn't exist, please check portfolio name")
     Tbasics::display_error_message("Portfolio doesn't exist, please check portfolio name")
     return(dplyr::tibble())
   }
@@ -151,9 +146,16 @@ readLastPortfolio <- function(portfname) {
 					SELECT * FROM DU5221795 WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"),
                        "Gonet" = DBI::dbGetQuery(mydb,
                                                      "WITH Last_record AS(SELECT max(date) as date, heure FROM (SELECT date, MAX(heure) as heure FROM Gonet GROUP BY date))
-					SELECT * FROM Gonet WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"))
+					SELECT * FROM Gonet WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"),
+                       dplyr::tibble())
 
   DBI::dbDisconnect(mydb)
+
+  ### Default switch case - last_portf = tibble() with no columns, no lines
+  if (length(last_portf) == 0) {
+    Tbasics::display_error_message("Portfolio doesn't exist, please check portfolio name")
+    return(last_portf)
+  }
 
   ### Convert from European date format to internal R date format
   ### NB date is stored as integer in DB so conversion to character is really necessary - not to be fancy
@@ -342,7 +344,7 @@ getIBKR <- function() {
 
   ### Extract TradeNr and Instrument - some instrument may have been part of the trade but closed and still appear here
   ### currency, expdate is empty for treasury bills
-  open_trades_instrument=dplyr::distinct(dplyr::select(open_trades, TradeNr, Instrument, Currency, Exp.Date))
+  open_trades_instrument=dplyr::distinct(dplyr::select(open_trades, TradeNr, Strategy, Instrument, Currency, Exp.Date))
 
   ### Generate type field from secType IBKR field - default case it is equal to secType
   portf_data = dplyr::mutate(portf_data, type= dplyr::case_match(secType,"STK" ~ "Stock",
@@ -371,11 +373,8 @@ getIBKR <- function() {
                                                          Tbasics::buildInstrumentName(symbol,as.Date(as.character(expdate),"%Y%m%d"),
                                                                                       strike,
                                                                                       type)),
-                             symbol = dplyr::if_else(type=="TreasuryBill", "US-T", symbol),
-                             conId = NULL)
-
-  ### field conId not needed anymore - removed
-  portf_data$conId=NULL
+                             symbol = dplyr::if_else(type=="TreasuryBill", "US-T", symbol)
+                             )
 
   portf_data = dplyr::left_join(portf_data, open_trades_instrument, multiple="first")
 
@@ -383,9 +382,36 @@ getIBKR <- function() {
                              currency = dplyr::if_else(type=="TreasuryBill", Currency, currency),
                              expdate = dplyr::if_else(type=="TreasuryBill", format(as.Date(Exp.Date,format="%d.%m.%Y"),"%Y%m%d"),
                                                       expdate),
+                             marginable = dplyr::if_else(Strategy %in% c("WHEEL", "OFI", "CS"), "Yes", "No"),
                              Currency = NULL,
                              Exp.Date = NULL)
 
+  portf_data = dplyr::group_by(portf_data, TradeNr, pos)
+
+  ### This assumes that negative position is always first as grouped by position
+  margin_ibkr_data = dplyr::summarize(portf_data,
+                               contracts = dplyr::case_match(dplyr::first(Strategy),
+                                                             "WHEEL" ~ dplyr::first(conId),
+                                                             "OFI" ~  dplyr::first(conId),
+                                                             .default = NA),
+                               margin = 0)
+  if (!all(is.na(margin_ibkr_data$contracts))) {
+    margin_ibkr_data$margin[!is.na(margin_ibkr_data$contracts)] =  abs(reticulate::py$retrieveAccountMarginData(as.character(margin_ibkr_data$contracts[!is.na(margin_ibkr_data$contracts)])))
+  }
+  portf_data = dplyr::left_join(portf_data, margin_ibkr_data)
+
+  portf_data = dplyr::mutate(portf_data,
+                             margin = dplyr::if_else(dplyr::first(marginable) == "Yes",
+                                                     dplyr::case_match(dplyr::first(Strategy),
+                                                                "CS" ~ abs(sum(multiplier*pos*strike)),
+                                                                c("WHEEL", "OFI") ~ dplyr::first(margin),
+                                                                .default = 0
+                                                                ),
+                                       0),
+                             Strategy = NULL,
+                             conId = NULL,
+                             marginable = NULL,
+                             contracts = NULL)
 
   ### Move TradeNr column as first column
   portf_data = dplyr::select(portf_data, TradeNr, dplyr::everything())
