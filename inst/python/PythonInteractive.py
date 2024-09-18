@@ -77,12 +77,12 @@ tradingClass='SPXW'
 tradingClass='SPX'
 tradingClass='SLV'
 tradingClass="OESX"
-tradingClass="OEXP"
+tradingClass="AIR"
 
-expdate="20231222"
+expdate="20241018"
 expdate='20231215'
 strike=4350.0
-strike=21.0
+strike=162.0
 
 reqType=4
 
@@ -97,9 +97,8 @@ retrieve_prices(dj,4)
 
 
 
-option=[Contract(secType='OPT',symbol=sym,lastTradeDateOrContractMonth=expdate,
-                    strike=strike,right='Call',exchange=exchangeOpt,tradingClass=tradingClass)]
-ib.qualifyContracts(*option)
+option=Contract(secType='OPT',symbol=sym,lastTradeDateOrContractMonth=expdate, strike=strike,right='Put',exchange=exchangeOpt,tradingClass=tradingClass)
+ib.qualifyContracts(option)
 tickers = ib.reqTickers(*option)
 
 tickers[0].marketPrice()

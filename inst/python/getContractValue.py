@@ -336,9 +336,15 @@ def getStrikesfromExpDate(sym,currency,exchange,tradingClass,expdate,strikes):
 
   return(updated_strikes)
 
-def retrieveCurrencyPairs(ib, currencies, currency_pairs, direct_conv):
-  
-  print("### Retrieve currencies...")
+def retrieveCurrencyPairs(currencies, currency_pairs, direct_conv):
+  ib = IB()
+  try:
+    ib.connect('127.0.0.1', 7496, clientId=getPort())    # use this one for TWS (Traders Workstation) acct mgt
+  except ConnectionError:
+    return float('nan')
+   
+  ##### Forex data retrieval ###############
+  print("### Retrieve currency pairs contracts...")
   # print(currencies)
   # print(currency_pairs)
   # print(direct_conv)
@@ -352,9 +358,12 @@ def retrieveCurrencyPairs(ib, currencies, currency_pairs, direct_conv):
   ib.reqMarketDataType(2) ### Request type - Should be 2 or 4
   tickers = ib.reqTickers(*contracts)
   ib.sleep(1)
+  ib.disconnect()
   
   res = []
-  ### This assumes that currencies and tickers are in the same order
+  ### This assumes that direct_conv and currency_pairs are in the same order
+  ### Which is calling function responsability
+  
   for ticker, direct in zip(tickers, direct_conv):
     if (direct == "Yes"): res.append(round(ticker.marketPrice(), 4)) 
     else: res.append(round(1/ticker.marketPrice(), 4))
@@ -487,7 +496,7 @@ def retrievePortfolioData(ib, df):
                             'averageCost':'avgCost', 'unrealizedPNL':'unPnL'})
   return df
   
-def getIBKRData(currencies, currency_pairs, direct_conv):
+def getIBKRData():
   ib = IB()
   try:
     ib.connect('127.0.0.1', 7496, clientId=getPort())
@@ -495,10 +504,7 @@ def getIBKRData(currencies, currency_pairs, direct_conv):
     return 0
   
   
-  ##### Forex data retrieval ###############
-  print("#####  Retrieving CurrencyPairs... ")
-  currency_pairs_data = retrieveCurrencyPairs(ib, currencies, currency_pairs, direct_conv)
-  
+ 
   #### Get account related data #########
 
   print("\n#####  Retrieving account data... \n")

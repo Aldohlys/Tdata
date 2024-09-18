@@ -315,30 +315,7 @@ getIBKR <- function() {
   #   sub("(\\d{2}).(\\d{2}).(\\d{4})","\\3\\2\\1",x)
   # }
 
-  #### Start retrieving currency pairs
-  # Tbasics::display_message("Retrieving EUR/USD !")
-  # EUR = try(reticulate::py$getCurrencyPairValue("EURUSD",reqType=2))
-  # if (is.null(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
-  # else if (is.na(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
-  #
-  # Tbasics::display_message("Retrieving CHF/USD !")
-  # CHF = try(reticulate::py$getCurrencyPairValue("CHFUSD",reqType=2))
-  # if (is.null(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
-  # else if (is.na(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
-  #
-  # Sys.sleep(1)
-
-  ### Open connection to user DB
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-
-  Tbasics::display_message("Retrieve currencies from DB...")
-  currencies <- DBI::dbGetQuery(conn, "SELECT Name FROM Currencies WHERE Active = 'Yes'")[,1]
-  currency_pairs <- DBI::dbGetQuery(conn, "SELECT FXPair FROM Currencies WHERE Active = 'Yes'")[,1]
-  direct_conv <- DBI::dbGetQuery(conn, "SELECT DirectConversion FROM Currencies WHERE Active = 'Yes'")[,1]
-
-  Tbasics::display_message("Call IBKR to retrieve data...")
-
-  l = reticulate::py$getIBKRData(currencies, currency_pairs, direct_conv)
+  l = reticulate::py$getIBKRData()
 
   if (typeof(l) != "list") {
     Tbasics::display_error_message("No IB connection possible!")
@@ -347,6 +324,10 @@ getIBKR <- function() {
 
   #### 1. Process new account data #################
   account_data = l[[1]]
+
+  ### Open connection to user DB
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+
   DBI::dbAppendTable(conn,"Account", account_data)
 
   #### 2. Process new prices for underlyings part of the portfolio  ##########
@@ -420,9 +401,50 @@ getIBKR <- function() {
   ### Append to DB
   DBI::dbAppendTable(conn,account_data$account,portf_data)
 
+  DBI::dbDisconnect(conn)
+}
+
+
+##############################
+#'   getIBKRActiveCurrencies
+#'
+#' This function retrieves active currencies pairs values from DB ActiveCurrencies table, and then requests value from IBKR.
+#' Once data retrieved, it is then stored into DB.
+#'
+#' This does not request any value from end-user yet, in case IBKR does not return any value.
+#'
+#'@returns No value
+#'@export
+#'@examples
+#'\dontrun{
+#'getIBKRActiveCurrencyValues()
+#'}
+getIBKRActiveCurrencyValues <- function() {
+  #### Start retrieving currency pairs
+  # Tbasics::display_message("Retrieving EUR/USD !")
+  # EUR = try(reticulate::py$getCurrencyPairValue("EURUSD",reqType=2))
+  # if (is.null(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
+  # else if (is.na(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
+  #
+  # Tbasics::display_message("Retrieving CHF/USD !")
+  # CHF = try(reticulate::py$getCurrencyPairValue("CHFUSD",reqType=2))
+  # if (is.null(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
+  # else if (is.na(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
+  #
+  # Sys.sleep(1)
+
+  ### Open connection to user DB
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+
+  Tbasics::display_message("Retrieve currencies from DB...")
+  currencies <- DBI::dbGetQuery(conn, "SELECT Name FROM Currencies WHERE Active = 'Yes'")[,1]
+  currency_pairs <- DBI::dbGetQuery(conn, "SELECT FXPair FROM Currencies WHERE Active = 'Yes'")[,1]
+  direct_conv <- DBI::dbGetQuery(conn, "SELECT DirectConversion FROM Currencies WHERE Active = 'Yes'")[,1]
+
+  Tbasics::display_message("Call IBKR to retrieve data...")
+  currency_pairs_data <- reticulate::py$retrieveCurrencyPairs(currencies, currency_pairs, direct_conv)
 
   #### 3. Process new currency data ##############
-  currency_pairs_data <- l[[4]]
   currencies_list = currency_pairs_data[[1]]
   currencies_values = currency_pairs_data[[2]]
 
@@ -439,11 +461,10 @@ getIBKR <- function() {
     usd = usd[!is.na(usd$usd_value),]
 
     DBI::dbAppendTable(conn, "ConvertToUSD", usd)
+    DBI::dbDisconnect(conn)
   }
 
-  DBI::dbDisconnect(conn)
 }
-
 ##############################
 #'   getGonet
 #'

@@ -4,7 +4,7 @@ test_that("readPortfolio DU5221795 returns some data and columns are all authori
     expect_true(identical(colnames(portf),
                           c("TradeNr","date", "heure", "symbol",   "expdate", "strike", "pos", "mktPrice", "optPrice",
                                "mktValue", "avgCost", "unPnL", "IV", "pvDividend", "delta", "gamma", "vega", "theta",
-                               "uPrice", "multiplier", "currency", "type", "Instrument")))
+                               "uPrice", "multiplier", "currency", "type", "Instrument", "margin")))
     expect_true(nrow(portf) >=1)
   })
 })
@@ -15,7 +15,7 @@ test_that("readPortfolio U1804173 returns some data and columns are all authoriz
     expect_true(identical(colnames(portf),
                           c("TradeNr","date", "heure", "symbol",   "expdate", "strike", "pos", "mktPrice", "optPrice",
                                 "mktValue", "avgCost", "unPnL", "IV", "pvDividend", "delta", "gamma", "vega", "theta",
-                                "uPrice", "multiplier", "currency", "type", "Instrument")))
+                                "uPrice", "multiplier", "currency", "type", "Instrument", "margin")))
     expect_true(nrow(portf) >=1)
   })
 })
@@ -28,7 +28,7 @@ test_that("readLastPortfolio Simu returns some data and columns are all authoriz
     expect_true(identical(colnames(portf),
                           c("TradeNr","date", "heure", "symbol", "expdate", "strike",  "pos", "mktPrice", "optPrice",
                             "mktValue", "avgCost", "unPnL", "IV", "pvDividend", "delta", "gamma", "vega", "theta",
-                            "uPrice", "multiplier", "currency", "type", "Instrument")))
+                            "uPrice", "multiplier", "currency", "type", "Instrument", "margin")))
     expect_true(nrow(portf) >=1)
   })
 })
@@ -39,7 +39,7 @@ test_that("readLastPortfolio Live returns some data and columns are all authoriz
     expect_true(identical(colnames(portf),
                           c("TradeNr","date", "heure", "symbol", "expdate", "strike", "pos", "mktPrice", "optPrice",
                             "mktValue", "avgCost", "unPnL", "IV", "pvDividend", "delta", "gamma", "vega", "theta",
-                            "uPrice", "multiplier", "currency", "type", "Instrument")))
+                            "uPrice", "multiplier", "currency", "type", "Instrument", "margin")))
     expect_true(nrow(portf) >=1)
   })
 })
@@ -51,7 +51,7 @@ test_that("readLastPortfolio Gonet returns some data and columns are all authori
     expect_true(identical(colnames(portf),
                           c("TradeNr","date", "heure", "symbol", "pos", "mktPrice",
                             "mktValue", "avgCost", "unPnL",
-                            "currency", "type")))
+                            "currency", "type", "margin")))
     expect_true(nrow(portf) >=1)
   })
 })
