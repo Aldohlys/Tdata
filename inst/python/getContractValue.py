@@ -427,19 +427,25 @@ def retrieveAccountMarginData(contracts):
  
   print("\n#####  Retrieving account margin data for contracts... \n")
   
+  ### Case where only one contract ###
+  if not(isinstance(contracts, list)): contracts = [contracts]
+  
   contracts = [Contract(conId=contract) for contract in contracts]
   print(contracts)
   ib.qualifyContracts(*contracts)
-
+  
   ### This will work only for short positions
   ### Using BUY order is necessary as there may be already a pending order and then using a SELL order is not accepted by IBKR server
   order = MarketOrder('BUY', 1)
+
   order_state = [ib.whatIfOrder(contract, order) for contract in contracts]
-  
   ib.sleep(1)
   ib.disconnect()
   
-  return([float(order_s.maintMarginChange) for order_s in order_state])
+  ### As we are buying back this contracts list is actually the margin cost of selling thi s contract list
+  res = [-float(order_s.maintMarginChange) for order_s in order_state]
+  
+  return(res)
 
 def retrievePricesData(ib, du):
   

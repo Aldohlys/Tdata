@@ -339,6 +339,11 @@ getIBKR <- function() {
   #### Process portfolio last position #############
   portf_data = l[[3]]
 
+  ### Following Python extract, all fields are either double or character
+  portf_data = dplyr::mutate(portf_data,
+                      pos = as.integer(pos),
+                      multiplier = as.integer(multiplier))
+
   ### Retrieve opened trades
   open_trades = getActiveTrades(account_data$account)
 
@@ -356,9 +361,9 @@ getIBKR <- function() {
   ### In case of stocks set multiplier to 1 and have multipliers of other types of instrument set as integer
   ### Price is 100 face value. but position is counted in 1000's so multiplier allows to have
   ### mktValue = pos * mktPrice * multiplier - just like options
-  portf_data$multiplier = dplyr::if_else(portf_data$type == "Stock", 1,
-                                         dplyr::if_else(portf_data$type == "TreasuryBill", 10,
-                                                 as.integer(portf_data$multiplier)))
+  portf_data$multiplier = dplyr::if_else(portf_data$type == "Stock", as.integer(1),
+                                         dplyr::if_else(portf_data$type == "TreasuryBill", as.integer(10),
+                                                 portf_data$multiplier))
   ### For stocks set delta to 1
   portf_data$delta = dplyr::if_else(portf_data$type == "Stock", 1, portf_data$delta)
 
@@ -386,7 +391,7 @@ getIBKR <- function() {
                              Currency = NULL,
                              Exp.Date = NULL)
 
-  portf_data = dplyr::group_by(portf_data, TradeNr, pos)
+  portf_data = dplyr::arrange(dplyr::group_by(portf_data, TradeNr), TradeNr, pos)
 
   ### This assumes that negative position is always first as grouped by position
   margin_ibkr_data = dplyr::summarize(portf_data,
@@ -396,7 +401,7 @@ getIBKR <- function() {
                                                              .default = NA),
                                margin = 0)
   if (!all(is.na(margin_ibkr_data$contracts))) {
-    margin_ibkr_data$margin[!is.na(margin_ibkr_data$contracts)] =  abs(reticulate::py$retrieveAccountMarginData(as.character(margin_ibkr_data$contracts[!is.na(margin_ibkr_data$contracts)])))
+    margin_ibkr_data$margin[!is.na(margin_ibkr_data$contracts)] =  reticulate::py$retrieveAccountMarginData(as.character(margin_ibkr_data$contracts[!is.na(margin_ibkr_data$contracts)]))
   }
   portf_data = dplyr::left_join(portf_data, margin_ibkr_data)
 
@@ -404,7 +409,7 @@ getIBKR <- function() {
                              margin = dplyr::if_else(dplyr::first(marginable) == "Yes",
                                                      dplyr::case_match(dplyr::first(Strategy),
                                                                 "CS" ~ abs(sum(multiplier*pos*strike)),
-                                                                c("WHEEL", "OFI") ~ dplyr::first(margin),
+                                                                c("WHEEL", "OFI") ~ abs(dplyr::first(pos))*dplyr::first(margin),
                                                                 .default = 0
                                                                 ),
                                        0),
