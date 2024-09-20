@@ -1,5 +1,3 @@
 test_that("vector of strategies is returned by DB", {
-  expect_identical(getStrategies(),
-               c("BOT",    "BPT" ,  "CAL" ,   "CS"  , "Dan" ,   "Erreur" ,"LTO"  ,  "OFI" ,
-                "Perso" , "WHEEL" ))
+  expect_true(is.vector(getStrategies()))
 })

@@ -103,10 +103,10 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, OHLCVA = "Adjusted"){
     return(NA)
   }
 
-  ###' Recycling describes the concept of repeating elements of one vector to match the size of another.
-  ###' There are two rules that underlie the “tidyverse” recycling rules:
-  ###' - Vectors of size 1 will be recycled to the size of any other vector
-  ###' - Otherwise, all vectors must have the same size
+  ### Recycling describes the concept of repeating elements of one vector to match the size of another.
+  ### There are two rules that underlie the “tidyverse” recycling rules:
+  ### - Vectors of size 1 will be recycled to the size of any other vector
+  ### - Otherwise, all vectors must have the same size
   l <- vctrs::vec_recycle_common(sym, report_date, OHLCVA)
 
   ### Define a function for getSymPrice purpose as getSymPriceIntervalDate cannot be vectorized
