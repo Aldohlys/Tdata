@@ -41,7 +41,7 @@ readAccount = function(accountnr) {
     account_data$date=as.Date(as.character(account_data$date),"%Y%m%d")
     account_data$heure=hms::parse_hms(account_data$heure)
   }
-  else Tbasics::display_error_message(paste0("No data recorded for ", accountnr))
+  else Tbasics::display_message(paste0("No data recorded for ", accountnr))
   return(account_data)
 }
 
@@ -99,7 +99,7 @@ readPortfolio = function(portfname) {
   else {
     DBI::dbDisconnect(conn)
 
-    Tbasics::display_error_message("Portfolio doesn't exist, please check portfolio name")
+    Tbasics::display_message("Portfolio doesn't exist, please check portfolio name")
     return(dplyr::tibble())
   }
 }
@@ -153,7 +153,7 @@ readLastPortfolio <- function(portfname) {
 
   ### Default switch case - last_portf = tibble() with no columns, no lines
   if (length(last_portf) == 0) {
-    Tbasics::display_error_message("Portfolio doesn't exist, please check portfolio name")
+    Tbasics::display_message("Portfolio doesn't exist, please check portfolio name")
     return(last_portf)
   }
 
@@ -321,7 +321,6 @@ getIBKR <- function() {
 
   if (typeof(l) != "list") {
     Tbasics::display_error_message("No IB connection possible!")
-    return()
   }
 
   #### 1. Process new account data #################
@@ -607,7 +606,6 @@ getAccountGonet <- function() {
                 UnrealizedPnL = round(sum(convert_to_usd_date(unPnL, currency, Sys.Date()), na.rm = FALSE),2))
   if (any(is.na(acc))) {
     Tbasics::display_error_message("Could not get a complete potfolio record - some prices are missing -> no account recorded")
-    return()
   }
 
   ### Create a cash position in Gonet where 26'000 EUR from June 1st, 2022 till March 15th
@@ -694,7 +692,6 @@ getAccountLive <- function() {
 
   if(!nrow(data)) {
       Tbasics::display_error_message("Not enough data to process for write_account_live function!!! Needs both Uxx and Gonet data")
-      return()
   }
 
   #### Add all the columns that are common to Gonet and Uxxx -

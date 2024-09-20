@@ -97,25 +97,20 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, OHLCVA = "Adjusted"){
   ### Keep only report_date values that are prior to today
   report_date <- report_date[report_date < Sys.Date()]
 
-  ### test if there is no report_date prior to today - in this case dispaly error message and returns NA
+  ### test if there is no report_date prior to today - in this case display error message and stops
   if (length(report_date) == 0) {
-    Tbasics::display_error_message("report_date must be prior today!")
+    Tbasics::display_message("report_date must be prior today!")
     return(NA)
   }
-  ### If only one date as input then recycle it to symbols list length
-  if (length(report_date) == 1) report_date = rep(report_date, length(sym))
 
-  ### If only one symbol as input then recycle it to report_date list length
-  if (length(sym) == 1) sym = rep(sym, length(report_date))
-
-  ### In any case both lengths must be equal
-  if (length(sym) != length(report_date)) {
-    Tbasics::display_error_message("report_date and sym must have same length or report date length must be equal to 1!")
-    return(NA)
-  }
+  ###' Recycling describes the concept of repeating elements of one vector to match the size of another.
+  ###' There are two rules that underlie the “tidyverse” recycling rules:
+  ###' - Vectors of size 1 will be recycled to the size of any other vector
+  ###' - Otherwise, all vectors must have the same size
+  l <- vctrs::vec_recycle_common(sym, report_date, OHLCVA)
 
   ### Define a function for getSymPrice purpose as getSymPriceIntervalDate cannot be vectorized
-  getSymPriceOne <- function(one_sym, one_date) {
+  getSymPriceOne <- function(one_sym, one_date, OHLCVA) {
     ### First case - requested date is an holiday or requested date is not today
     ### Get last close price in this case
     ### Take prices list 5 days before one_date to be sure to grasp at least one business day among these 5 days
@@ -136,7 +131,7 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, OHLCVA = "Adjusted"){
     return(prices_num)
   }
 
-  l_prices <- unlist(purrr::map2(sym, report_date, getSymPriceOne))
+  l_prices <- unlist(purrr::pmap_dbl(l, getSymPriceOne))
   return(l_prices)
   ### print(l_prices)
   ### Other possible return value types: as dor now it is a simple vector of double
@@ -320,7 +315,7 @@ getIBKRPrice <- function(sec="STK", sym, currency="USD", exchange="SMART", reqTy
 
   ### Error case do not go further on###
   if (length(IBKRPrice) == 1) {
-    Tbasics::display_error_message("IBKR data retrieval did not work - either no connection or contract does not exist")
+    Tbasics::display_message("IBKR data retrieval did not work - either no connection or contract does not exist")
     return (IBKRPrice)
   }
 

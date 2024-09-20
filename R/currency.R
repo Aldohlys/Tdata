@@ -99,7 +99,6 @@ getLastUSDValue = function(currency) {
 
   if (nrow(currency_detail) == 0){
     Tbasics::display_error_message(paste0(currency, " currency undefined, not able to retrieve in Yahoo !!"))
-    return(usd)
   }
 
   last_price <- getLastSymPrice(currency_detail[,1])

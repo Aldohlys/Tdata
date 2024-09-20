@@ -4,7 +4,7 @@ conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 getTestTrades = function() {
   alltrades = DBI::dbReadTable(conn, "TestTrades")
   if (any(with(alltrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL))))) {
-    Tbasics::display_error_message("Trades input data had to be converted!")
+    Tbasics::display_message("Trades input data had to be converted!")
     with(alltrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
   }
   alltrades

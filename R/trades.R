@@ -55,7 +55,7 @@ getAllTrades = function() {
   DBI::dbDisconnect(conn)
 
   if (any(with(alltrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL))))) {
-    Tbasics::display_error_message("Trades input data had to be converted!")
+    Tbasics::display_message("Trades input data had to be converted!")
     with(alltrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
   }
   alltrades
@@ -194,11 +194,11 @@ getInstrument <- function(account, instrument) {
     type= strsplit(instr, "\\s+")[[1]][4]
 
     if (is.na(data$initial_trade_date)) {
-      Tbasics::display_error_message("getInstrument: instrument does not exist or is closed!")
+      Tbasics::display_message("getInstrument: instrument does not exist or is closed!")
       return(na_data)
     }
     else if (is.na(type)) {
-      Tbasics::display_error_message("getInstrument: one instrument is not a Call or a Put!")
+      Tbasics::display_message("getInstrument: one instrument is not a Call or a Put!")
       return(na_data)
     }
 
@@ -234,7 +234,7 @@ getInstrument <- function(account, instrument) {
 
   #### Error case handling
   if (length(account) != length(instrument)) {
-    Tbasics::display_error_message("getInstrument: Account and instrument must have the same length!")
+    Tbasics::display_message("getInstrument: Account and instrument must have the same length!")
     DBI::dbDisconnect(conn)
     return(NA)
   }
@@ -292,7 +292,7 @@ isTradeOpened = function(TradeNr) {
 #'@export
 getTradeNr = function(v_instrument,account_type=NA,unique=T) {
   if(length(v_instrument)==0) {
-    Tbasics::display_error_message("No instrument to be searched!")
+    Tbasics::display_message("No instrument to be searched!")
     return(NA)
   }
 
@@ -318,20 +318,13 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
                     Instrument),TradeNr))
   ### If left join returns NA -> trade is not present - not yet recorded in Trades table
   if (all(is.na(trade_nr))) {
-    Tbasics::display_error_message(paste0("For instruments ", do.call(paste,as.list(c(v_instrument,sep=" and "))),
+    Tbasics::display_message(paste0("For instruments ", do.call(paste,as.list(c(v_instrument,sep=" and "))),
                                           " no opened/adjusted trades in Trades table!"))
     return(NA)
   }
 
   ### Retrieve the common Trade Nr - there may be several trade_nr if requested by unique argument
   if (unique) trade_nr=unique(trade_nr)
-
-  ### If at least one then retrieve corresponding trade nr
-  # ### And get the original trade date of the trade nr
-  # if (length(trade_nr) >1) {
-  #   display_error_message("There is more than one trade in Instrument argument! Display oldest trade nr")
-  #   return(NA)
-  # }
 
   ### Converted to integer (vector of integer if necessary)
   return(as.integer(trade_nr))
@@ -359,7 +352,6 @@ getOpenDate = function(trade_nr) {
 
   if (!is.numeric(trade_nr)) {
     Tbasics::display_error_message("trade_nr must be a numeric")
-    return(NA)
   }
 
   trades=getAllTrades()
@@ -444,7 +436,6 @@ getRnR = function(trade_nr) {
 
   if (!is.numeric(trade_nr)) {
     Tbasics::display_error_message("trade_nr must be a numeric")
-    return(NA)
   }
 
   trades <- getAllTrades()
@@ -453,7 +444,7 @@ getRnR = function(trade_nr) {
   trades <- dplyr::filter(trades, TradeNr %in% trade_nr)
 
   if (nrow(trades)==0) {
-    Tbasics::display_error_message("Trade does not exist!")
+    Tbasics::display_message("Trade does not exist!")
     return(NA)
   }
 
