@@ -30,7 +30,7 @@ pos <- uPrice <- currency <- multiplier <- delta <- theta <- vega <- dnet <- ddn
 
 ### for getIBKR
 new_date <- heure <- strike <- optPrice <- pvDividend <- expdate <- type <- unrealizedPNL <- NULL
-Currency <- conId <- NULL
+Currency <- conId <- marginable <- NULL
 
 ### for getGonet
 sym_ibkr <- sym_yahoo <- orig_date <- price <- mktPrice <- orig_adjusted_price <- NULL
@@ -45,8 +45,10 @@ initial_trade_date <- Ssjacent <- u_price <- interest_rate <- DTE <- startPrice 
 ### add for getClosedTrades
 strategy <- last_date <- NULL
 
-### add for getClosedTrades
+### add for c_to_usd
+am <- cur <- NULL
 
-
+### getLastUsdValue
+usd_value <- DirectConversion <- value <- NULL
 
 
