@@ -425,7 +425,7 @@ getIBKR <- function() {
   if (any(is.na(portf_data$TradeNr))) {
     unmatched_instruments = portf_data[is.na(portf_data$TradeNr),"Instrument"]
     Tbasics::display_message("One or several instrument could not be matched in DB Trades table !!")
-    cat(unmatched_instruments)
+    print(unmatched_instruments)
   }
 
   ### Append to DB

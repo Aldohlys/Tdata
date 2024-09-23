@@ -44,8 +44,9 @@ test_that("It is possible to retrieve correctly prices for a list of tickers for
 test_that("Trying to return one ticker for a set of dates will work",{
   expect_equal(
     as.integer(getSymPrice(c("SPY"),
-                           c(as.Date("2024-01-10"), as.Date("2024-02-15"), as.Date("2024-02-18")))),
-    c(473, 498, 496)
+                           c(as.Date("2024-01-10"), as.Date("2024-02-15"), as.Date("2024-02-18")),
+                           OHLCVA = "Close")),
+    c(476, 502, 499)
   )
 })
 
