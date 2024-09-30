@@ -399,11 +399,15 @@ getIBKR <- function() {
                                                              "OFI" ~  dplyr::first(conId),
                                                              .default = NA),
                                margin = 0)
+
+  ### Retrieve margin data from IBKR - for WHEEL/OFI strategies, margin for each contract listed (first contract in the trade)
   if (!all(is.na(margin_ibkr_data$contracts))) {
     margin_ibkr_data$margin[!is.na(margin_ibkr_data$contracts)] =  reticulate::py$retrieveAccountMarginData(as.character(margin_ibkr_data$contracts[!is.na(margin_ibkr_data$contracts)]))
   }
   portf_data = dplyr::left_join(portf_data, margin_ibkr_data)
 
+  ## multiply margin data by position (WHEEL/OFI) or compute the spread data (CS case)
+  ## All other strategies have no margin
   portf_data = dplyr::mutate(portf_data,
                              margin = dplyr::if_else(dplyr::first(marginable) == "Yes",
                                                      dplyr::case_match(dplyr::first(Strategy),

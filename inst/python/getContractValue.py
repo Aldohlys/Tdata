@@ -441,9 +441,9 @@ def retrieveAccountMarginData(contracts):
   ib.sleep(1)
   ib.disconnect()
   
-  ### As we are buying back this contracts list is actually the margin cost of selling thi s contract list
+  ### As we are buying back this contracts list is actually the margin cost of selling this contract list
   res = [-float(order_s.maintMarginChange) for order_s in order_state]
-  print("Total margin: ", sum(res), "   Margin components: ", res)
+  print("Contracts margin:\n", [[contract.localSymbol, res] for contract, res in zip(contracts, res)])
   return(res)
 
 def retrievePricesData(ib, du):
