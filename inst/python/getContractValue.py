@@ -60,7 +60,7 @@ def determine_exch(sym):
   else: return "SMART"
 
 def determine_primary_exch(sym):
-  if  (any(sym==x for x in ["AI","SU", "TTE", "OR", "SGO"])): return "SBF"
+  if  (any(sym==x for x in ["AI","SU", "TTE", "OR", "SGO", "BN"])): return "SBF"
   if  (any(sym==x for x in ["SPX","XSP", "ESTX50", "VIX"])): return ""
   if (any(sym==x for x in ["DTLA","TRE7","SXLV"])) : return "LSEETF"
   if (any(sym==x for x in ["CSBGU0","ABBN", "HOLN", "ROG", "SLHN"])): return "EBS"
