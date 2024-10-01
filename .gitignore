@@ -8,3 +8,5 @@
 .Rprofile
 
 inst/python/BracketOrderExample.py
+
+inst/python/PythonInteractive.py

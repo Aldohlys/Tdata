@@ -51,14 +51,19 @@ def getPort():
   return port_id
 
 def determine_sec(sym):
-  if (any(sym==x for x in ["ESTX50","XSP","SPX"])): return "IND"
+  if (any(sym==x for x in ["ESTX50","XSP","SPX", "VIX"])): return "IND"
   else: return "STK"
-  
+
 def determine_exch(sym):
-  if (any(sym==x for x in ["XSP","SPX"])): return "CBOE"
+  if (any(sym==x for x in ["XSP","SPX", "VIX"])): return "CBOE"
   if (sym=="ESTX50"): return "EUREX"
-  if (sym=="DTLA"): return "LSEETF"
-  if (sym=="CSBGU0"): return "EBS"
+  else: return "SMART"
+
+def determine_primary_exch(sym):
+  if  (any(sym==x for x in ["AI","SU", "TTE", "OR", "SGO"])): return "SBF"
+  if  (any(sym==x for x in ["SPX","XSP", "ESTX50", "VIX"])): return ""
+  if (any(sym==x for x in ["DTLA","TRE7","SXLV"])) : return "LSEETF"
+  if (any(sym==x for x in ["CSBGU0","ABBN", "HOLN", "ROG", "SLHN"])): return "EBS"
   if (sym == "U.UN"): return "TSE"
   return "SMART"
 
@@ -194,40 +199,7 @@ def getStraddleValue(sym,expiration,strike,currency,exchange,tradingClass):
   return(value)
 
 
-############ For Gonet portfolio
 
-# def retrieve_prices(position_list,reqType):
-#   
-#   locale.setlocale(locale.LC_ALL, '')
-#   
-#   du=position_list.drop_duplicates(subset='symbol',keep="first")
-#   dg=[Contract(secType=determine_sec(determine_sym(sym)),symbol=determine_sym(sym),currency=currency,exchange=determine_exch(determine_sym(sym))) for sym,currency in zip(du["symbol"],du["currency"])]
-#   ib.qualifyContracts(*dg)
-#   
-#   ib.reqMarketDataType(reqType) ### Request type - Should be 2 or 4
-#   tickers = ib.reqTickers(*dg)
-#   l=[[ticker.contract.symbol,ticker.marketPrice()] for ticker in tickers]
-#   
-#   du=DataFrame(l,columns=["sym","price"])
-#   du=du.dropna(subset="price")
-#   
-#   if not du.empty:
-#     du.insert(0,"datetime",datetime.datetime.now().strftime('%d %b %Y %Hh%M'))
-#     du.to_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv",header=False, index=False, mode='a', sep=';')
-
-##dh=itertools.islice(dh,len(dh)-1,len(dh))
-# def retrieve_gonet_prices():
-#   dh = pd.read_csv('C:\\Users\\aldoh\\Documents\\NewTrading\\GonetTrades.csv',sep=";")
-#   dh["date"]=[datetime.datetime.strptime(d, '%d.%m.%Y').date() for d in dh.date]
-#   dh = dh.groupby(["date","heure"])
-#   dh = next(iter(collections.deque(dh,maxlen=1)))[1]
-#   
-#   #### DTLA can only be retrieved using reqType = 2 frozen data
-#   retrieve_prices(dh[dh.symbol == "DTLA.L"],2)
-#   #### CSBGU0 can only be retrieved using reqType = 4 delayed frozen data
-#   #### Other stocks don't care
-#   retrieve_prices(dh[dh.symbol!= "DTLA.L"], 4)
-  
   
 ###################################  General functions about options chains ###############
 def find_nearest_number(numbers, target):
@@ -443,15 +415,20 @@ def retrieveAccountMarginData(contracts):
   
   ### As we are buying back this contracts list is actually the margin cost of selling this contract list
   res = [-float(order_s.maintMarginChange) for order_s in order_state]
-  print("Contracts margin:\n", [[contract.localSymbol, res] for contract, res in zip(contracts, res)])
+  print("Contracts margin:\n")
+  res_dict = [{'contract name': contract.localSymbol, 'margin': res} for contract, res in zip(contracts, res)]
+  print(util.df(res_dict))
   return(res)
 
 def retrievePricesData(ib, du):
   
   ### Then build contract taking into account special cases (index type, SMART vs. EUREX exchange)
-  dg=[Contract(secType=determine_sec(sym),symbol=sym,currency=currency,exchange=determine_exch(sym)) for sym,currency in zip(du["symbol"],du["currency"])]
+  ### primary_exchange is needed to avoid ambiguities (e.g. AI) between different primary exchanges
+  dg=[Contract(secType=determine_sec(sym),symbol=sym,currency=currency,exchange =determine_exch(sym), 
+      primaryExchange=determine_primary_exch(sym)) for sym,currency in zip(du["symbol"],du["currency"])]
   
   ### They should all be qualified - no need to test
+  ### IBKR may change primaryExchange from SMART to something else if it knows better
   ib.qualifyContracts(*dg)
   
   ### Retrieve 15 minutes delayed market values in a single go
@@ -758,3 +735,37 @@ def getIBKRData():
 #   df.to_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv", mode='a', header=False, sep=";", index=False)
 #   return(df)
 
+############ For Gonet portfolio
+
+# def retrieve_prices(position_list,reqType):
+#   
+#   locale.setlocale(locale.LC_ALL, '')
+#   
+#   du=position_list.drop_duplicates(subset='symbol',keep="first")
+#   dg=[Contract(secType=determine_sec(determine_sym(sym)),symbol=determine_sym(sym),currency=currency,exchange=determine_exch(determine_sym(sym))) for sym,currency in zip(du["symbol"],du["currency"])]
+#   ib.qualifyContracts(*dg)
+#   
+#   ib.reqMarketDataType(reqType) ### Request type - Should be 2 or 4
+#   tickers = ib.reqTickers(*dg)
+#   l=[[ticker.contract.symbol,ticker.marketPrice()] for ticker in tickers]
+#   
+#   du=DataFrame(l,columns=["sym","price"])
+#   du=du.dropna(subset="price")
+#   
+#   if not du.empty:
+#     du.insert(0,"datetime",datetime.datetime.now().strftime('%d %b %Y %Hh%M'))
+#     du.to_csv("C:/Users/aldoh/Documents/NewTrading/prices.csv",header=False, index=False, mode='a', sep=';')
+
+##dh=itertools.islice(dh,len(dh)-1,len(dh))
+# def retrieve_gonet_prices():
+#   dh = pd.read_csv('C:\\Users\\aldoh\\Documents\\NewTrading\\GonetTrades.csv',sep=";")
+#   dh["date"]=[datetime.datetime.strptime(d, '%d.%m.%Y').date() for d in dh.date]
+#   dh = dh.groupby(["date","heure"])
+#   dh = next(iter(collections.deque(dh,maxlen=1)))[1]
+#   
+#   #### DTLA can only be retrieved using reqType = 2 frozen data
+#   retrieve_prices(dh[dh.symbol == "DTLA.L"],2)
+#   #### CSBGU0 can only be retrieved using reqType = 4 delayed frozen data
+#   #### Other stocks don't care
+#   retrieve_prices(dh[dh.symbol!= "DTLA.L"], 4)
+  
