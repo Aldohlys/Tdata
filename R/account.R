@@ -257,21 +257,21 @@ twr <- function(dates, e_nlv, cashflows) {
 #' All Greek net values will be then summed up over all positions, for each Greek.
 #'
 #'@param portf a data frame with one line per instrument, may be grouped by date and time.
-#'It should contain at least the following columns: \code{type;pos; mktPrice; delta; gamma; vega; theta; uPrice;
-#'multiplier; currency} - see also readPortfolio function
+#'It should contain at least the following columns: \code{type; pos; multiplier; delta; gamma; vega; theta; uPrice;
+#' theta; uPrice} - these are named after portfolio tables in DB, see also readPortfolio function. Type is necessary to have a distinction between stocks and options.
 #'@returns a data frame of double numbers with \code{delta, deltadollars, gamma, theta, vega} for each group. It is worth noticing that deltadollars is an amount in USD.
 #'(if necessary it is converted to USD from original currency).
 #'@export
 greeksNet = function(portf) {
-  if ("delta" %in% colnames(portf)) {
+  if (!all("type","pos", "multiplier", "delta", "uPrice", "gamma", "theta", "vega")
+      %in% colnames(portf)) display_error_message("Missing column in portf argument!")
 
-    ## First converto to USD value
-    portf=dplyr::mutate(portf, uPrice=c_to_usd(uPrice, currency))
+  ## First converto to USD value
+  portf=dplyr::mutate(portf, uPrice=c_to_usd(uPrice, currency))
 
-    #### portf is grouped by datetime
-    #### Therefore summarize will do the computation per datetime
-
-    dplyr::summarize(dplyr::mutate(portf,
+  #### portf is grouped by datetime
+  #### Therefore summarize will do the computation per datetime
+  dplyr::summarize(dplyr::mutate(portf,
                                        dnet=dplyr::case_when(
                                          type=="Stock" ~ 1*pos,
                                          (type=="Call" | type=="Put") ~ multiplier*delta*pos,
@@ -294,7 +294,6 @@ greeksNet = function(portf) {
                      gamma=sum(gnet,na.rm=FALSE),
                      theta=sum(tnet,na.rm=FALSE),
                      vega=sum(vnet,na.rm=FALSE))
-  }
 }
 
 ##############################
