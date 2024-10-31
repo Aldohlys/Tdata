@@ -251,10 +251,57 @@ getInstrument <- function(account, instrument) {
 ### This function is useful for test purposes
 getTradeQuery <- function(conn) {
   return(DBI::dbGetQuery(conn,
-                         "SELECT DISTINCT TradeNr from Trades WHERE Statut = 'Ouvert' OR Statut = 'Ajust\u00e9'",
+                         "SELECT DISTINCT TradeNr from Trades WHERE Statut = 'Ouvert' OR Statut = 'Ajust\u00e9'"
                          ))
 }
 
+### This function is useful for test purposes
+getTradeQuery <- function(conn, params) {
+  return(DBI::dbGetQuery(conn,
+                         "SELECT * from Trades WHERE TradeNr = ?",
+                         params = list(params)
+  ))
+}
+
+
+#' getTradeData
+#'
+#' This function retrieves all data related to a given trade
+#'
+#' It works by querying the Trades table in DB
+#' If TradeNr does not exist then it will return a record with 0 row
+#'
+#'@param TradeNr an integer or vector of integers
+#'@return The following fields are returned:
+#'\itemize{
+#' \item{TradeNr}
+#' \item{Account: Simu/Live}
+#' \item{TradeDate: YYYYMMDD}
+#' \item{Strategy TBILL, OFI, WHEEL, A14,... NA also possible}
+#' \item{Instrument}
+#' \item{Ssjacent: a.k.a symbol}
+#' \item{Pos: Integer}
+#' \item{Prix: numeric}
+#' \item{Comm.: idem}
+#' \item{Total: ditto}
+#' \item{Risk}
+#' \item{Reward}
+#' \item{PnL}
+#' \item{Statut: Fermé, Ouvert or Ajusté}
+#' \item{Currency: USD, EUR, CHF,...}
+#' \item{Remarques: Text}
+#'}
+#'
+#'@export
+getTradeData = function(TradeNr) {
+  ### Get the list of all trade numbers currently active
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  ### getTradeQuery returns a list
+  trade_data <- getTradeQuery(conn, TradeNr)
+  DBI::dbDisconnect(conn)
+  ### Returns matching status of TradeNr
+  return(trade_data)
+}
 
 #' isTradeOpened
 #'
@@ -275,6 +322,8 @@ isTradeOpened = function(TradeNr) {
   ### Returns matching status of TradeNr
   return(TradeNr %in% active_trade_nr)
 }
+
+
 
 #' getTradeNr
 #'

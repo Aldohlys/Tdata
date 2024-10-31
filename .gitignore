@@ -10,3 +10,9 @@
 inst/python/BracketOrderExample.py
 
 inst/python/PythonInteractive.py
+
+estx50.csv
+
+inst/python/ESTX50Study.py
+
+inst/python/__pycache__/
