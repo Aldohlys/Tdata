@@ -256,7 +256,7 @@ getTradeQuery <- function(conn) {
 }
 
 ### This function is useful for test purposes
-getTradeQuery <- function(conn, params) {
+getTradeDataQuery <- function(conn, params) {
   return(DBI::dbGetQuery(conn,
                          "SELECT * from Trades WHERE TradeNr = ?",
                          params = list(params)
@@ -297,7 +297,7 @@ getTradeData = function(TradeNr) {
   ### Get the list of all trade numbers currently active
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   ### getTradeQuery returns a list
-  trade_data <- getTradeQuery(conn, TradeNr)
+  trade_data <- getTradeDataQuery(conn, TradeNr)
   DBI::dbDisconnect(conn)
   ### Returns matching status of TradeNr
   return(trade_data)
