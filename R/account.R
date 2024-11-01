@@ -263,8 +263,8 @@ twr <- function(dates, e_nlv, cashflows) {
 #'(if necessary it is converted to USD from original currency).
 #'@export
 greeksNet = function(portf) {
-  if (!all("type","pos", "multiplier", "delta", "uPrice", "gamma", "theta", "vega")
-      %in% colnames(portf)) display_error_message("Missing column in portf argument!")
+  if (!all(c("type","pos", "multiplier", "delta", "uPrice", "gamma", "theta", "vega")
+      %in% colnames(portf))) Tbasics::display_error_message("Missing column in portf argument!")
 
   ## First converto to USD value
   portf=dplyr::mutate(portf, uPrice=c_to_usd(uPrice, currency))
