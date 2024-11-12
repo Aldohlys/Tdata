@@ -58,12 +58,14 @@ readAccount = function(accountnr) {
 #' Data wrangling:
 #' 1. formats it with right internal R Date format and heure HMS format
 #'
+#'
+#' N.B: It will first check that portfname exists as a table in DB, and returns an error if not
 #'@param portfname is a string that is a name of a portfolio table into local DB.
 #'local DB path is retrieved through config.yaml file
 #'@returns a data frame with the following columns:
 #' \code{TradeNr; date; heure; symbol; expdate; strike; pos}
 #' \code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend}
-#' \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument}
+#' \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument; margin}
 #'
 #'@examples
 #'\dontrun{
@@ -105,6 +107,66 @@ readPortfolio = function(portfname) {
 }
 
 ############# PORTFOLIO specific functions #############
+#' readPortfolioDate
+#'
+#'
+#' This function reads a portfolio table given as entry
+#' and performs a bit of data wrangling before returning a data frame with all data.
+#'
+#'
+#' Data wrangling:
+#' 1. formats it with right internal R Date format and heure HMS format
+#'
+#'
+#' N.B: It will first check that portfname exists as a table in DB, and returns an error message if not
+#'@param portfname is a string that is a name of a portfolio table into local DB.
+#'local DB path is retrieved through config.yaml file
+#'@param date is a date to filter only records for a given date.
+#'@returns a data frame with the following columns:
+#' \code{TradeNr; heure; symbol; expdate; strike; pos}
+#' \code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend}
+#' \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument; margin}
+#'
+#'@examples
+#'\dontrun{
+#'readPortfolio("DUxxx", Sys.Date())
+#'}
+#'@export
+readPortfolioDate = function(portfname, date) {
+  message("readPortfolioDate")
+
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+
+  #### Check if requested portfolio is present in DB (e.g. Live portfolio does not exist)
+  name = DBI::dbGetQuery(conn,"SELECT name FROM sqlite_master WHERE type='table' AND name=?",params=list(portfname))
+
+  ### If portfolio exists there is one and only one portfolio name referred
+  if (nrow(name)==1) {
+
+    ### Convert date parameter into integer
+    if (!inherits(date, "Date")) display_error_message("date parameter to readPortfolioDate must be a date!")
+    t_date = format(date, "%Y%m%d")
+
+    ### read table from DB - no collect function necessary as there is no lazy evaluation later implied (no dplyr)
+    query = paste0("SELECT * FROM ",portfname," WHERE DATE=?")
+    portf = DBI::dbGetQuery(conn, query, params=list(t_date))
+    DBI::dbDisconnect(conn)
+
+    ### Convert from European date format to internal R date format
+    portf$heure <- hms::parse_hms(portf$heure)
+
+    return(portf)
+  }
+  else {
+    DBI::dbDisconnect(conn)
+
+    Tbasics::display_message("Portfolio doesn't exist, please check portfolio name")
+    return(dplyr::tibble())
+  }
+}
+
+
+############# PORTFOLIO specific functions #############
 #' readLastPortfolio
 #'
 #'
@@ -115,12 +177,12 @@ readPortfolio = function(portfname) {
 #' Data wrangling:
 #' 1. format with right internal R Date format and heure HMS format: date and expdate (if it exists) fields
 #'
-#'
+#' N.B: It will first check that portfname exists as a table in DB, and returns an error message if not
 #'@param portfname is a string whose value is actual portfolio table name in DB
 #'@returns a data frame with the following columns:
 #' \code{TradeNr; date; heure; symbol; expdate; strike; pos; }
 #' \code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend; }
-#' \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument}
+#' \code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument; margin}
 #'
 #'@examples
 #'\dontrun{
@@ -131,39 +193,38 @@ readLastPortfolio <- function(portfname) {
   # ### retrieve last recorded (date, time) - Other possible implementation
   # last_portf = portf[unlist(portf %>% group_rows() %>% last),]
   message("readLastPortfolio")
-  mydb <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
-  ### Perform the required query as needed
-  #### Live/Simu come from IBKR reporting files
-  #### Change them into account numbers
+  #### Check if requested portfolio is present in DB (e.g. Live portfolio does not exist)
+  name = DBI::dbGetQuery(conn,"SELECT name FROM sqlite_master WHERE type='table' AND name=?",params=list(portfname))
 
-  last_portf <- switch(portfname,
-                       "U1804173" = DBI::dbGetQuery(mydb,
-                        "WITH Last_record AS(SELECT max(date) as date, heure FROM (SELECT date, MAX(heure) as heure FROM U1804173 GROUP BY date))
-					SELECT * FROM U1804173 WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"),
-                       "DU5221795" = DBI::dbGetQuery(mydb,
-                        "WITH Last_record AS(SELECT max(date) as date, heure FROM (SELECT date, MAX(heure) as heure FROM DU5221795 GROUP BY date))
-					SELECT * FROM DU5221795 WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"),
-                       "Gonet" = DBI::dbGetQuery(mydb,
-                                                     "WITH Last_record AS(SELECT max(date) as date, heure FROM (SELECT date, MAX(heure) as heure FROM Gonet GROUP BY date))
-					SELECT * FROM Gonet WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)"),
-                       dplyr::tibble())
+  ### If portfolio exists there is one and only one portfolio name referred
+  if (nrow(name)==1) {
+      ### Build the required string query as needed
+      query = paste0("WITH Last_record AS(SELECT max(date) as date, heure FROM (SELECT date, MAX(heure) as heure FROM ",
+                     portfname,
+                     " GROUP BY date)) SELECT * FROM ",
+                     portfname,
+                     " WHERE date= (SELECT date FROM Last_record) AND heure= (SELECT heure FROM Last_record)")
+      last_portf = DBI::dbGetQuery(conn, query)
+      DBI::dbDisconnect(conn)
 
-  DBI::dbDisconnect(mydb)
+      ### Convert from European date format to internal R date format
+      ### NB date is stored as integer in DB so conversion to character is really necessary - not to be fancy
+      last_portf$date <- as.Date(as.character(last_portf$date),"%Y%m%d")
+      last_portf$heure <- hms::parse_hms(last_portf$heure)
+      if ("expdate" %in% colnames(last_portf)) last_portf$expdate <- as.Date(as.character(last_portf$expdate),"%Y%m%d")
 
-  ### Default switch case - last_portf = tibble() with no columns, no lines
-  if (length(last_portf) == 0) {
-    Tbasics::display_message("Portfolio doesn't exist, please check portfolio name")
-    return(last_portf)
+      return(last_portf)
   }
 
-  ### Convert from European date format to internal R date format
-  ### NB date is stored as integer in DB so conversion to character is really necessary - not to be fancy
-  last_portf$date <- as.Date(as.character(last_portf$date),"%Y%m%d")
-  last_portf$heure <- hms::parse_hms(last_portf$heure)
-  if ("expdate" %in% colnames(last_portf)) last_portf$expdate <- as.Date(as.character(last_portf$expdate),"%Y%m%d")
+  else {
+    DBI::dbDisconnect(conn)
 
-  return(last_portf)
+    Tbasics::display_message("Portfolio doesn't exist, please check portfolio name")
+    return(dplyr::tibble())
+  }
+
 }
 
 

@@ -13,7 +13,7 @@ readLastPortfolio(portfname)
 a data frame with the following columns:
 \code{TradeNr; date; heure; symbol; expdate; strike; pos; }
 \code{mktPrice; optPrice; mktValue; avgCost; unPnL; IV; pvDividend; }
-\code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument}
+\code{delta; gamma; vega; theta; uPrice; multiplier; currency; type; Instrument; margin}
 }
 \description{
 This function reads the last record of a portfolio table given as entry,
@@ -24,6 +24,8 @@ Data wrangling:
 \enumerate{
 \item format with right internal R Date format and heure HMS format: date and expdate (if it exists) fields
 }
+
+N.B: It will first check that portfname exists as a table in DB, and returns an error message if not
 }
 \examples{
 \dontrun{

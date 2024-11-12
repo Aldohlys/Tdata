@@ -145,7 +145,7 @@ getLastUSDValue = function(currency) {
 #'currency_format(c(100,40),c("EUR","USD"))
 #'currency_format(c(100,40),"EUR")
 #'@export
-currency_format = function(amount,currency){
+currency_format = function(amount, currency){
   #Returns the amount values formatted with their respective currency sign, based on the currency argument
   ## Amounts are rounded to 0.01
 
@@ -178,10 +178,10 @@ currency_format = function(amount,currency){
   ### then recycled otherwise error is raised
   if (length(currency) != length(amount)) {
     if (length(currency) == 1) currency <- rep(currency, length(amount))
-    else stop("amount and currency do not have same length AND currency length is not equal to 1 !")
+    else Tbasics::display_error_message("amount and currency do not have same length AND currency length is not equal to 1 !")
   }
 
-  dplyr::if_else (is.na(amount), "", {
+  ifelse (is.na(amount), "", {
     dplyr::case_match(currency,
            "EUR"~euro(amount),
            "CHF"~chf(amount),
