@@ -4,10 +4,10 @@
 \alias{getInstrument}
 \title{getInstrument}
 \usage{
-getInstrument(account, instrument)
+getInstrument(tradenr, instrument)
 }
 \arguments{
-\item{account}{string or a vector of strings, account names in order to filter trades with the right account}
+\item{tradenr}{integer in order to filter trades with the right trade number (TradeNr)}
 
 \item{instrument}{an instrument or a list of instruments as input data}
 }
@@ -17,14 +17,15 @@ If an instrument does not exist or is closed, then NA will be returned for this 
 }
 \description{
 This function returns initial trade date, price, implied volatility and DTE at initial trade time
-information related to the opening trade for an instrument that is currently opened/adjuste.
+information related to the opening trade for an instrument - trade may be open or closed.
 }
 \details{
 It queries the Trades table and gets the initial trade opening date, as well as its price (without commission though).
-It then retrieves interest rate at the time of opening, computes DTE and then deduce its implied volatility. It assumes dividend = 0 in IV computation.
+It then retrieves interest rate at the time of opening, computes DTE and then deduce its implied volatility.
+It assumes dividend = 0 in IV computation.
 }
 \examples{
 \dontrun{
-getInstrument(account="Uxxx",instrument=c("CCJ 17MAY24 37 P", "USO 17MAY24 87 C"))
+getInstrument(tradenr=527,instrument=c("SPX 08NOV24 5870 P", "SPX 08NOV24 5900 P"))
 }
 }

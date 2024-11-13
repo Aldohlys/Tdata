@@ -144,7 +144,7 @@ readPortfolioDate = function(portfname, date) {
   if (nrow(name)==1) {
 
     ### Convert date parameter into integer
-    if (!inherits(date, "Date")) display_error_message("date parameter to readPortfolioDate must be a date!")
+    if (!inherits(date, "Date")) Tbasics::display_error_message("date parameter to readPortfolioDate must be a date!")
     t_date = format(date, "%Y%m%d")
 
     ### read table from DB - no collect function necessary as there is no lazy evaluation later implied (no dplyr)
