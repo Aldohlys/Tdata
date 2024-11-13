@@ -16,10 +16,11 @@ getActiveTestTradeQuery <- function(account) {
                                  params=list(account))
 }
 
-getTestInstrumentQuery <- function(conn, account, instr) {
+getTestInstrumentQuery <- function(conn, tradenr, instr) {
   return(DBI::dbGetQuery(conn,
-                         "SELECT Prix As startPrice,`Exp.Date` as expdate, Ssjacent as symbol, min(TradeDate) AS initial_trade_date FROM TestTrades WHERE Account = ? AND Instrument = ? AND (Statut ='Ouvert' OR Statut = 'Ajust\U00e9')",
-                         params=list(account, instr)))
+                         "SELECT Prix As startPrice,`Exp.Date` as expdate, Ssjacent as symbol, min(TradeDate) AS initial_trade_date
+                         FROM TestTrades WHERE TradeNr = ? AND Instrument = ?",
+                         params=list(tradenr, instr)))
 
 }
 
@@ -40,10 +41,10 @@ compareNA <- function(v1,v2) {
   return(same)
 }
 
-test_that("It is possible to retrieve one instrument in one account", {
+test_that("It is possible to retrieve one instrument for one trade", {
   with_mocked_bindings(
     getInstrumentQuery = getTestInstrumentQuery, {
-      df = getInstrument(account=c("U1804173"),instrument=c("CCJ 19APR24 36 P"))
+      df = getInstrument(tradenr=392,instrument=c("CCJ 19APR24 36 P"))
       expect_equal(df,
                    data.frame(initial_trade_date= as.Date("2024-02-23"),
                               startPrice= 0.69,  DTE=56.88, u_price =40.189999,
@@ -52,34 +53,22 @@ test_that("It is possible to retrieve one instrument in one account", {
     })
 })
 
-test_that("getInstrument is checked for account and instrument lengths",{
+test_that("getInstrument is checked for tradenr and instrument lengths",{
   with_mocked_bindings(
     getInstrumentQuery = getTestInstrumentQuery, {
-      df = getInstrument(account=c("U1804173","U1804173"),instrument=c("SPY 21JUN24 525 P"))
+      df = getInstrument(tradenr=c(100,101),instrument=c("SPY 21JUN24 525 P"))
       expect_true(is.na(df))
     })
 })
 
-test_that("getInstrument returns NA for instrument that are closed",{
+test_that("getInstrument returns NA for instrument that do not belong to the trade",{
   with_mocked_bindings(
     getInstrumentQuery = getTestInstrumentQuery, {
-      df = getInstrument(account="U1804173",instrument="SLV 17MAR23 20 P")
+      df = getInstrument(tradenr=220,instrument="SLV 17MAR23 20 P")
       expect_true(all(is.na(df)))
     })
 })
 
-test_that("It is possible to retrieve multiple instruments from one account", {
-  with_mocked_bindings(
-    getInstrumentQuery = getTestInstrumentQuery, {
-      df = getInstrument(account=c("U1804173","U1804173"),instrument=c("CCJ 19APR24 36 P",
-                                                                       "SMH 19APR24 240 C"))
-      expect_equal(df,
-                   data.frame(initial_trade_date= c(as.Date("2024-02-23"),as.Date("2024-03-21")),
-                              startPrice= c(0.69, 3.05),  DTE= c(56.88, 29.88), u_price = c(40,226),
-                              startIV=  c(0.377, 0.294)),
-                   tolerance = 0.01)
-    })
-})
 
 
 test_that("Retrieve trade number status for a single trade",{

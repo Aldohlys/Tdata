@@ -400,6 +400,7 @@ getIBKR <- function() {
 
   ### Following Python extract, all fields are either double or character
   portf_data = dplyr::mutate(portf_data,
+                             date = as.integer(date),
                       pos = as.integer(pos),
                       multiplier = as.integer(multiplier))
 

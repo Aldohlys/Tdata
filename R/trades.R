@@ -159,10 +159,11 @@ getToday = function() {
 }
 
 ### This function is useful for test purposes
-getInstrumentQuery <- function(conn, account, instr) {
+getInstrumentQuery <- function(conn, tradenr, instr) {
   return(DBI::dbGetQuery(conn,
-                          "SELECT Prix As startPrice,`Exp.Date` as expdate, Ssjacent as symbol, min(TradeDate) AS initial_trade_date FROM Trades WHERE Account = ? AND Instrument = ? AND (Statut ='Ouvert' OR Statut = 'Ajust\U00e9')",
-                          params=list(account, instr)))
+                          "SELECT Prix As startPrice,`Exp.Date` as expdate, Ssjacent as symbol, min(TradeDate) AS initial_trade_date
+                         FROM Trades WHERE TradeNr = ? AND Instrument = ?",
+                          params=list(tradenr, instr)))
 
 }
 
@@ -170,31 +171,31 @@ getInstrumentQuery <- function(conn, account, instr) {
 #'   getInstrument
 #'
 #'This function returns initial trade date, price, implied volatility and DTE at initial trade time
-#'information related to the opening trade for an instrument that is currently opened/adjuste.
+#'information related to the opening trade for an instrument - trade may be open or closed.
 #'
 #'It queries the Trades table and gets the initial trade opening date, as well as its price (without commission though).
-#'It then retrieves interest rate at the time of opening, computes DTE and then deduce its implied volatility. It assumes dividend = 0 in IV computation.
+#'It then retrieves interest rate at the time of opening, computes DTE and then deduce its implied volatility.
+#'It assumes dividend = 0 in IV computation.
 #'
-#'@param account string or a vector of strings, account names in order to filter trades with the right account
+#'@param tradenr integer in order to filter trades with the right trade number (TradeNr)
 #'@param instrument an instrument or a list of instruments as input data
 #'@returns a data frame, and for each instrument the following fields: \code{initial_trade_date, startPrice, DTE, u_price} and \code{startIV}.
 #'If an instrument does not exist or is closed, then NA will be returned for this instrument
 #'@export
 #'@examples
 #'\dontrun{
-#'getInstrument(account="Uxxx",instrument=c("CCJ 17MAY24 37 P", "USO 17MAY24 87 C"))
+#'getInstrument(tradenr=527,instrument=c("SPX 08NOV24 5870 P", "SPX 08NOV24 5900 P"))
 #'}
-getInstrument <- function(account, instrument) {
+getInstrument <- function(tradenr, instrument) {
 
-  get_init_info <- function(account, instr) {
-    ### Convert account name to Live/Simu as per trade
-    account = switch(account, "U1804173"="Live", "DU5221795"="Simu")
+  get_init_info <- function(tradenr, instr) {
+
     na_data = data.frame(initial_trade_date=NA, startPrice=NA, DTE=NA, u_price=NA, startIV=NA)
-    data = getInstrumentQuery(conn, account, instr)
+    data = getInstrumentQuery(conn, tradenr, instr)
     type= strsplit(instr, "\\s+")[[1]][4]
 
     if (is.na(data$initial_trade_date)) {
-      Tbasics::display_message("getInstrument: instrument does not exist or is closed!")
+      Tbasics::display_message("getInstrument: instrument does not exist!")
       return(na_data)
     }
     else if (is.na(type)) {
@@ -230,17 +231,17 @@ getInstrument <- function(account, instrument) {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
   ### Recycle account up to instrument length
-  if (length(account) == 1) account = rep(account, length(instrument))
+  if (length(tradenr) == 1) tradenr = rep(tradenr, length(instrument))
 
   #### Error case handling
-  if (length(account) != length(instrument)) {
+  if (length(tradenr) != length(instrument)) {
     Tbasics::display_message("getInstrument: Account and instrument must have the same length!")
     DBI::dbDisconnect(conn)
     return(NA)
   }
 
   ### Apply get_init_info to each member of instrument vector
-  v_instr <- dplyr::bind_rows(purrr::map2(account, instrument,  get_init_info))
+  v_instr <- dplyr::bind_rows(purrr::map2(tradenr, instrument,  get_init_info))
 
   ### CLose DB connection
   DBI::dbDisconnect(conn)
