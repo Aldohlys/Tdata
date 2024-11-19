@@ -1,0 +1,90 @@
+---
+title: "Get prices with Tdata"
+author: "Alexis Martin"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+Prices may come from different sources, they can be real-time or not.
+Real-time comes only from IBKR account.
+The `price_vignette` provides prices from all different sources:
+
+- In the past or real-time
+- For one ticker or a set of tickers
+- For one date or an interval date
+
+## Functions list
+
+## List of Documented Functions
+
+This vignette provides a list of all documented functions in the package. Each function is linked to its corresponding help page.
+
+```{r list-functions, echo=FALSE, results='asis'}
+# List all .Rd files in the man directory
+man_dir <- here::here("man")
+rd_files <- list.files(man_dir, pattern = "\\.Rd$", full.names = TRUE)
+
+# Extract function names (assuming the .Rd files correspond to function names)
+function_names <- gsub(".*/(.*)\\.Rd", "\\1", rd_files)
+
+# Generate HTML links to each .Rd file using the help() system
+links <- sapply(function_names, function(fn) {
+  href <- paste0("?", fn)  # Create link to the help page for each function
+  paste0("<a href='", href, "'>", fn, "</a>")
+})
+
+# Output the list of functions as HTML
+cat("<ul>")
+for (link in links) {
+  cat("<li>", link, "</li>")
+}
+cat("</ul>")
+```
+## Styles
+
+The `html_vignette` template includes a basic CSS theme. To override this theme you can specify your own CSS in the document metadata as follows:
+
+    output: 
+      rmarkdown::html_vignette:
+        css: mystyles.css
+
+## Figures
+
+The figure sizes have been customised so that you can easily put two images side-by-side. 
+
+```{r, fig.show='hold'}
+plot(1:10)
+plot(10:1)
+```
+
+You can enable figure captions by `fig_caption: yes` in YAML:
+
+    output:
+      rmarkdown::html_vignette:
+        fig_caption: yes
+
+Then you can use the chunk option `fig.cap = "Your figure caption."` in **knitr**.
+
+## More Examples
+
+You can write math expressions, e.g. $Y = X\beta + \epsilon$, footnotes^[A footnote here.], and tables, e.g. using `knitr::kable()`.
+
+```{r, echo=FALSE, results='asis'}
+knitr::kable(head(mtcars, 10))
+```
+
+Also a quote using `>`:
+
+> "He who gives up [code] safety for [code] speed deserves neither."
+([via](https://twitter.com/hadleywickham/status/504368538874703872))

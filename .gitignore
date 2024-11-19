@@ -16,3 +16,5 @@ estx50.csv
 inst/python/ESTX50Study.py
 
 inst/python/__pycache__/
+/doc/
+/Meta/

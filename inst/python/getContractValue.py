@@ -527,10 +527,11 @@ def getIBKRData():
   
   df= util.df(ib.portfolio())
   c_def=pd.DataFrame()
+  #### Iterate over each line of portfolio
   for i in range(len(df)):
     line=df.iloc[i,0]
-    #### Iterate over each line of portfolio
-    ib.qualifyContracts(line)
+    ## ib.qualifyContracts is not needed to retrieve underlying prices and will be called anyway during portfolio data processing
+    ##ib.qualifyContracts(line)
     c_def=pd.concat([c_def,pd.DataFrame([df.iloc[i,0]])],ignore_index=True)
   df=c_def.join(df)
   
