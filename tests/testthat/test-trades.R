@@ -48,7 +48,7 @@ test_that("It is possible to retrieve one instrument for one trade", {
       expect_equal(df,
                    data.frame(initial_trade_date= as.Date("2024-02-23"),
                               startPrice= 0.69,  DTE=56.88, u_price =40.189999,
-                              startIV=  0.38),
+                              startIV=  0.376),
                    tolerance = 0.01)
     })
 })

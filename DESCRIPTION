@@ -12,7 +12,6 @@ Imports:
     config,
     DBI,
     dplyr,
-    here,
     hms,
     purrr,
     quantmod,
