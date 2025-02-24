@@ -343,6 +343,50 @@ def retrieveCurrencyPairs(currencies, currency_pairs, direct_conv):
   print(currencies,res)
   return [currencies, res]
 
+def retrieveAccountHistory(ib, days_back=180):
+  """
+  Retrieve historical net liquidation values using ib_insync.
+    
+  Args:
+    days_back (int): Number of days of history to retrieve
+    ib: IB oject
+        
+  Returns:
+    pandas.DataFrame: Historical NLV values with datetime index
+  """
+  # Calculate date range
+  end_date = datetime.now() - timedelta(days=1)
+  end_str = end_date.strftime('%Y%m%d %H:%M:%S')
+    
+  # Create a dummy forex contract for account data request
+  # Using EUR.USD as it's always available
+  contract = Forex('EURUSD')
+        
+  # Request historical data
+  bars = ib.reqHistoricalData(
+        contract=contract,
+        endDateTime=end_str,
+        durationStr=f'{days_back} D',
+        barSizeSetting='1 day',
+        whatToShow='NetLiquidation',
+        useRTH=True,
+        formatDate=1
+    )
+
+      
+  # Convert to DataFrame
+  if bars:
+      df = util.df(bars)
+      # Select only date and close (NLV value)
+      df = df[['date', 'close']].rename(columns={'close': 'value'})
+      df['date'] = pd.to_datetime(df['date'])
+      df.set_index('date', inplace=True)
+      return df
+        
+  return pd.DataFrame()  # Return empty DataFrame if no data
+
+
+
 def retrieveAccountData(ib):
   df=util.df(ib.accountSummary())
   dt=datetime.date.today()
