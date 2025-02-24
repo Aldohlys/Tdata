@@ -324,37 +324,48 @@ twr <- function(dates, e_nlv, cashflows) {
 #'(if necessary it is converted to USD from original currency).
 #'@export
 greeksNet = function(portf) {
+  ## Manage case of Gonet portfolio - without options
   if (!all(c("type","pos", "multiplier", "delta", "uPrice", "gamma", "theta", "vega")
-      %in% colnames(portf))) Tbasics::display_error_message("Missing column in portf argument!")
+      %in% colnames(portf))) {
+    portf=dplyr::mutate(portf, mktPrice=c_to_usd(mktPrice, currency))
+    dplyr::summarize(dplyr::mutate(portf, dnet = pos, ddnet = pos*mktPrice, gnet = 0, tnet = NA, vnet = NA),
+                     delta=sum(dnet,na.rm=FALSE),
+                     deltadollars=sum(ddnet,na.rm=FALSE),
+                     gamma=0,
+                     theta= NA,
+                     vega= NA)
+  }
 
-  ## First converto to USD value
-  portf=dplyr::mutate(portf, uPrice=c_to_usd(uPrice, currency))
+  else {
+    ## First convert to USD value
+    portf=dplyr::mutate(portf, uPrice=c_to_usd(uPrice, currency))
 
-  #### portf is grouped by datetime
-  #### Therefore summarize will do the computation per datetime
-  dplyr::summarize(dplyr::mutate(portf,
-                                       dnet=dplyr::case_when(
-                                         type=="Stock" ~ 1*pos,
-                                         (type=="Call" | type=="Put") ~ multiplier*delta*pos,
-                                         TRUE ~ 0),
-                                       ddnet=dplyr::case_when(
-                                         type=="Stock" ~ 1*pos*mktPrice,
-                                         (type=="Call" | type=="Put") ~ multiplier*delta*pos*uPrice,
-                                         TRUE ~ 0),
-                                       gnet=dplyr::if_else((type=="Call" | type=="Put"),
-                                                           multiplier*gamma*pos,
-                                                           0),
-                                       tnet=dplyr::if_else((type=="Call" | type=="Put"),
-                                                           multiplier*theta*pos,
-                                                           0),
-                                       vnet=dplyr::if_else((type=="Call" | type=="Put"),
-                                                           multiplier*vega*pos,
-                                                           0)),
+    #### portf is grouped by datetime
+    #### Therefore summarize will do the computation per datetime
+    dplyr::summarize(dplyr::mutate(portf,
+                                   dnet=dplyr::case_when(
+                                     type=="Stock" ~ 1*pos,
+                                     (type=="Call" | type=="Put") ~ multiplier*delta*pos,
+                                     TRUE ~ 0),
+                                   ddnet=dplyr::case_when(
+                                     type=="Stock" ~ 1*pos*mktPrice,
+                                     (type=="Call" | type=="Put") ~ multiplier*delta*pos*uPrice,
+                                     TRUE ~ 0),
+                                   gnet=dplyr::if_else((type=="Call" | type=="Put"),
+                                                       multiplier*gamma*pos,
+                                                       0),
+                                   tnet=dplyr::if_else((type=="Call" | type=="Put"),
+                                                       multiplier*theta*pos,
+                                                       0),
+                                   vnet=dplyr::if_else((type=="Call" | type=="Put"),
+                                                       multiplier*vega*pos,
+                                                       0)),
                      delta=sum(dnet,na.rm=FALSE),
                      deltadollars=sum(ddnet,na.rm=FALSE),
                      gamma=sum(gnet,na.rm=FALSE),
                      theta=sum(tnet,na.rm=FALSE),
                      vega=sum(vnet,na.rm=FALSE))
+  }
 }
 
 ##############################
