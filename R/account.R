@@ -315,13 +315,15 @@ twr <- function(dates, e_nlv, cashflows) {
 #' This function computes for a portfolio the net position of each Greek, summing over all positions the Greek value of each individual position.
 #'
 #' Each position will be multiplied by multiplier and a Greek to obtain the Greek net value fo the position.
-#' All Greek net values will be then summed up over all positions, for each Greek.
+#' All Greek net values will be then summed up over all positions, for each Greek. If data is grouped, then Greeks will be computed separately for each group (summarize will do the trick).
 #'
 #'@param portf a data frame with one line per instrument, may be grouped by date and time.
-#'It should contain at least the following columns: \code{type; pos; multiplier; delta; gamma; vega; theta; uPrice;
-#' theta; uPrice} - these are named after portfolio tables in DB, see also readPortfolio function. Type is necessary to have a distinction between stocks and options.
-#'@returns a data frame of double numbers with \code{delta, deltadollars, gamma, theta, vega} for each group. It is worth noticing that deltadollars is an amount in USD.
-#'(if necessary it is converted to USD from original currency).
+#'Either it contains only \code{pos; mktPrice} columns and then only delta and delta dollars are computed
+#'or it contains \code{type; pos; multiplier; delta; gamma; vega; theta; uPrice;
+#' theta; uPrice} - these are named after portfolio tables in DB, see also readPortfolio function.
+#' and then all Greeks are computed. Type is necessary to have a distinction between stocks and options.
+#'@returns a data frame of double numbers with \code{delta, deltadollars, gamma, theta, vega} for each group.
+#'It is worth noticing that delta dollars is an amount in USD, converted from other currencies using last available currency rate.
 #'@export
 greeksNet = function(portf) {
   ## Manage case of Gonet portfolio - without options
