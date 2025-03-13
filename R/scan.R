@@ -6,7 +6,7 @@
 #'
 #' This function is used by scanner functions to get all tickets to scan
 #'
-#'@return A data frame with columns \code{Name, YahooName, Type, Currency, TradingClass, Exchange, OptExchange}
+#'@return A data frame with columns \code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange}
 #' sorted by alphabetical order, equal to the list of current tickers stored in DB
 #'@export
 getTickers = function() {
@@ -23,19 +23,20 @@ getTickers = function() {
 #'
 #'@param name IBKR security name
 #'@param yahoo_name Yahoo finances download security name.  If not provided, will be equal to \code{name}.
-#'@param trading_class trading class that will be used to retrieve option data from IBKR. If not provided, will be equal to \code{name}.
+#'@param trading_class chain trading class that will be used to retrieve option data from IBKR. If not provided, will be equal to \code{name}.
+#'@param multiplier chain multiplier, default is 100
 #'@param type IBKR security type, default is STK (stock). Could be also FUT (future), IND (Index),...
 #'@param currency IBKR currency value, i.e. USD, EUR, CHF,... Default is USD
 #'@param exchange exchange name where security price can be retrieved, default is SMART
 #'@param opt_exchange exchange name where option price for the security can be retrieved, default is SMART
 #'@return number of records added, i.e. 1 (normal case) or 0 (no line deleted, error case)
 #'@export
-addTicker <- function(name, yahoo_name, trading_class, type="STK", currency="USD", exchange="SMART", opt_exchange="SMART") {
+addTicker <- function(name, yahoo_name, trading_class, multiplier = 100, type="STK", currency="USD", exchange="SMART", opt_exchange="SMART") {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   if (missing(trading_class)) trading_class=name
   if (missing(yahoo_name)) yahoo_name=name
   result <- DBI::dbAppendTable(conn, "Tickers", data.frame(Name=name, YahooName=yahoo_name, Type=type,
-                                              Currency = currency, TradingClass=trading_class,
+                                              Currency = currency, TradingClass=trading_class, Multiplier = multiplier,
                                               Exchange=exchange, OptExchange=opt_exchange))
   # Check how many row were added
   print(paste("Rows added:", result))
@@ -49,12 +50,12 @@ addTicker <- function(name, yahoo_name, trading_class, type="STK", currency="USD
 #' This function is used by scanner functions to get one specific ticker defined by name from DB.
 #'
 #' If no name is retrieved a data frame with columns
-#' \code{Name, YahooName, Type, Currency, TradingClass, Exchange, OptExchange} and 0 line is returned
+#' \code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange} and 0 line is returned
 #'
 #' N.B. It could be that the same ticker name is used for different securities - I assume it is not the case in my scans
 #'
 #'@return A data frame with one line and columns
-#' \code{Name, YahooName, Type, Currency, TradingClass, Exchange, OptExchange}
+#' \code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange}
 getTicker <- function(name) {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   ticker = DBI::dbGetQuery(conn,

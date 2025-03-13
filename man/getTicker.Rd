@@ -8,14 +8,14 @@ getTicker(name)
 }
 \value{
 A data frame with one line and columns
-\code{Name, YahooName, Type, Currency, TradingClass, Exchange, OptExchange}
+\code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange}
 }
 \description{
 This function is used by scanner functions to get one specific ticker defined by name from DB.
 }
 \details{
 If no name is retrieved a data frame with columns
-\code{Name, YahooName, Type, Currency, TradingClass, Exchange, OptExchange} and 0 line is returned
+\code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange} and 0 line is returned
 
 N.B. It could be that the same ticker name is used for different securities - I assume it is not the case in my scans
 }

@@ -8,6 +8,7 @@ addTicker(
   name,
   yahoo_name,
   trading_class,
+  multiplier = 100,
   type = "STK",
   currency = "USD",
   exchange = "SMART",
@@ -19,11 +20,13 @@ addTicker(
 
 \item{yahoo_name}{Yahoo finances download security name.  If not provided, will be equal to \code{name}.}
 
-\item{trading_class}{trading class that will be used to retrieve option data from IBKR. If not provided, will be equal to \code{name}.}
+\item{trading_class}{chain trading class that will be used to retrieve option data from IBKR. If not provided, will be equal to \code{name}.}
+
+\item{multiplier}{chain multiplier, default is 100}
 
 \item{type}{IBKR security type, default is STK (stock). Could be also FUT (future), IND (Index),...}
 
-\item{currency}{IBKR currency value, i.e. USD, EUR, CHF,...}
+\item{currency}{IBKR currency value, i.e. USD, EUR, CHF,... Default is USD}
 
 \item{exchange}{exchange name where security price can be retrieved, default is SMART}
 

@@ -7,7 +7,7 @@
 getTickers()
 }
 \value{
-A data frame with columns \code{Name, YahooName, Type, Currency, TradingClass, Exchange, OptExchange}
+A data frame with columns \code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange}
 sorted by alphabetical order, equal to the list of current tickers stored in DB
 }
 \description{
