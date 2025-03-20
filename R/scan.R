@@ -6,7 +6,7 @@
 #'
 #' This function is used by scanner functions to get all tickets to scan
 #'
-#'@return A data frame with columns \code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange}
+#'@return A data frame with columns \code{Name, YahooName, TradingClass, Multiplier, Type, Currency,  Exchange, OptExchange}
 #' sorted by alphabetical order, equal to the list of current tickers stored in DB
 #'@export
 getTickers = function() {
