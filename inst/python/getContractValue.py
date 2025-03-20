@@ -74,6 +74,18 @@ def determine_sym(sym):
   return sym
 
 
+def isIBAvailable():
+  ib = IB()
+  try:
+    ib.connect('127.0.0.1', 7496, clientId=getPort())    # use this one for TWS (Traders Workstation) acct mgt
+  except ConnectionError:
+    print("From IB: Connection error")
+    #### If no IB connection possible then return either last value or None
+    return False
+  ib.disconnect()
+  ib.sleep(0)
+  return True
+
 def getValue(list_sec, list_sym, list_currency, list_exchange, reqType, close):
   ### This function returns either:
   ### -1 if contract does not exist or
@@ -134,8 +146,9 @@ def getValue(list_sec, list_sym, list_currency, list_exchange, reqType, close):
   
   return(df)
 
-
-def getOptValue(sym,expiration,strike,right,currency,exchange,tradingClass):
+### getOptValue will return a dataframe for a given sym, expiration, right,... and a vector of strikes
+### For each strike (first column), is listed also value, impliedvol and delta
+def getOptValue(sym,expiration,strikes,right,currency,exchange,tradingClass):
   #print("\ngetOptValue")
   ib = IB()
   try:
@@ -143,29 +156,33 @@ def getOptValue(sym,expiration,strike,right,currency,exchange,tradingClass):
   except ConnectionError:
     return None
    
+  if (type(strikes) != list): 
+    strikes = [strikes]
+    
   ##### INDIVIDUAL CONTRACTS
   #contract = Contract(symbol=sym,secType="STK",currency=currency,exchange=exchange)
-  contract = Contract(symbol=sym,secType="OPT",lastTradeDateOrContractMonth=expiration,
-                      strike=strike,right=right,exchange=exchange,currency=currency,tradingClass=tradingClass) # Simple contract
-  print("Contract:",contract)
-  if(ib.qualifyContracts(contract)):
+  contracts = [Contract(symbol=sym,secType="OPT",lastTradeDateOrContractMonth=expiration,
+                      strike=strike_c,right=right,
+                      exchange=exchange,currency=currency,tradingClass=tradingClass) for strike_c in strikes] 
+  print("Contracts:",contracts)
+  if(ib.qualifyContracts(*contracts)):
     ib.reqMarketDataType(int(2))
-    [ticker] = ib.reqTickers(contract)
+    tickers = ib.reqTickers(*contracts)
     #print("\nTicker:",ticker)
-    value= ticker.marketPrice()
+    # Option 1: Use a conditional to handle None values
+    result_dic = [{"strike": strike, 
+           "value": ticker.marketPrice() if not(math.isnan(ticker.marketPrice())) else ticker.close, 
+           "impliedvol": ticker.modelGreeks.impliedVol if ticker.modelGreeks is not None else None,
+           "delta": ticker.modelGreeks.delta if ticker.modelGreeks is not None else None} 
+          for ticker, strike in zip(tickers, strikes)]  
+    # Convert to pandas DataFrame before returning
+    result = pd.DataFrame(result_dic)
     ib.sleep(1)
-    if(math.isnan(value)):
-      #### Either return last stored value if available or return NaN
-        print("from IB: Opt price is NA")
-        value = None
-    # greeks=ticker.modelGreeks  ### Another way to retrieve impliedVol
-    # print("\nValue:",value)
-    # print("\nImpliedVol:",greeks.impliedVol)
   else:
-    value = None 
+    result = None 
   
   ib.disconnect()
-  return(value)
+  return(result)
 
 def getStraddleValue(sym,expiration,strike,currency,exchange,tradingClass):
   #print("\ngetStraddleValue")
