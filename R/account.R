@@ -371,6 +371,24 @@ greeksNet = function(portf) {
 }
 
 ##############################
+#' isIBAvailable
+#'
+#' This function tries to open a connection to TWS API on 7496 port. If successful, it returns TRUE and disconnect.
+#'  Otherwise returns FALSE
+#'
+#'
+#'@returns TRUE or FALSE
+#'@export
+#'@examples
+#'\dontrun{
+#'isIBAvailable()
+#'}
+isIBAvailable <- function() {
+  reticulate::py$isIBAvailable()
+}
+
+
+##############################
 #'   getIBKR
 #'
 #' This function retrieves account, portfolio and prices from IBKR and then store them in DB

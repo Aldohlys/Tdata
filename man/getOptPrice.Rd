@@ -6,28 +6,28 @@
 \usage{
 getOptPrice(
   sym,
+  tradingClass,
   right,
   strike,
   expiration,
   currency = "USD",
-  exchange = "SMART",
-  tradingClass
+  exchange = "SMART"
 )
 }
 \arguments{
 \item{sym}{string - IBKR style of ticker, if unknown then function returns -1}
 
+\item{tradingClass}{string - this is necessary to retrieve the correct chain for determining price - no default}
+
 \item{right}{string - can be either P, C or Put, Call}
 
 \item{strike}{string or numeric - option strike}
 
-\item{expiration}{string - expiration date, format is Y/M/D}
+\item{expiration}{number, date or string - expiration date, format is Y/M/D}
 
 \item{currency}{string - either EUR, CHF or USD - default is USD}
 
 \item{exchange}{string - exchange like SMART, EUREX, CBOE,..., if unknown then function returns -1 - default is SMART}
-
-\item{tradingClass}{string - this is ncessary to retrieve the correct chain for determining price - no default}
 }
 \value{
 a number, either option value or -1 is not found

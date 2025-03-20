@@ -19,6 +19,6 @@ a list of list: each list contains for one symbol the list of prices and volume:
 \description{
 This function gets from Yahoo service all values (Open, High, Low, Close, Volume and Adjusted)
 for one of a vector of symbols. It is based upon quantmod getSymbols function.
-It converts IBKR-style tickers into Yahoo-style tickers first.
+It converts IBKR-style tickers into Yahoo-style tickers first, by looking up into Scan table
 }
 \keyword{Yahoo}
