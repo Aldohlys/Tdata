@@ -6,7 +6,7 @@
 #'
 #'This function gets from Yahoo service all values (Open, High, Low, Close, Volume and Adjusted)
 #'for one of a vector of symbols. It is based upon quantmod getSymbols function.
-#'It converts IBKR-style tickers into Yahoo-style tickers first.
+#'It converts IBKR-style tickers into Yahoo-style tickers first, by looking up into Scan table
 #'@param sym one or a vector of symbols
 #'@param from_date a start date from which to retrieve symbols
 #'@param to_date a end date to which to retrieve symbols - Default is today
@@ -18,14 +18,23 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date()) {
   if (length(from_date) != 1) stop("length from_date must be equal to 1!")
   if (length(to_date) != 1) stop("length to_date must be equal to 1!")
 
-  lookup_yahoo = c("ESTX50"="^STOXX50E","MC"="MC.PA","OR"="OR.PA","TTE"="TTE.PA","AI"="AI.PA", "SGO"="SGO.PA", "BN"="BN.PA",
-                   "SPX"="^SPX","XSP"="^XSP","RUT"="^RUT","NESN"="NESN.SW", "ABBN" = "ABBN.SW", "HOLN"="HOLN.SW","SLHN"="SLHN.SW",
-                   "ROG"="ROG.SW", "SXLV"="SXLV.L", "SXLY"="SXLY.L","SXLK"="SXLK.L","SXLC"="SXLC.L",
-                   "CSBGU0"="CSBGU0.SW","DTLA"="DTLA.L","TRE7"="TRE7.L",
-                   "U.UN"="U-UN.TO", "USD.CAD"="USDCAD=X",
-                   "EUR.USD"="EURUSD=X","CHF.USD"="CHFUSD=X","EUR.CHF"="EURCHF=X")
-  sym = dplyr::if_else(sym %in% names(lookup_yahoo), lookup_yahoo[sym], sym)
-  lapply(sym, function(x) { suppressMessages(quantmod::getSymbols(x, from = from_date, to = to_date, auto.assign = F, warnings=FALSE))})
+  # lookup_yahoo = c("ESTX50"="^STOXX50E","MC"="MC.PA","OR"="OR.PA","TTE"="TTE.PA","AI"="AI.PA", "SGO"="SGO.PA", "BN"="BN.PA",
+  #                  "SPX"="^SPX","XSP"="^XSP","RUT"="^RUT","NESN"="NESN.SW", "ABBN" = "ABBN.SW", "HOLN"="HOLN.SW","SLHN"="SLHN.SW",
+  #                  "ROG"="ROG.SW", "SXLV"="SXLV.L", "SXLY"="SXLY.L","SXLK"="SXLK.L","SXLC"="SXLC.L",
+  #                  "CSBGU0"="CSBGU0.SW","DTLA"="DTLA.L","TRE7"="TRE7.L",
+  #                  "U.UN"="U-UN.TO", "USD.CAD"="USDCAD=X",
+  #                  "EUR.USD"="EURUSD=X","CHF.USD"="CHFUSD=X","EUR.CHF"="EURCHF=X")
+  ####  sym = dplyr::if_else(sym %in% names(lookup_yahoo), lookup_yahoo[sym], sym)
+
+  sym_yahoo = sapply(sym, \(x){
+                ticker <- getTicker(x)
+                ### If ticker does not exist in Scan table then just return the name
+                if (nrow(ticker) == 0) return(x)
+                ### Else return Yahoo name
+                else return(ticker$YahooName)
+                })
+  lapply(sym_yahoo, function(x) { suppressMessages(quantmod::getSymbols(x, from = from_date, to = to_date,
+                                                                        auto.assign = F, warnings=FALSE))})
 }
 
 #' getSym
@@ -341,20 +350,20 @@ getIBKRPrice <- function(sec="STK", sym, currency="USD", exchange="SMART", reqTy
 #'For a given contract, this function returns a price from IBKR - it may be a last price or a mid price
 #'If IBKR service is not available, or option price not available, or contract does not exist, it will return an error code -1.
 #'@param sym string - IBKR style of ticker, if unknown then function returns -1
+#'@param tradingClass string - this is necessary to retrieve the correct chain for determining price - no default
 #'@param right string - can be either P, C or Put, Call
-#'@param expiration string - expiration date, format is Y/M/D
+#'@param expiration number, date or string - expiration date, format is Y/M/D
 #'@param strike string or numeric - option strike
 #'@param currency string - either EUR, CHF or USD - default is USD
 #'@param exchange string - exchange like SMART, EUREX, CBOE,..., if unknown then function returns -1 - default is SMART
-#'@param tradingClass string - this is ncessary to retrieve the correct chain for determining price - no default
 #'@returns a number, either option value or -1 is not found
 #'@examples
 #'\dontrun{
-#'getOptPrice("SPX", "P", 5000, "20291220", "USD", "SMART", "SPX")
-#'getOptPrice("SPY", "Call", 500.0, as.Date("2026-12-18"), "USD", "SMART", "SPY")
+#'getOptPrice("SPX", "SPX", "P", 5000, "20291220", "USD", "SMART")
+#'getOptPrice("SPY", "SPY", "Call", 500.0, as.Date("2026-12-18"), "USD", "SMART")
 #'}
 #'@export
-getOptPrice = function(sym, right, strike, expiration, currency="USD", exchange="SMART", tradingClass) {
+getOptPrice = function(sym, tradingClass, right, strike, expiration, currency="USD", exchange="SMART") {
   if (tradingClass == "Stock") {
     Tbasics::display_error_message("A valid Trading Class must be provided!")
     return(NA)
@@ -374,8 +383,8 @@ getOptPrice = function(sym, right, strike, expiration, currency="USD", exchange=
   strike=as.numeric(strike)
   # message("NBBO Option value Sym:",sym," Type:",right," Strike:",strike," Expiration:",expiration,
   #         " Currency:",currency," Exchange:",exchange," tradingClass:",tradingClass)
-  val = reticulate::py$getOptValue(sym=sym,strike=strike,expiration=expiration,
-                                 right=right,currency=currency,exchange=exchange,tradingClass=tradingClass)
+  val = reticulate::py$getOptValue(sym=sym,expiration=expiration,strikes=strike,
+                                 right=right,currency=currency,exchange=exchange,tradingClass=tradingClass)$value
 
   if (is.null(val) || is.nan(val)) val=-1
   return(val)
