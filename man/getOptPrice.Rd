@@ -41,7 +41,7 @@ If IBKR service is not available, or option price not available, or contract doe
 }
 \examples{
 \dontrun{
-getOptPrice("SPX", "P", 5000, "20291220", "USD", "SMART", "SPX")
-getOptPrice("SPY", "Call", 500.0, as.Date("2026-12-18"), "USD", "SMART", "SPY")
+getOptPrice("SPX", "SPX", "P", 5000, "20291220", "USD", "SMART")
+getOptPrice("SPY", "SPY", "Call", 500.0, as.Date("2026-12-18"), "USD", "SMART")
 }
 }

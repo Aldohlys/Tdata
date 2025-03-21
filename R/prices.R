@@ -33,7 +33,9 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date()) {
                 ### Else return Yahoo name
                 else return(ticker$YahooName)
                 })
-  lapply(sym_yahoo, function(x) { suppressMessages(quantmod::getSymbols(x, from = from_date, to = to_date,
+
+  ### sapply would not work here as it tries to simplify the returned structure which does not work with getSymbols function
+  lapply(as.character(sym_yahoo), function(x) { suppressMessages(quantmod::getSymbols(x, from = from_date, to = to_date,
                                                                         auto.assign = F, warnings=FALSE))})
 }
 

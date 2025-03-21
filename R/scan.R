@@ -35,9 +35,12 @@ addTicker <- function(name, yahoo_name, trading_class, multiplier = 100, type="S
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   if (missing(trading_class)) trading_class=name
   if (missing(yahoo_name)) yahoo_name=name
-  result <- DBI::dbAppendTable(conn, "Tickers", data.frame(Name=name, YahooName=yahoo_name, Type=type,
-                                              Currency = currency, TradingClass=trading_class, Multiplier = multiplier,
-                                              Exchange=exchange, OptExchange=opt_exchange))
+  beta <- calculate_beta_vs_spx_periods(yahoo_name)
+  result <- DBI::dbAppendTable(conn, "Tickers", data.frame(Name = name, YahooName = yahoo_name, Type = type,
+                                              Currency = currency, TradingClass = trading_class, Multiplier = multiplier,
+                                              Exchange = exchange, OptExchange = opt_exchange,
+                                              Beta_3m = beta$beta_3m, Beta_6m = beta$beta_6m,
+                                              Beta_1y = beta$beta_1y, Beta_3y = beta$beta_3y))
   # Check how many row were added
   print(paste("Rows added:", result))
 
@@ -89,3 +92,4 @@ removeTicker = function(ticker) {
   DBI::dbDisconnect(conn)
   return(result)
 }
+
