@@ -59,6 +59,7 @@ addTicker <- function(name, yahoo_name, trading_class, multiplier = 100, type="S
 #'
 #'@return A data frame with one line and columns
 #' \code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange}
+#'@export
 getTicker <- function(name) {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   ticker = DBI::dbGetQuery(conn,
