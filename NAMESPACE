@@ -3,6 +3,8 @@
 export("%>%")
 export(addTicker)
 export(c_to_usd)
+export(calculate_beta_vs_spx)
+export(calculate_beta_vs_spx_periods)
 export(convert_to_usd_date)
 export(currency_format)
 export(deleteJournalEntry)
