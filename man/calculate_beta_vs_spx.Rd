@@ -2,13 +2,14 @@
 % Please edit documentation in R/beta.R
 \name{calculate_beta_vs_spx}
 \alias{calculate_beta_vs_spx}
-\title{Calculate beta of a security against SPX using Yahoo Finance data}
+\title{Calculate beta of a security against SPX using Yahoo Finance data with currency adjustment}
 \usage{
 calculate_beta_vs_spx(
   ticker,
   benchmark = "^GSPC",
   from = Sys.Date() - 365,
-  to = Sys.Date()
+  to = Sys.Date(),
+  currency = "USD"
 )
 }
 \arguments{
@@ -19,10 +20,12 @@ calculate_beta_vs_spx(
 \item{from}{Start date for historical data (default: 1 year ago)}
 
 \item{to}{End date for historical data (default: current date)}
+
+\item{currency}{Character string of the security's currency (default: "USD")}
 }
 \value{
 A list containing ticker, benchmark, period, beta value, and number of data points
 }
 \description{
-Calculate beta of a security against SPX using Yahoo Finance data
+Calculate beta of a security against SPX using Yahoo Finance data with currency adjustment
 }

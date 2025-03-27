@@ -2,18 +2,20 @@
 % Please edit documentation in R/beta.R
 \name{calculate_beta_vs_spx_periods}
 \alias{calculate_beta_vs_spx_periods}
-\title{Calculate beta for a security over multiple time periods}
+\title{Calculate beta for a security over multiple time periods with currency adjustment}
 \usage{
-calculate_beta_vs_spx_periods(ticker, benchmark = "^GSPC")
+calculate_beta_vs_spx_periods(ticker, benchmark = "^GSPC", currency = "USD")
 }
 \arguments{
 \item{ticker}{Character string of the security ticker}
 
 \item{benchmark}{Character string of the benchmark ticker (default: "^GSPC" for S&P 500)}
+
+\item{currency}{Character string of the security's currency (default: "USD")}
 }
 \value{
 A data frame containing beta values for 3-month, 6-month, 1-year, and 3-year periods
 }
 \description{
-Calculate beta for a security over multiple time periods
+Calculate beta for a security over multiple time periods with currency adjustment
 }
