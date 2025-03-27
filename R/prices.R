@@ -203,7 +203,7 @@ getLastAdjustedPrice = function(ticker) {
 ###
 #' getLastPriceDate
 #'
-#' This function takes one ticker (or a vector of tickers) as input and returns the last available
+#' This function takes one ticker (or a vector of tickers) as input and returns from Yahoo service the last available
 #' date with an available price - see also \code{getLastAdjustedPrice}.
 #'
 #'@param ticker ticker name, as known by IBKR - can be one name or a vector of names

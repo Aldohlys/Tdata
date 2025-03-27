@@ -426,6 +426,9 @@ getIBKR <- function() {
   uprices_data = l[[2]]
   DBI::dbAppendTable(conn,"Prices",uprices_data)
 
+  tickers = dplyr::filter(Tdata::getTickers(), Exchange == "SMART" | Exchange == "EUREX" | Exchange == "CBOE")
+  do.call(getIBKRPrice, list(sec=tickers$Type, sym=tickers$Name, currency=tickers$Currency, exchange=tickers$Exchange))
+
   #### Process portfolio last position #############
   portf_data = l[[3]]
 
