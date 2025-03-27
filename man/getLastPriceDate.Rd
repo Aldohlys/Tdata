@@ -13,7 +13,7 @@ getLastPriceDate(ticker)
 a list of dates for each ticker. It calls \code{getSymFromDate} to get the dates.
 }
 \description{
-This function takes one ticker (or a vector of tickers) as input and returns the last available
+This function takes one ticker (or a vector of tickers) as input and returns from Yahoo service the last available
 date with an available price - see also \code{getLastAdjustedPrice}.
 }
 \examples{

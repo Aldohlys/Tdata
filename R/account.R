@@ -422,15 +422,14 @@ getIBKR <- function() {
 
   DBI::dbAppendTable(conn,"Account", account_data)
 
-  #### 2. Process new prices for underlyings part of the portfolio  ##########
-  uprices_data = l[[2]]
-  DBI::dbAppendTable(conn,"Prices",uprices_data)
+  #### 2. Process new prices for tickers - that should include also underlyings part of the portfolio  ##########
+  message("\n#####  Retrieving price data from Tickers DB... \n")
 
   tickers = dplyr::filter(Tdata::getTickers(), Exchange == "SMART" | Exchange == "EUREX" | Exchange == "CBOE")
   do.call(getIBKRPrice, list(sec=tickers$Type, sym=tickers$Name, currency=tickers$Currency, exchange=tickers$Exchange))
 
   #### Process portfolio last position #############
-  portf_data = l[[3]]
+  portf_data = l[[2]]
 
   ### Following Python extract, all fields are either double or character
   portf_data = dplyr::mutate(portf_data,

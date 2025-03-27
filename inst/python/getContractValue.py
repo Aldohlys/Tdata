@@ -138,7 +138,7 @@ def getValue(list_sec, list_sym, list_currency, list_exchange, reqType, close):
 
   ### Compute new record - data obtained from market
   data= {
-    "datetime": [datetime.datetime.now().strftime("%e %b %Y %Hh%M")] * len(value),
+    "datetime": [datetime.datetime.now().strftime("%Y%m%d %H:%M")] * len(value),
     "sym":list_sym,
     "price":value
   }
@@ -481,32 +481,32 @@ def retrieveAccountMarginData(contracts):
   print(util.df(res_dict))
   return(res)
 
-def retrievePricesData(ib, du):
-  
-  ### Then build contract taking into account special cases (index type, SMART vs. EUREX exchange)
-  ### primary_exchange is needed to avoid ambiguities (e.g. AI) between different primary exchanges
-  dg=[Contract(secType=determine_sec(sym),symbol=sym,currency=currency,exchange =determine_exch(sym), 
-      primaryExchange=determine_primary_exch(sym)) for sym,currency in zip(du["symbol"],du["currency"])]
-  
-  ### They should all be qualified - no need to test
-  ### IBKR may change primaryExchange from SMART to something else if it knows better
-  ib.qualifyContracts(*dg)
-  
-  ### Retrieve 15 minutes delayed market values in a single go
-  ib.reqMarketDataType(2) ### Request type - Should be 2 or 4
-  tickers = ib.reqTickers(*dg)
-  
-  ### Build dataframe from prices just retrieved
-  l=[[ticker.contract.symbol,ticker.marketPrice()] for ticker in tickers]
-  
-  dh=pd.DataFrame(l,columns=["sym","price"])
-  #### Remove all lines without prices
-  #### Store new prices only if there is something to store
-  dh=dh.dropna(subset="price")
-  if not dh.empty:
-    dh.insert(0,"datetime",datetime.datetime.now().strftime('%d %b %Y %Hh%M'))
-
-  return(dh)  
+# def retrievePricesData(ib, du):
+#   
+#   ### Then build contract taking into account special cases (index type, SMART vs. EUREX exchange)
+#   ### primary_exchange is needed to avoid ambiguities (e.g. AI) between different primary exchanges
+#   dg=[Contract(secType=determine_sec(sym),symbol=sym,currency=currency,exchange =determine_exch(sym), 
+#       primaryExchange=determine_primary_exch(sym)) for sym,currency in zip(du["symbol"],du["currency"])]
+#   
+#   ### They should all be qualified - no need to test
+#   ### IBKR may change primaryExchange from SMART to something else if it knows better
+#   ib.qualifyContracts(*dg)
+#   
+#   ### Retrieve 15 minutes delayed market values in a single go
+#   ib.reqMarketDataType(2) ### Request type - Should be 2 or 4
+#   tickers = ib.reqTickers(*dg)
+#   
+#   ### Build dataframe from prices just retrieved
+#   l=[[ticker.contract.symbol,ticker.marketPrice()] for ticker in tickers]
+#   
+#   dh=pd.DataFrame(l,columns=["sym","price"])
+#   #### Remove all lines without prices
+#   #### Store new prices only if there is something to store
+#   dh=dh.dropna(subset="price")
+#   if not dh.empty:
+#     dh.insert(0,"datetime",datetime.datetime.now().strftime('%Y%m%d %H:%M'))
+# 
+#   return(dh)  
 
 def retrievePortfolioData(ib, df):
 
@@ -596,16 +596,16 @@ def getIBKRData():
     c_def=pd.concat([c_def,pd.DataFrame([df.iloc[i,0]])],ignore_index=True)
   df=c_def.join(df)
   
-  print("\n#####  Retrieving underlying price data... \n")
-  
-  #### Remove underlying symbol duplicates
-  du = df.drop_duplicates(subset='symbol',keep="first")
-  
-  ### Retrieve only prices for secType = OPT not other types (for STK, FUT, data is already present in retrieved portfolio data)
-  du = du.loc[du["secType"] == "OPT"]
-
-  u_prices_data = retrievePricesData(ib, du)
-  print(u_prices_data)
+  # print("\n#####  Retrieving underlying price data... \n")
+  # 
+  # #### Remove underlying symbol duplicates
+  # du = df.drop_duplicates(subset='symbol',keep="first")
+  # 
+  # ### Retrieve only prices for secType = OPT not other types (for STK, FUT, data is already present in retrieved portfolio data)
+  # du = du.loc[du["secType"] == "OPT"]
+  # 
+  # u_prices_data = retrievePricesData(ib, du)
+  # print(u_prices_data)
 
   print("\n#####  Retrieving portfolio data... \n")
   portf_data= retrievePortfolioData(ib, df)
@@ -619,7 +619,7 @@ def getIBKRData():
   #### IB connection no more needed
   ib.disconnect()
   
-  return [account_data, u_prices_data, portf_data] 
+  return [account_data, portf_data] 
 
   
 

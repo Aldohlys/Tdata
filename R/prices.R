@@ -277,7 +277,7 @@ getStockPrice = function(sym, close = FALSE) {
 
   if (close) {
     line <- data.frame(
-      datetime = paste(format(Sys.Date() - 1,"%d %b %Y"), "22:00:00"),
+      datetime = paste(format(Sys.Date() - 1,"%Y%m%d"), "22:00:00"),
       sym = sym,
       price = getLastAdjustedPrice(sym)
     )
@@ -330,11 +330,15 @@ getIBKRPrice <- function(sec="STK", sym, currency="USD", exchange="SMART", reqTy
     return (IBKRPrice)
   }
 
+  ### Remove all empty prices if any, print resulting data
+  IBKRPrice <- IBKRPrice[!is.nan(IBKRPrice$price),]
+  print(IBKRPrice)
+
   ### Last close price should not be stored as date and time will be wrong (IBKR returned last day close data...)
   ### Also only prices that are different from NaN will be stored in DB
   if (!close) {
     myconn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-    DBI::dbAppendTable(myconn, "Prices", IBKRPrice[!is.nan(IBKRPrice$price),])
+    DBI::dbAppendTable(myconn, "Prices", IBKRPrice)
     DBI::dbDisconnect(myconn)
   }
 
