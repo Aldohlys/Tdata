@@ -33,6 +33,14 @@ getTickers = function() {
 #'@export
 addTicker <- function(name, yahoo_name, trading_class, multiplier = 100, type="STK", currency="USD", exchange="SMART", opt_exchange="SMART") {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  ticker = DBI::dbGetQuery(conn,
+                           "Select * from Tickers WHERE Name = ?",
+                           params=list(name))
+  if (nrow(ticker) != 0) {
+    message("Ticker ", name," already exists in DB")
+    return(0)
+  }
+
   if (missing(trading_class)) trading_class=name
   if (missing(yahoo_name)) yahoo_name=name
   beta <- calculate_beta_vs_spx_periods(yahoo_name)
@@ -57,6 +65,7 @@ addTicker <- function(name, yahoo_name, trading_class, multiplier = 100, type="S
 #'
 #' N.B. It could be that the same ticker name is used for different securities - I assume it is not the case in my scans
 #'
+#'@param name IBKR security name
 #'@return A data frame with one line and columns
 #' \code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange}
 #'@export
@@ -77,15 +86,16 @@ getTicker <- function(name) {
 #'
 #' N.B. It could be that the same ticker name is used for different securities - I assume it is not the case in my scans
 #'
+#'@param name IBKR security name
 #'@return number of records deleted, i.e. 1 (normal case) or 0 (no line deleted, error case)
 #'@export
-removeTicker = function(ticker) {
+removeTicker = function(name) {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   # Delete the row where Name equals ticker
   # Delete using parameterized query
   result <- DBI::dbExecute(conn,
             "DELETE FROM Tickers WHERE Name = ?",
-            params = list(ticker))
+            params = list(name))
 
   # Check how many rows were affected
   # This shows how many rows were deleted

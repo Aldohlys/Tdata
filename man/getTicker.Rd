@@ -6,6 +6,9 @@
 \usage{
 getTicker(name)
 }
+\arguments{
+\item{name}{IBKR security name}
+}
 \value{
 A data frame with one line and columns
 \code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange}

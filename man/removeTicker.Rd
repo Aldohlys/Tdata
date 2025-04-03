@@ -4,7 +4,10 @@
 \alias{removeTicker}
 \title{removeTicker}
 \usage{
-removeTicker(ticker)
+removeTicker(name)
+}
+\arguments{
+\item{name}{IBKR security name}
 }
 \value{
 number of records deleted, i.e. 1 (normal case) or 0 (no line deleted, error case)

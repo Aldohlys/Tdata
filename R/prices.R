@@ -35,20 +35,12 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date()) {
                 })
 
   ### sapply would not work here as it tries to simplify the returned structure which does not work with getSymbols function
-  lapply(as.character(sym_yahoo), function(x) { suppressMessages(quantmod::getSymbols(x, from = from_date, to = to_date,
-                                                                        auto.assign = F, warnings=FALSE))})
+  lapply(as.character(sym_yahoo), function(x) {
+                              suppressMessages(quantmod::getSymbols(x, from = from_date, to = to_date,
+                              auto.assign = F, warnings=FALSE))
+                              }
+         )
 }
-
-#' getSym
-#'
-#' This function retrieves all values from Yahoo starting from CurrentTradesInitialDate - see config.yml file at user level directory
-#' This function calls \code{getSymFromDate} with one or a vector of tickers.
-#'@param sym one or a vector of symbols
-#'@returns a list of list: each list contains the list of prices and volume: Open, Close, Low, High, Volume and Adjusted
-getSym = function(sym){
-  getSymIntervalDate(sym, as.Date(config::get("CurrentTradesInitialDate")))
-}
-
 
 #' getSymPriceIntervalDate
 #'
@@ -68,10 +60,15 @@ getSymPriceIntervalDate = function(sym, from_date, to_date = Sys.Date(), OHLCVA 
 
   sym_OHLC = getSymIntervalDate(sym, from_date, to_date)
 
+  ### Put in the same table column-wide all symbols
   sym_all = purrr::reduce(sym_OHLC, \(acc, x) cbind(acc, x) )
-  adj_sym = sym_all[,grepl(OHLCVA, names(sym_all))]
-  colnames(adj_sym) = sub(paste0(".",OHLCVA),"", colnames(adj_sym))
-  adj_sym
+
+  ### Extract only columns that contain OHLCVA values (by default equal to "Adjusted")
+  data = sym_all[,grepl(OHLCVA, names(sym_all))]
+
+  ## Reassign to each column sym value formerly was colnames(adj_sym) = sub(paste0(".",OHLCVA),"", colnames(adj_sym))
+  colnames(data) = sym
+  data
 }
 
 
@@ -509,4 +506,14 @@ getOptPrice = function(sym, tradingClass, right, strike, expiration, currency="U
 #'   price = dplyr::tibble(date = as.Date(zoo::index(sym)), value = as.numeric(sym[,6]))
 #'   colnames(price) = c("date","value")
 #'   return(price)
+#' }
+#'
+#' #' getSym
+#' #'
+#' #' This function retrieves all values from Yahoo starting from CurrentTradesInitialDate - see config.yml file at user level directory
+#' #' This function calls \code{getSymFromDate} with one or a vector of tickers.
+#' #'@param sym one or a vector of symbols
+#' #'@returns a list of list: each list contains the list of prices and volume: Open, Close, Low, High, Volume and Adjusted
+#' getSym = function(sym){
+#'   getSymIntervalDate(sym, as.Date(config::get("CurrentTradesInitialDate")))
 #' }

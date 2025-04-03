@@ -51,4 +51,7 @@ am <- cur <- NULL
 ### getLastUsdValue
 usd_value <- DirectConversion <- value <- NULL
 
+### getIBKR
+Exchange <- NULL
+
 
