@@ -7,16 +7,18 @@
 currency_format(amount, currency)
 }
 \arguments{
-\item{amount, currency}{amount is the number to be displayed, currency is a string whose value is either EUR, CHF or USD.
+\item{amount}{is the number to be displayed, can be also a character if convertible into a number
 If length(currency) is 1, then it is recycled}
+
+\item{currency}{a string whose value has to be defined in Currencies table from DB}
 }
 \description{
 This function returns a string with amount and currency symbol
 }
 \details{
-It defines local labeling functions for CHF, EUR, CAD and USD.
+It defines a labeling functions for each currency.
 
-Currency symbol (for EUR and USD) are also taken into consideration.
+Currency symbols (for EUR and USD) are also taken into consideration.
 
 Only 2 digits after decimal are displayed. Big mark (3 digits separator) equal to space.
 }

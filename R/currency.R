@@ -123,18 +123,29 @@ getLastUSDValue = function(currency) {
   return(usd)
 }
 
+### This local function extracts all currency signs (display) from Currencies table in DB
+### This function is not exported
+getCurrencySign <- function(currency) {
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  currencies <- DBI::dbReadTable(conn, "Currencies")
+  DBI::dbDisconnect(conn)
+  sub_currencies <- suppressMessages(dplyr::left_join(data.frame(Name=currency), currencies))
+  sub_currencies$Display
+}
+
 
 #'  currency_format
 #'
 #' This function returns a string with amount and currency symbol
 #'
-#' It defines local labeling functions for CHF, EUR, CAD and USD.
+#' It defines a labeling functions for each currency.
 #'
-#' Currency symbol (for EUR and USD) are also taken into consideration.
+#' Currency symbols (for EUR and USD) are also taken into consideration.
 #'
 #' Only 2 digits after decimal are displayed. Big mark (3 digits separator) equal to space.
 
-#'@param amount,currency amount is the number to be displayed, currency is a string whose value is either EUR, CHF or USD.
+#'@param currency a string whose value has to be defined in Currencies table from DB
+#'@param amount is the number to be displayed, can be also a character if convertible into a number
 #'If length(currency) is 1, then it is recycled
 #'@examples
 #'currency_format(100.45,"EUR")
@@ -149,45 +160,44 @@ currency_format = function(amount, currency){
   #Returns the amount values formatted with their respective currency sign, based on the currency argument
   ## Amounts are rounded to 0.01
 
-  euro <- scales::label_dollar(
-    prefix = "",
-    suffix = " \u20ac",
-    big.mark = " ",
-    accuracy=0.01
-  )
-  chf <- scales::label_dollar(
-    prefix = "",
-    suffix = " CHF",
-    big.mark = " ",
-    accuracy=0.01
-  )
-  cad <- scales::label_dollar(
-    prefix = "",
-    suffix = " CAD",
-    big.mark = " ",
-    accuracy=0.01
-  )
-  dollar <- scales::label_dollar(
-    prefix = "",
-    suffix = " $",
-    big.mark = " ",
-    accuracy=0.01
-  )
-
   ### If length currency equals 1 and length arguments differ
   ### then recycled otherwise error is raised
-  if (length(currency) != length(amount)) {
-    if (length(currency) == 1) currency <- rep(currency, length(amount))
-    else Tbasics::display_error_message("amount and currency do not have same length AND currency length is not equal to 1 !")
-  }
+  tryCatch(
+    {
+      ## Try to convert to numeric if not already the case
+      amount <- as.numeric(amount)
 
-  ifelse (is.na(amount), "", {
-    dplyr::case_match(currency,
-           "EUR"~euro(amount),
-           "CHF"~chf(amount),
-           "CAD"~cad(amount),
-           "USD"~dollar(amount))
-  })
+      ### Retrieve currency signs in one single shot
+      ### Duplicate signs if necessary for each currency
+      currency_signs <- getCurrencySign(currency)
+
+      ### Compute display functions based upon currency signs
+      display_currencies <- purrr::map(currency_signs, \(curr) {
+        scales::label_dollar(
+          prefix = "",
+          suffix = paste0(" ", curr), #### EURO sign = \u20ac"
+          big.mark = " ",
+          accuracy=0.01
+        )
+      })
+
+      ### apply these functions on amount and return this value
+      purrr::map2_chr(amount, display_currencies, \(am, disp){disp(am)})
+    },
+
+    error = function(cond) {
+      message("Tdata::currency_format ERROR")
+      message(conditionMessage(cond))
+      NA
+    },
+
+    warning = function(cond) {
+      message("Tdata::currency_format WARNING")
+      message(conditionMessage(cond))
+      NA
+    }
+  )
+
 }
 
 #'  c_to_usd

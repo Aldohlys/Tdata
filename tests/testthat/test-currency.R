@@ -58,4 +58,14 @@ test_that("Conversion format work for currency", {
   expect_equal(currency_format(100000.455,"EUR"), "100 000.46 \U20AC")
   expect_equal(currency_format(c(100.45,758.458),c("EUR","USD")), c("100.45 \U20AC", "758.46 $"))
   expect_equal(currency_format(c(100000.455,758.458,265.43) ,"USD"), c("100 000.46 $","758.46 $","265.43 $"))
+  expect_equal(currency_format("100", c("CHF", "USD")), c("100.00 CHF", "100.00 $"))
+  expect_equal(currency_format(100.00, c("CHF", "USD")), c("100.00 CHF", "100.00 $"))
+})
+
+test_that("Conversion format detects correctly non numeric issue", {
+  expect_true(is.na(currency_format(c("10,15,5", 100), c("CHF", "USD"))))
+})
+
+test_that("Conversion format detects correctly length issues", {
+  expect_true(is.na(currency_format(c(200, 100, 50), c("CHF", "USD"))))
 })
