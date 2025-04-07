@@ -51,6 +51,15 @@ test_that("Convert to USD works with only one date", {
   )
 })
 
+test_that("Able to retrieve currency sign for currency", {
+  expect_equal(get_currency_sign("USD"), "$")
+  expect_equal(get_currency_sign("CHF"), "CHF")
+  expect_equal(get_currency_sign("EUR"), "€")
+  expect_equal(get_currency_sign(c("EUR","EUR")), c("€", "€"))
+  expect_equal(get_currency_sign(c("EUR", "USD")), c("€", "$"))
+})
+
+
 test_that("Conversion format work for currency", {
   expect_equal(currency_format(100.45,"EUR"), "100.45 \U20AC")
   expect_equal(currency_format(10000,"CHF"), "10 000.00 CHF")
