@@ -52,11 +52,11 @@ test_that("Convert to USD works with only one date", {
 })
 
 test_that("Able to retrieve currency sign for currency", {
-  expect_equal(get_currency_sign("USD"), "$")
-  expect_equal(get_currency_sign("CHF"), "CHF")
-  expect_equal(get_currency_sign("EUR"), "€")
-  expect_equal(get_currency_sign(c("EUR","EUR")), c("€", "€"))
-  expect_equal(get_currency_sign(c("EUR", "USD")), c("€", "$"))
+  expect_equal(currency_sign("USD"), "$")
+  expect_equal(currency_sign("CHF"), "CHF")
+  expect_equal(currency_sign("EUR"), "€")
+  expect_equal(currency_sign(c("EUR","EUR")), c("€", "€"))
+  expect_equal(currency_sign(c("EUR", "USD")), c("€", "$"))
 })
 
 

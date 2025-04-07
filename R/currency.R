@@ -123,7 +123,7 @@ getLastUSDValue = function(currency) {
   return(usd)
 }
 
-#'  get_currency_sign
+#'  currency_sign
 #'
 #' This function returns display sign for a given currency
 #'
@@ -131,12 +131,12 @@ getLastUSDValue = function(currency) {
 #'@param currency a string or a vector of strings - possible values are EUR, CHF,...
 #'@returns a character or a vector of characters
 #'@examples
-#'get_currency_sign("USD")
-#'get_currency_sign("EUR")
-#'get_currency_sign("CAD")
-#'get_currency_sign(c("CHF", "USD"))
+#'currency_sign("USD")
+#'currency_sign("EUR")
+#'currency_sign("CAD")
+#'currency_sign(c("CHF", "USD"))
 #'@export
-get_currency_sign <- function(currency) {
+currency_sign <- function(currency) {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   currencies <- DBI::dbReadTable(conn, "Currencies")
   DBI::dbDisconnect(conn)
@@ -180,7 +180,7 @@ currency_format = function(amount, currency){
 
       ### Retrieve currency signs in one single shot
       ### Duplicate signs if necessary for each currency
-      currency_signs <- get_currency_sign(currency)
+      currency_signs <- currency_sign(currency)
 
       ### Compute display functions based upon currency signs
       display_currencies <- purrr::map(currency_signs, \(curr) {
