@@ -290,22 +290,33 @@ def getChain(sym,secType,currency,exchangeSec,exchangeOpt,tradingClass):
   ### IN all other cases return NaN
   return(float('NaN'))
   
-def getStrikesfromExpDate(sym,currency,exchange,tradingClass,expdate,strikes):
+def getStrikesfromExpDate(sym,secType, currency,exchangeSec,exchangeOpt,tradingClass,expdate):
   with open("C:/Users/aldoh/Documents/NewTrading/Strikes.json", "r") as fp:
     stored_chains=json.load(fp)
   
+  ### Case where the chain is already stored for trading class and expdate requested
   stored_strikes= [chain for chain in stored_chains if (chain[0]==sym and chain[1]==tradingClass and chain[2]==expdate)]
   if (stored_strikes) :
     return(stored_strikes[0][3])
   
+  ### Case where the chain is NOT stored - we will store the complete list of strikes
+  ### as it is not possible to know what will be useful in the future
+  ### Stock price may fluctuate
   ib = IB()
   try:
     ib.connect('127.0.0.1', 7496, clientId=getPort())    # use this one for TWS (Traders Workstation) acct mgt
   except ConnectionError:
     return None
-    
+  
+  ### Retrieve the chain for symbol and trading class
+  chain = getChain(sym,secType,currency,exchangeSec,exchangeOpt,tradingClass)
+  
+  ### Extract the list of strikes for the chain
+  all_strikes = chain[5]
+  
+  ### Try all strikes for the expdate
   contracts=[Contract(secType='OPT',symbol=sym,lastTradeDateOrContractMonth=expdate,
-              strike=strike_c,right='Put',exchange=exchange,tradingClass=tradingClass) for strike_c in strikes]
+              strike=strike_c,right='Put',exchange=exchangeOpt,tradingClass=tradingClass) for strike_c in all_strikes]
   updated_strikes=[]
   # print("Contracts:",contracts)
   
@@ -317,9 +328,11 @@ def getStrikesfromExpDate(sym,currency,exchange,tradingClass,expdate,strikes):
   print("Strikes:",updated_strikes)
   ib.disconnect()
   
+  ### Store the list of strikes for expdate in record 
   record=[sym,tradingClass,expdate,updated_strikes]
   stored_chains.append(record)
 
+  ### And then add the record to JSON file
   with open("C:/Users/aldoh/Documents/NewTrading/Strikes.json", "w") as fp:
     json.dump(stored_chains,fp,indent=4)
 
