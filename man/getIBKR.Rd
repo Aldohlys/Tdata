@@ -10,11 +10,10 @@ getIBKR()
 No value
 }
 \description{
-This function retrieves account, portfolio and prices from IBKR and then store them in DB
+This function retrieves account, portfolio data from IBKR and then store them in DB
 }
 \details{
 Account data will be stored in Account table, portfolio data in Uxxx or DUxxx table, depending upon account data.
-Option underlying prices will be also stored as well as stock prices if any stock position is present.
 }
 \examples{
 \dontrun{

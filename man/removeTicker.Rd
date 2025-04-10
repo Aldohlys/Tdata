@@ -20,3 +20,6 @@ If no name is retrieved then "Row deleted: 0" will be displayed, and 0 is return
 
 N.B. It could be that the same ticker name is used for different securities - I assume it is not the case in my scans
 }
+\examples{
+removeTicker("ABT")
+}

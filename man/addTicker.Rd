@@ -38,3 +38,6 @@ number of records added, i.e. 1 (normal case) or 0 (no line deleted, error case)
 \description{
 This function is used by scanner functions to add one ticker in DB
 }
+\examples{
+addTicker("SPY")
+}

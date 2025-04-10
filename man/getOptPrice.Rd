@@ -17,7 +17,7 @@ getOptPrice(
 \arguments{
 \item{sym}{string - IBKR style of ticker, if unknown then function returns -1}
 
-\item{tradingClass}{string - this is necessary to retrieve the correct chain for determining price - no default}
+\item{tradingClass}{string - optional to retrieve the correct chain for determining price - default is Ticker table in DB}
 
 \item{right}{string - can be either P, C or Put, Call}
 
@@ -25,9 +25,9 @@ getOptPrice(
 
 \item{expiration}{number, date or string - expiration date, format is Y/M/D}
 
-\item{currency}{string - either EUR, CHF or USD - default is USD}
+\item{currency}{string - either EUR, CHF or USD - default is  - default is Ticker table in DB}
 
-\item{exchange}{string - exchange like SMART, EUREX, CBOE,..., if unknown then function returns -1 - default is SMART}
+\item{exchange}{string - exchange like SMART, EUREX, CBOE,..., if unknown then function returns -1 -  - default is Ticker table in DB}
 }
 \value{
 a number, either option value or -1 is not found
@@ -43,5 +43,6 @@ If IBKR service is not available, or option price not available, or contract doe
 \dontrun{
 getOptPrice("SPX", "SPX", "P", 5000, "20291220", "USD", "SMART")
 getOptPrice("SPY", "SPY", "Call", 500.0, as.Date("2026-12-18"), "USD", "SMART")
+getOptPrice(sym="SPY", right="Call", strike=500.0, expiration=as.Date("2026-12-18"))
 }
 }

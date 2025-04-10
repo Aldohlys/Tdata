@@ -16,6 +16,10 @@ a list of dates for each ticker. It calls \code{getSymFromDate} to get the dates
 This function takes one ticker (or a vector of tickers) as input and returns from Yahoo service the last available
 date with an available price - see also \code{getLastAdjustedPrice}.
 }
+\details{
+It calls \code{getLastSymPrice} and returns date column from this data frame.
+If ticker is NA or NULL or equal to All or STOCK, it returns NA also
+}
 \examples{
 getLastPriceDate("SPY")
 }

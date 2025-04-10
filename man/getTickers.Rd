@@ -4,12 +4,25 @@
 \alias{getTickers}
 \title{getTickers}
 \usage{
-getTickers()
+getTickers(name)
+}
+\arguments{
+\item{name}{string or character vector made by IBKR security name}
 }
 \value{
-A data frame with columns \code{Name, YahooName, TradingClass, Multiplier, Type, Currency,  Exchange, OptExchange}
-sorted by alphabetical order, equal to the list of current tickers stored in DB
+A data frame with one line per ticker and columns
+\code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange}
 }
 \description{
-This function is used by scanner functions to get all tickets to scan
+This function is used by scanner functions to get one specific ticker or a character vector of tickers defined by name from DB.
+}
+\details{
+If no name is retrieved a data frame with columns
+\code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange} and 0 line is returned
+
+N.B. It could be that the same ticker name is used for different securities - I assume it is not the case in my scans
+}
+\examples{
+getTickers("SPY")
+getTickers(c("SPY", "SLV"))
 }

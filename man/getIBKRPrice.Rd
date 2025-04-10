@@ -4,45 +4,34 @@
 \alias{getIBKRPrice}
 \title{getIBKRPrice}
 \usage{
-getIBKRPrice(
-  sec = "STK",
-  sym,
-  currency = "USD",
-  exchange = "SMART",
-  reqType = 2,
-  close = FALSE
-)
+getIBKRPrice(sym, reqType = 2, close = FALSE, verbose = FALSE)
 }
 \arguments{
-\item{sec}{string or vector of strings- IBKR security type, either \code{STK} or \code{IND} or \code{OPT} or \code{FUT}, default is \code{STK}.
-if unknown then function returns -1}
-
 \item{sym}{string or vector of strings- IBKR style of ticker, if unknown then function returns -1}
-
-\item{currency}{string or vector of strings- list of currencies - either EUR, CHF or USD - default is USD}
-
-\item{exchange}{string or vector of strings- list of exchanges SMART, EUREX, CBOE,..., if unknown then function returns -1 - default is SMART}
 
 \item{reqType}{integer - should be either 2 or 4, default is 2}
 
 \item{close}{Boolean TRUE/FALSE, default is FALSE. if TRUE then retrieve last close price from IBKR, if FALSE then retrieve market price from IBKR}
+
+\item{verbose}{Boolean TRUE/FALSE, default is FALSE. if TRUE then print result of retrieved data in IBKR}
 }
 \value{
 a data frame with the following fields: \code{datetime} (formatted date and time), \code{sym} (ticker name), \code{price} (price as double)
 }
 \description{
 Retrieves a price or a list of price from IBKR and
-returns a data frame with date and time (formatted), the list of tickers and corresponding prices. Additionally store prices in DB Prices table (if different from NaN and not a close price)
+returns a data frame with date and time (formatted), the list of tickers and corresponding prices, equal to Nan if no price found.
+Additionally it stores prices in DB Prices table (only if price different from NaN and not a close price)
 }
 \details{
-For a given ticker or a list of tickers, this function returns prices from IBKR.
+For a given ticker or a list of tickers, this function returns prices from IBKR, using also Tickers table from DB within Python code called.
 If IBKR service is not available, it will return an error code and display an error message: 0 if no IBKR service, -1 if contract is unknown.
+if unknown then function returns -1
 }
 \examples{
 \dontrun{
-getIBKRPrice(sym="SPY")
-getIBKRPrice(sec=c("IND","STK","STK"), sym=c("ESTX50","USO","ABBN"),
-lcurrency=c("EUR","USD","CHF"), exchange = c("EUREX","SMART","SMART"))
-getIBKRPrice(sym="USO",close=TRUE)
+getIBKRPrice("SPY")
+getIBKRPrice(c("ESTX50", "USO", "ABBN"))
+getIBKRPrice("USO", close=TRUE)
 }
 }

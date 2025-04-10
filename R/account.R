@@ -391,10 +391,9 @@ isIBAvailable <- function() {
 ##############################
 #'   getIBKR
 #'
-#' This function retrieves account, portfolio and prices from IBKR and then store them in DB
+#' This function retrieves account, portfolio data from IBKR and then store them in DB
 #'
 #' Account data will be stored in Account table, portfolio data in Uxxx or DUxxx table, depending upon account data.
-#' Option underlying prices will be also stored as well as stock prices if any stock position is present.
 #'
 #'@returns No value
 #'@export
@@ -408,10 +407,17 @@ getIBKR <- function() {
   #   sub("(\\d{2}).(\\d{2}).(\\d{4})","\\3\\2\\1",x)
   # }
 
+  ### Test first if IB is available - no use to continue if not
+  if (!isIBAvailable()) {
+    Tbasics::display_message("IBKR not available !")
+    return()
+  }
+
+  ### Retrieve account and portfolio data in a list
   l = reticulate::py$getIBKRData()
 
   if (typeof(l) != "list") {
-    Tbasics::display_error_message("No IB connection possible!")
+    Tbasics::display_error_message("No value returned from IB!")
   }
 
   #### 1. Process new account data #################
@@ -425,8 +431,11 @@ getIBKR <- function() {
   #### 2. Process new prices for tickers - that should include also underlyings part of the portfolio  ##########
   message("\n#####  Retrieving price data from Tickers DB... \n")
 
-  tickers = dplyr::filter(Tdata::getTickers(), Exchange == "SMART" | Exchange == "EUREX" | Exchange == "CBOE")
-  do.call(getIBKRPrice, list(sec=tickers$Type, sym=tickers$Name, currency=tickers$Currency, exchange=tickers$Exchange))
+  ### Do not load any security related to exchange like LSEETF or EBS
+  tickers = dplyr::filter(Tdata::getAllTickers(), Exchange == "SMART" | Exchange == "EUREX" | Exchange == "CBOE")
+
+  ### Store in DB all IBKR prices from tickers$Name
+  getIBKRPrice(tickers$Name)
 
   #### Process portfolio last position #############
   portf_data = l[[2]]
@@ -561,6 +570,12 @@ getIBKRActiveCurrencyValues <- function() {
   #
   # Sys.sleep(1)
 
+  ### Test first if IB is available - no use to continue if not
+  if (!isIBAvailable()) {
+    Tbasics::display_message("IBKR not available !")
+    return()
+  }
+
   ### Open connection to user DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
@@ -593,6 +608,7 @@ getIBKRActiveCurrencyValues <- function() {
   }
 
 }
+
 ##############################
 #'   getGonet
 #'
@@ -618,11 +634,17 @@ getIBKRActiveCurrencyValues <- function() {
 #'}
 getGonet <- function() {
 
-   gonet_pos = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetPos.csv",delim=";",
+  ### Test first if IB is available - no use to continue if not
+  if (!isIBAvailable()) {
+    Tbasics::display_message("IBKR not available !")
+    return()
+  }
+
+  gonet_pos = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetPos.csv",delim=";",
                                                     show_col_types = FALSE,
                                                     locale=readr::locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
 
-   gonet_trades = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetTrades.csv",delim=";",
+  gonet_trades = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetTrades.csv",delim=";",
                                                     show_col_types = FALSE,
                                              locale=readr::locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
 
@@ -642,10 +664,9 @@ getGonet <- function() {
   portf = dplyr::left_join(portf, portf_cashflow, by = c("sym_yahoo" = "sym_yahoo"))
 
   ### get prices from IBKR using list_sec= "STK", and otherwise values from GonetTrades
-  last_price <- getIBKRPrice(sym = portf$sym_ibkr, currency = portf$currency,
-                              exchange = portf$exchange)
+  last_price <- getIBKRPrice(sym = portf$sym_ibkr)
 
-  #### Request user to enter prices where price = NaN
+  #### price_user is the subset of last_price where price = NaN, i.e. price could not be retrieved from IBKR
   price_user <- last_price[is.nan(last_price$price),]
 
   ### Replace NaN values with price entered by user in price_user

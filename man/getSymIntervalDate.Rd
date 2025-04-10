@@ -14,11 +14,15 @@ getSymIntervalDate(sym, from_date, to_date = Sys.Date())
 \item{to_date}{a end date to which to retrieve symbols - Default is today}
 }
 \value{
-a list of list: each list contains for one symbol the list of prices and volume: Open, Close, Low, High, Volume and Adjusted
+Data frame with columns: date, ticker, Open, High, Low, Close, Adjusted, and Volume
 }
 \description{
 This function gets from Yahoo service all values (Open, High, Low, Close, Volume and Adjusted)
-for one of a vector of symbols. It is based upon quantmod getSymbols function.
-It converts IBKR-style tickers into Yahoo-style tickers first, by looking up into Scan table
+for one of a vector of symbols.
+}
+\details{
+It is based upon getYahooDataRobust, based upon quantmod getSymbols function.
+It converts IBKR-style tickers into Yahoo-style tickers first, by looking up into Tickers table.
+If not found in Tickers table, then just returns what has been given in \code{sym} argument.
 }
 \keyword{Yahoo}

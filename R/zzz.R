@@ -13,8 +13,18 @@
 
 .onLoad <- function(libname, pkgname) {
   tryCatch({
-    # First check if reticulate can find Python at all
-    python_path <- reticulate::py_discover_config()
+
+    # Set RETICULATE_PYTHON environment variable directly if you know the path
+    # This can avoid some shell spawning behavior
+    if (Sys.getenv("RETICULATE_PYTHON") == "") {
+      # Try to find Python without spawning shells if possible
+      if (file.exists("C:/Users/aldoh/miniconda3/envs/r-reticulate/python.exe")) {
+        Sys.setenv(RETICULATE_PYTHON = "C:/Users/aldoh/miniconda3/envs/r-reticulate/python.exe")
+      }
+    }
+
+    # Then check if reticulate can find Python at all
+    python_path <- reticulate::py_discover_config(required_module = NULL)
     packageStartupMessage("Python path discovered: ", python_path$python)
 
     # Try to initialize conda/Python environment
@@ -57,7 +67,16 @@
       stop("Required Python script not found: ", script_path)
     }
 
-    reticulate::py_run_file(script_path)
+    # Redirect stdout temporarily to capture and filter Python output
+    old_stdout <- reticulate::py_capture_output({
+      reticulate::py_run_file(script_path)
+    }, type = "stdout")
+
+    # Only display important Python output, filter out connection errors
+    filtered_output <- old_stdout
+    if (nchar(filtered_output) > 0 && !grepl("refused|connection|API", filtered_output, ignore.case = TRUE)) {
+      packageStartupMessage(filtered_output)
+    }
 
   }, error = function(e) {
     warning(sprintf("Failed to initialize Python environment: %s\nFallback procedures may be used.",

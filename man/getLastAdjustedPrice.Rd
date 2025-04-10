@@ -16,9 +16,8 @@ a list of values (rounded to 2 decimals) corresponding to last values of tickers
 This function takes one ticker (or a vector of tickers) as input and returns the last available adjusted value from Yahoo service.
 }
 \details{
-To achieve this, it will call \code{getSymFromDate} with "today - 5" date - so to be sure to get at least one valid date,
-even if there are week ends and closed days. It takes last open date if current date provided does not work.
-See also \code{getLastPriceDate}
+It calls \code{getLastSymPrice} and returns value column from this data frame.
+If ticker is NA or NULL or equal to All or STOCK, it returns NA also
 }
 \examples{
 getLastAdjustedPrice("SPY")

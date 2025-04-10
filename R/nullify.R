@@ -54,4 +54,7 @@ usd_value <- DirectConversion <- value <- NULL
 ### getIBKR
 Exchange <- NULL
 
+### getGonet
+ticker <- NULL
+
 

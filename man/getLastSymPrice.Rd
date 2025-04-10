@@ -7,18 +7,22 @@
 getLastSymPrice(sym)
 }
 \arguments{
-\item{sym}{ticker name or list of tickers, as known by IBKR or Yahoo, If necessary, will be converted to Yahoo ticker name.}
+\item{sym}{symbol name or list of symbols, as known by IBKR or Yahoo.
+If it belongs to Tickers table, it will be converted to Yahoo ticker name.
+Otherwise it is assumed to be good for Yahoo service.}
 }
 \value{
-a tibble with tidy type of column names: \code{date, sym, value}, sym column contains the original sym list.
+a tibble with column names: \code{date, sym, value}, sym column contains the original sym list.
+Known also as long data frame format as opposed to wide format.
 }
 \description{
 This function retrieves the last available adjusted prices of a vector of tickers from Yahoo service
 }
 \details{
-It is based upon \code{getSymPriceIntervalDate} with from date argument equal to yesterday
+It is based upon \code{getSymIntervalDate}
+To achieve this, it will give argument "today - 5" date to this function- to be sure to get at least one valid date,
+even if there are week ends and closed days. It takes then last open date if current date provided does not work.
 }
 \examples{
-getLastSymPrice(c("EUR.USD","USD.CAD","CHF.USD"))
 getLastSymPrice(c("SPY","XSP"))
 }

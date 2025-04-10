@@ -2,14 +2,15 @@
 #####  scan.R
 ##### All utilities related to scanned tickers
 
-#' getTickers
+#' getAllTickers
 #'
-#' This function is used by scanner functions to get all tickets to scan
+#' This function is used by scanner functions to get all tickers to scan
 #'
 #'@return A data frame with columns \code{Name, YahooName, TradingClass, Multiplier, Type, Currency,  Exchange, OptExchange}
 #' sorted by alphabetical order, equal to the list of current tickers stored in DB
+#'@examples getAllTickers()
 #'@export
-getTickers = function() {
+getAllTickers = function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   tickers = DBI::dbReadTable(conn, "Tickers")
   DBI::dbDisconnect(conn)
@@ -30,6 +31,7 @@ getTickers = function() {
 #'@param exchange exchange name where security price can be retrieved, default is SMART
 #'@param opt_exchange exchange name where option price for the security can be retrieved, default is SMART
 #'@return number of records added, i.e. 1 (normal case) or 0 (no line deleted, error case)
+#'@examples addTicker("SPY")
 #'@export
 addTicker <- function(name, yahoo_name, trading_class, multiplier = 100, type="STK", currency="USD", exchange="SMART", opt_exchange="SMART") {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
@@ -56,26 +58,37 @@ addTicker <- function(name, yahoo_name, trading_class, multiplier = 100, type="S
   return(result)
 }
 
-#' getTicker
+#' getTickers
 #'
-#' This function is used by scanner functions to get one specific ticker defined by name from DB.
+#' This function is used by scanner functions to get one specific ticker or a character vector of tickers defined by name from DB.
 #'
 #' If no name is retrieved a data frame with columns
 #' \code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange} and 0 line is returned
 #'
 #' N.B. It could be that the same ticker name is used for different securities - I assume it is not the case in my scans
 #'
-#'@param name IBKR security name
-#'@return A data frame with one line and columns
+#'@param name string or character vector made by IBKR security name
+#'@return A data frame with one line per ticker and columns
 #' \code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange}
+#'@examples getTickers("SPY")
+#'@examples getTickers(c("SPY", "SLV"))
 #'@export
-getTicker <- function(name) {
+getTickers <- function(name) {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-  ticker = DBI::dbGetQuery(conn,
-                                 "Select * from Tickers WHERE Name = ?",
-                                 params=list(name))
+  # Check if name is a vector with multiple elements
+  if (length(name) > 1) {
+    # Create a parameterized query for multiple names
+    placeholders <- paste(rep("?", length(name)), collapse = ", ")
+    query <- paste0("SELECT * FROM Tickers WHERE Name IN (", placeholders, ")")
+    tickers <- DBI::dbGetQuery(conn, query, params = as.list(name))
+  } else {
+    # Original query for single name
+    tickers <- DBI::dbGetQuery(conn,
+                              "SELECT * FROM Tickers WHERE Name = ?",
+                              params = list(name))
+  }
   DBI::dbDisconnect(conn)
-  return(ticker)
+  return(tickers)
 }
 
 #' removeTicker
@@ -88,6 +101,7 @@ getTicker <- function(name) {
 #'
 #'@param name IBKR security name
 #'@return number of records deleted, i.e. 1 (normal case) or 0 (no line deleted, error case)
+#'@examples removeTicker("ABT")
 #'@export
 removeTicker = function(name) {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))

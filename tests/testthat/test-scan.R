@@ -1,13 +1,18 @@
-test_that("getTickers works", {
-  data <- getTickers()
+test_that("getAllTickers works", {
+  data <- getAllTickers()
   expect_true(nrow(data) > 0)
 })
 
 test_that("getTicker works", {
-  data <- getTicker("SPX")
-  expect_true(nrow(data) > 0)
+  data <- getTickers("SPX")
+  expect_true(nrow(data) == 1)
 })
 
+
+test_that("getTicker works with a character vector", {
+  data <- getTickers(c("SPX", "ESTX50"))
+  expect_true(nrow(data) == 2)
+})
 
 test_that("addTicker works", {
   data <- addTicker("SPY")
