@@ -140,7 +140,7 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, metric = "Adjusted"){
   ### - Otherwise, all vectors must have the same size
   l <- vctrs::vec_recycle_common(sym, report_date, metric)
 
-  ### Define a function for getSymPrice purpose as getSymPriceIntervalDate cannot be vectorized over dates
+  ### Define a function for getSymPrice purpose as getSymMetricIntervalDate cannot be vectorized over dates
   getSymPriceOne <- function(one_sym, one_date, metric) {
     ### First case - requested date is an holiday or requested date is not today
     ### Get last close price in this case

@@ -266,10 +266,12 @@ convert_to_usd_date = function(amount, currency, convert_date = Sys.Date()) {
   #### -  Vectors of size 1 will be recycled to the size of any other vector
   #### - Otherwise, all vectors must have the same size
   result = data.frame(amount = amount, currency = currency)
+  numeric_date = numeric(0)
 
   ### If convert_date is of Date type or character type then convert it
-  if (inherits(convert_date,"Date")) convert_date <- as.numeric(format(convert_date,"%Y%m%d"))
-  if (is.character(convert_date)) convert_date <- as.numeric(convert_date)
+  if (is.numeric(convert_date)) numeric_date = convert_date
+  if (inherits(convert_date,"Date")) numeric_date <- as.numeric(format(convert_date,"%Y%m%d"))
+  if (is.character(convert_date)) numeric_date <- as.numeric(convert_date)
 
   ### Retrieve all currency pairs since beginning
   ### It is assumed here that dates are stored in integer/character format in CurrencyPairs table
@@ -279,7 +281,7 @@ convert_to_usd_date = function(amount, currency, convert_date = Sys.Date()) {
   ### if date is not recorded yet, it will provide the values of yesterday or before
   ### If it falls on a closed day and day before and after are business days, then it provides the oldest day
   usd = dplyr::group_by(usd, currency)
-  usd = dplyr::ungroup(dplyr::filter(usd, abs(date-convert_date) == min(abs(date-convert_date))))
+  usd = dplyr::ungroup(dplyr::filter(usd, abs(date-numeric_date) == min(abs(date-numeric_date))))
   usd$date = NULL
 
   ### Remove duplicated currencies (take first one i.e. oldest same date)
