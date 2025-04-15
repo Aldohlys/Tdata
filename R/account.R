@@ -604,7 +604,7 @@ getIBKRActiveCurrencyValues <- function() {
   ### In case last record date is prior to today then look at the record
   ### Otherwise no reason to save it
   ### It will be saved only if all are different from NaN
-  if (!all(is.na(currencies_values))) {
+  if (all(!is.na(currencies_values))) {
     usd = data.frame(date = as.integer(format(Sys.Date(), "%Y%m%d")),
                      currency = currencies_list,
                      usd_value = currencies_values)
