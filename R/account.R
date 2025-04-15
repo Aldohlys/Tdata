@@ -377,14 +377,15 @@ greeksNet = function(portf) {
 #'  Otherwise returns FALSE
 #'
 #'
+#'@param silent Optional- print debug info, default is no info print
 #'@returns TRUE or FALSE
 #'@export
 #'@examples
 #'\dontrun{
-#'isIBAvailable()
+#'isIBAvailable(silent=FALSE)
 #'}
-isIBAvailable <- function() {
-  reticulate::py$isIBAvailable()
+isIBAvailable <- function(silent=TRUE) {
+  tdata_py$isIBAvailable(silent=silent)
 }
 
 
@@ -395,26 +396,27 @@ isIBAvailable <- function() {
 #'
 #' Account data will be stored in Account table, portfolio data in Uxxx or DUxxx table, depending upon account data.
 #'
+#'@param silent Optional- print debug info, default is no info print
 #'@returns No value
 #'@export
 #'@examples
 #'\dontrun{
-#'getIBKR()
+#'getIBKR(silent=FALSE)
 #'}
-getIBKR <- function() {
+getIBKR <- function(silent=TRUE) {
 
   # replace_date  <- function(x) {
   #   sub("(\\d{2}).(\\d{2}).(\\d{4})","\\3\\2\\1",x)
   # }
 
   ### Test first if IB is available - no use to continue if not
-  if (!isIBAvailable()) {
+  if (!isIBAvailable(silent=silent)) {
     Tbasics::display_message("IBKR not available !")
     return()
   }
 
   ### Retrieve account and portfolio data in a list
-  l = reticulate::py$getIBKRData()
+  l = tdata_py$getIBKRData()
 
   if (typeof(l) != "list") {
     Tbasics::display_error_message("No value returned from IB!")
@@ -505,7 +507,7 @@ getIBKR <- function() {
 
   ### Retrieve margin data from IBKR - for WHEEL/OFI strategies, margin for each contract listed (first contract in the trade)
   if (!all(is.na(margin_ibkr_data$contracts))) {
-    margin_ibkr_data$margin[!is.na(margin_ibkr_data$contracts)] =  reticulate::py$retrieveAccountMarginData(as.character(margin_ibkr_data$contracts[!is.na(margin_ibkr_data$contracts)]))
+    margin_ibkr_data$margin[!is.na(margin_ibkr_data$contracts)] =  tdata_py$retrieveAccountMarginData(as.character(margin_ibkr_data$contracts[!is.na(margin_ibkr_data$contracts)]))
   }
   portf_data = dplyr::left_join(portf_data, margin_ibkr_data)
 
@@ -559,12 +561,12 @@ getIBKR <- function() {
 getIBKRActiveCurrencyValues <- function() {
   #### Start retrieving currency pairs
   # Tbasics::display_message("Retrieving EUR/USD !")
-  # EUR = try(reticulate::py$getCurrencyPairValue("EURUSD",reqType=2))
+  # EUR = try(tdata_py$$getCurrencyPairValue("EURUSD",reqType=2))
   # if (is.null(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
   # else if (is.na(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
   #
   # Tbasics::display_message("Retrieving CHF/USD !")
-  # CHF = try(reticulate::py$getCurrencyPairValue("CHFUSD",reqType=2))
+  # CHF = try(tdata_py$$getCurrencyPairValue("CHFUSD",reqType=2))
   # if (is.null(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
   # else if (is.na(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
   #
@@ -579,13 +581,18 @@ getIBKRActiveCurrencyValues <- function() {
   ### Open connection to user DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
+  ### Skip USD and all inactive currencies
   Tbasics::display_message("Retrieve currencies from DB...")
-  currencies <- DBI::dbGetQuery(conn, "SELECT Name FROM Currencies WHERE Active = 'Yes'")[,1]
-  currency_pairs <- DBI::dbGetQuery(conn, "SELECT FXPair FROM Currencies WHERE Active = 'Yes'")[,1]
-  direct_conv <- DBI::dbGetQuery(conn, "SELECT DirectConversion FROM Currencies WHERE Active = 'Yes'")[,1]
+  currency_data <- DBI::dbGetQuery(conn, "SELECT Name, FXPair, DirectConversion FROM Currencies
+                                          WHERE Active = 'Yes' AND Name <> 'USD' ")
+  ### Prepare to retrieve data from IBKR
+  currencies <- currency_data$Name
+  currency_pairs <- currency_data$FXPair
+  direct_conv <- currency_data$DirectConversion
+
 
   Tbasics::display_message("Call IBKR to retrieve data...")
-  currency_pairs_data <- reticulate::py$retrieveCurrencyPairs(currencies, currency_pairs, direct_conv)
+  currency_pairs_data <- tdata_py$retrieveCurrencyPairs(currencies, currency_pairs, direct_conv)
 
   #### 3. Process new currency data ##############
   currencies_list = currency_pairs_data[[1]]

@@ -4,7 +4,10 @@
 \alias{getIBKR}
 \title{getIBKR}
 \usage{
-getIBKR()
+getIBKR(silent = TRUE)
+}
+\arguments{
+\item{silent}{Optional- print debug info, default is no info print}
 }
 \value{
 No value
@@ -17,6 +20,6 @@ Account data will be stored in Account table, portfolio data in Uxxx or DUxxx ta
 }
 \examples{
 \dontrun{
-getIBKR()
+getIBKR(silent=FALSE)
 }
 }

@@ -57,4 +57,10 @@ Exchange <- NULL
 ### getGonet
 ticker <- NULL
 
+### create_centered_plot
+.data <- NULL
+
+### getAllOptionPrices
+bid <- ask <- put_iv <- put_bid <- call_bid <- call_ask <- call_iv <- call_value <- put_value <- has_put <- has_call <- call_mid <- put_mid <- NULL
+
 

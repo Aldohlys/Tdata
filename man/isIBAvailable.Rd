@@ -4,7 +4,10 @@
 \alias{isIBAvailable}
 \title{isIBAvailable}
 \usage{
-isIBAvailable()
+isIBAvailable(silent = TRUE)
+}
+\arguments{
+\item{silent}{Optional- print debug info, default is no info print}
 }
 \value{
 TRUE or FALSE
@@ -15,6 +18,6 @@ Otherwise returns FALSE
 }
 \examples{
 \dontrun{
-isIBAvailable()
+isIBAvailable(silent=FALSE)
 }
 }

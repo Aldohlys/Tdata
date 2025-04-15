@@ -25,7 +25,10 @@ Imports:
     zoo,
     magrittr,
     PerformanceAnalytics,
-    stats
+    stats,
+    ggplot2,
+    tidyr,
+    Tstudy
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Suggests: 

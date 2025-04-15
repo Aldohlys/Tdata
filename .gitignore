@@ -18,3 +18,5 @@ inst/python/ESTX50Study.py
 inst/python/__pycache__/
 /doc/
 /Meta/
+
+R/sandbox.R

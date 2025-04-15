@@ -13,80 +13,96 @@
 
 .onLoad <- function(libname, pkgname) {
   tryCatch({
-
     # Set RETICULATE_PYTHON environment variable directly if you know the path
-    # This can avoid some shell spawning behavior
     if (Sys.getenv("RETICULATE_PYTHON") == "") {
-      # Try to find Python without spawning shells if possible
-      if (file.exists("C:/Users/aldoh/miniconda3/envs/r-reticulate/python.exe")) {
-        Sys.setenv(RETICULATE_PYTHON = "C:/Users/aldoh/miniconda3/envs/r-reticulate/python.exe")
+      python_executable <- "C:/Users/aldoh/miniconda3/envs/r-reticulate/python.exe"
+      if (file.exists(python_executable)) {
+        Sys.setenv(RETICULATE_PYTHON = python_executable)
       }
     }
 
-    # Then check if reticulate can find Python at all
-    python_path <- reticulate::py_discover_config(required_module = NULL)
-    packageStartupMessage("Python path discovered: ", python_path$python)
-
-    # Try to initialize conda/Python environment
+    # Initialize Python environment quietly
     python_initialized <- FALSE
 
-    # Try using virtualenv first (simpler, often more reliable)
-    tryCatch({
-      reticulate::use_virtualenv("r-reticulate", required = FALSE)
-      python_initialized <- TRUE
-      packageStartupMessage("Successfully initialized virtualenv environment")
-    }, error = function(e) {
-      packageStartupMessage("Virtualenv initialization failed, trying conda...")
-    })
+    methods <- list(
+      function() reticulate::use_virtualenv("r-reticulate", required = FALSE),
+      function() reticulate::use_condaenv("r-reticulate", required = FALSE),
+      function() reticulate::use_python(reticulate::py_discover_config()$python, required = FALSE)
+    )
 
-    # If virtualenv failed, try conda
+    for (method in methods) {
+      if (!python_initialized) {
+        tryCatch({
+          method()
+          python_initialized <- TRUE
+        }, error = function(e) {
+          # Silently continue to next method
+        })
+      }
+    }
+
     if (!python_initialized) {
-      tryCatch({
-        reticulate::use_condaenv("r-reticulate", required = FALSE)
-        python_initialized <- TRUE
-        packageStartupMessage("Successfully initialized conda environment")
-      }, error = function(e) {
-        packageStartupMessage("Conda initialization failed, trying default Python...")
-      })
+      stop("Could not initialize any Python environment")
     }
 
-    # If both failed, try using system Python
-    if (!python_initialized) {
-      tryCatch({
-        reticulate::use_python(python_path$python, required = FALSE)
-        python_initialized <- TRUE
-        packageStartupMessage("Using system Python")
-      }, error = function(e) {
-        stop("Could not initialize any Python environment")
-      })
+    # Find Python directory
+    python_dir <- system.file("python", package = pkgname)
+    if (!dir.exists(python_dir)) {
+      stop("Python directory not found: ", python_dir)
     }
 
-    # Once we have a Python environment, load the script
-    script_path <- system.file("python/getContractValue.py", package = "Tdata")
-    if (!file.exists(script_path)) {
-      stop("Required Python script not found: ", script_path)
-    }
+    # # Verify tdata_py subdirectory exists
+    # tdata_py_dir <- file.path(python_dir, "tdata_py")
+    # if (!dir.exists(tdata_py_dir)) {
+    #   stop("tdata_py directory not found: ", tdata_py_dir)
+    # }
+    #
+    # # Verify __init__.py exists with correct name
+    # init_py_path <- file.path(tdata_py_dir, "__init__.py")
+    # if (!file.exists(init_py_path)) {
+    #   warning("__init__.py file not found in tdata_py directory. Check for incorrect filenames like *init*.py")
+    #
+    #   # Try to find and rename *init*.py if it exists
+    #   potential_init <- list.files(tdata_py_dir, pattern = "init", full.names = TRUE)
+    #   if (length(potential_init) > 0) {
+    #     message("Found potential init file: ", potential_init[1])
+    #     message("Trying to copy to __init__.py")
+    #     file.copy(potential_init[1], init_py_path)
+    #   } else {
+    #     stop("No init file found in tdata_py directory")
+    #   }
+    # }
 
-    # Redirect stdout temporarily to capture and filter Python output
-    old_stdout <- reticulate::py_capture_output({
-      reticulate::py_run_file(script_path)
-    }, type = "stdout")
+    # Add python dir to Python path so we can import tdata_py
+    reticulate::py_run_string(sprintf("import sys; sys.path.append('%s')", python_dir))
 
-    # Only display important Python output, filter out connection errors
-    filtered_output <- old_stdout
-    if (nchar(filtered_output) > 0 && !grepl("refused|connection|API", filtered_output, ignore.case = TRUE)) {
-      packageStartupMessage(filtered_output)
-    }
+    # Force reload modules
+    reticulate::py_run_string('
+import sys
+modules_to_reload = ["tdata_py"]
+for name in list(sys.modules.keys()):
+    if name.startswith("tdata_py."):
+        modules_to_reload.append(name)
+for module in modules_to_reload:
+    if module in sys.modules:
+        del sys.modules[module]
+')
+
+    # Import the package
+    tdata_py <- reticulate::import("tdata_py", delay_load = FALSE)
+
+    # Debug: Check available attributes
+    # available_attrs <- reticulate::py_list_attributes(tdata_py)
+    # message("\nAvailable attributes in tdata_py: ", paste(available_attrs, collapse = ", "))
+
+    # Assign to package environment
+    assign("tdata_py", tdata_py, envir = parent.env(environment()))
 
   }, error = function(e) {
-    warning(sprintf("Failed to initialize Python environment: %s\nFallback procedures may be used.",
-                    e$message))
+    warning(sprintf("\nFailed to initialize Python environment: %s", e$message))
+    reticulate::py_last_error()
   })
-
-  # Add startup message outside of tryCatch to ensure it's always displayed
-  packageStartupMessage("Tdata Python integration initialization completed")
 }
-
 #> Start up message will be displayed only when library Tdata is loaded by user, not when calling individual function with ::
 #> Hence -onLoad is preferred way
 .onAttach <- function(libname, pkgname) {

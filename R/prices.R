@@ -355,7 +355,7 @@ getStockPrice = function(sym, close = FALSE) {
 getIBKRPrice <- function(sym, reqType=2, close=FALSE, verbose = FALSE) {
 
   ### This will work even if list_sym is a vector and not the other IBKR contract components
-  IBKRPrice <- reticulate::py$getValue(sym, reqType, close)
+  IBKRPrice <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=reqType, close=close, silent=!verbose)
 
   ### Error case do not go further on###
   if (length(IBKRPrice) == 1) {
@@ -424,11 +424,126 @@ getOptPrice = function(sym, tradingClass, right, strike, expiration, currency="U
   strike=as.numeric(strike)
   # message("NBBO Option value Sym:",sym," Type:",right," Strike:",strike," Expiration:",expiration,
   #         " Currency:",currency," Exchange:",exchange," tradingClass:",tradingClass)
-  val = reticulate::py$getOptValue(sym=sym,expiration=expiration,strikes=strike,
+  val = tdata_py$getOptValue(sym=sym,expiration=expiration,strikes=strike,
                                  right=right)$value
 
   if (is.null(val) || is.nan(val)) val=-1
   return(val)
+}
+
+
+getIV_DTE <- function(sym, DTE){
+
+  ### Retrieve the expiration dates for sym
+  chain <- tdata_py$getChain(sym)
+  expdates_list <- as.Date(chain[5][[1]], "%Y%m%d")
+
+  target_date <- Sys.Date() + DTE
+  near_expiry <- expdates_list[max(which(expdates_list < target_date))]
+  next_expiry <- expdates_list[min(which(expdates_list > target_date))]
+
+  near_term_options <- getAllOptionPrices(sym, near_expiry)$matched_pairs
+  next_term_options <- getAllOptionPrices(sym, next_expiry)$matched_pairs
+
+  iv_computations <- Tstudy::calculate_vix_optimized(near_term_options, next_term_options,
+                                                         risk_free_rate_near = 0.045, risk_free_rate_next = 0.045,
+                                                         current_time = Sys.time(),
+                                                         near_expiry, next_expiry,
+                                                         target_days = DTE, # Target duration in days (default 30 for standard VIX)
+                                                         sigma_limit = 3, # Limit strikes to n-sigma range
+                                                         round_digits = 3, # Number of significant digits
+                                                         separate_components = TRUE)
+
+  return(list(implied_vol= iv_computations$VIX, iv_call_component = iv_computations$VIX_call_component,
+              iv_put_component = iv_computations$VIX_put_component))
+  # iv_computations :
+  #   VIX = VIX,
+  #   VIX_call_component = VIX_call,
+  #   VIX_put_component = VIX_put,
+  #   target_days = target_days,
+  #   near_term_variance = signif(var_result_near$total_var, round_digits),
+  #   next_term_variance = signif(var_result_next$total_var, round_digits),
+  #   near_term_call_variance = signif(var_result_near$call_var, round_digits),
+  #   near_term_put_variance = signif(var_result_near$put_var, round_digits),
+  #   next_term_call_variance = signif(var_result_next$call_var, round_digits),
+  #   next_term_put_variance = signif(var_result_next$put_var, round_digits),
+  #   time_to_near_expiry = NT1,
+  #   time_to_next_expiry = NT2,
+  #   weight_near = w1,
+  #   weight_next = w2
+  # ))
+
+}
+
+
+###
+#'getAllOptionPrices
+#'
+#'Retrieves a dataframe of option price from IBKR. This function is not vectorized.
+#'
+#'For a given contract and expiration, this function returns a set of prices from IBKR
+#'If IBKR service is not available, or option price not available, or contract does not exist, it will return an error code -1.
+#'@param sym string - IBKR style of ticker, if unknown then function returns -1
+#'@param expiration number, date or string - expiration date, format is Y/M/D
+#'@returns a dataframe with with columns strikes, call, put, empty if no price are found
+#'@examples
+#'\dontrun{
+#'}
+#'@export
+getAllOptionPrices <- function(sym, expiration) {
+
+  test_price <- function(x) {
+    ### x should be different from NA
+    ### x should be greater or equal to 0.01
+    !is.na(x) & (floor(x*100) != 0)
+  }
+
+  ### Case where expiration is a number
+  if (is.numeric(expiration)) expiration = as.character(expiration)
+
+  ### Case where expiration has a date class - convert it into a string with IBKR format for expiration date
+  else if (inherits(expiration,"Date")) expiration = format(expiration,"%Y%m%d")
+  else if (!is.character(expiration)) stop("expiration date must be either a date, a number or a character string!")
+
+  strikes = tdata_py$getStrikesfromExpDate(sym=sym, expdate=expiration, silent=FALSE)
+  current_price = getStockPrice(sym)$price
+  atm_strike = Tbasics::findNearestNumberOrDate(strikes, current_price)
+
+  atm_put <- tdata_py$getOptValue(sym, expiration, atm_strike, "P")
+  atm_call <- tdata_py$getOptValue(sym, expiration, atm_strike, "P")
+  impliedvol <- max(atm_call$impliedvol, atm_put$impliedvol)
+
+  df_put = tdata_py$getOptValue(sym = sym, expiration = expiration, strikes = strikes, right="P", silent = FALSE) |>
+              dplyr::rename(put_value = value, put_bid = bid, put_ask = ask, put_iv = impliedvol, put_delta = delta) |>
+              dplyr::mutate(put_iv = signif(put_iv, 3))
+  df_put <- df_put |> dplyr::mutate(put_mid = (put_bid + put_ask)/2)
+
+  df_call = tdata_py$getOptValue(sym = sym, expiration = expiration, strikes = strikes, right = "C") |>
+              dplyr::rename(call_value = value, call_bid = bid, call_ask = ask, call_iv = impliedvol, call_delta = delta) |>
+              dplyr::mutate(call_iv = signif(call_iv, 3))
+  df_call <- df_call |> dplyr::mutate(call_mid = (call_bid + call_ask)/2)
+
+  option_prices <- dplyr::full_join(df_call, df_put, by= "strike") |> ### Join on strike column
+                    dplyr::mutate(
+                        has_call = test_price(call_value) | test_price(call_bid)  | test_price(call_ask) ,
+                        has_put = test_price(put_value) | test_price(put_bid)  | test_price(put_ask))
+
+  # 1. Matched pairs (inner join equivalent)
+  matched_pairs <- option_prices |>
+    dplyr::filter(has_call == TRUE, has_put == TRUE) |>
+    dplyr::select(strike, call_bid, call_ask, put_bid, put_ask, call_mid, put_mid, call_iv, put_iv, call_value, put_value)
+
+  # 2. Calls without matching puts
+  unmatched_calls <- option_prices |>
+    dplyr::filter(has_call == TRUE, has_put == FALSE)
+
+  # 3. Puts without matching calls
+  unmatched_puts <- option_prices |>
+    dplyr::filter(has_call == FALSE, has_put == TRUE)
+
+  return(list(matched_pairs, unmatched_calls, unmatched_puts))
+
+  ### Data.Frame with columns strikes, call, put
 }
 
 #' Enhanced Yahoo Finance service check with retry logic
@@ -795,3 +910,4 @@ getYahooDataRobust <- function(tickers, from_date, to_date = Sys.Date(),
   rownames(final_df) <- NULL
   return(final_df)
 }
+

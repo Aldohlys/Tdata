@@ -91,6 +91,36 @@ getTickers <- function(name) {
   return(tickers)
 }
 
+#' getTicker
+#'
+#' This function is used by scanner functions to get one specific ticker defined by name from DB.
+#'
+#' If no name is retrieved a data frame with columns
+#' \code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange} and 0 line is returned
+#'
+#' N.B. It could be that the same ticker name is used for different securities - I assume it is not the case in my scans
+#'
+#'@param name string
+#'@return A data frame with one line per ticker and columns
+#' \code{Name, YahooName, Type, Currency, TradingClass, Multiplier, Exchange, OptExchange}
+#'@examples getTicker("SPY")
+#'@export
+getTicker <- function(name) {
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  # Check if name is a vector with multiple elements
+  if (length(name) == 1) {
+    # Original query for single name
+    tickers <- DBI::dbGetQuery(conn,
+                               "SELECT * FROM Tickers WHERE Name = ?",
+                               params = list(name))
+  }
+
+  else Tbasics::display_message("getTicker must be used with only one ticker name")
+
+  DBI::dbDisconnect(conn)
+  return(tickers)
+}
+
 #' removeTicker
 #'
 #' This function is used by scanner functions to remove one specific ticker defined by name in the DB.
