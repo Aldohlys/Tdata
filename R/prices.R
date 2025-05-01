@@ -6,7 +6,7 @@
 #'This function gets from Yahoo service all values (Open, High, Low, Close, Volume and Adjusted)
 #'for one of a vector of symbols.
 #'
-#'It is based upon getYahooDataRobust, based upon quantmod getSymbols function.
+#'It is based upon getYahooData, based upon quantmod getSymbols function.
 #'It converts IBKR-style tickers into Yahoo-style tickers first, by looking up into Tickers table.
 #'If not found in Tickers table, then just returns what has been given in \code{sym} argument.
 #'
@@ -31,11 +31,27 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date()) {
 
   sym_yahoo = sapply(sym, \(x){
                 ticker <- getTickers(x)
-                ### If ticker does not exist in Scan table then just return the name
+
+                ### If ticker does not exist in Ticker table then just return the name - this is default or when new
                 if (nrow(ticker) == 0) return(x)
-                ### Else return Yahoo name
-                else return(ticker$YahooName)
+
+                ### Ticker has been found - update
+                if (ticker$Type %in% c("STK", "CASH", "IND")) return(ticker$YahooName)
+
+                ### Else no Yahoo search possible or does not make sense (i.e. T-Bill)
+                else return (NA)
                 })
+
+  ### Check first if there are some NA in Yahoo Names (e.g. futures)
+  if (any(is.na(sym_yahoo))) {
+    ### This assumes that sym order is the same as sym_yahoo order - i.e. sapply does not change order, should be Ok
+    sym_list = paste(sym[is.na(sym_yahoo)], collapse = " ")
+    Tbasics::display_message(paste0("One or several tickers cannot be analyzed through Yahoo service: ", sym_list))
+
+    ### Remove NA-Yahoo from the list to analyze
+    sym <- sym[!is.na(sym_yahoo)]
+    sym_yahoo <- sym_yahoo[!is.na(sym_yahoo)]
+  }
 
   # Create a named vector for efficient lookup
   # This is faster than repeated indexing for large vectors
@@ -50,8 +66,9 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date()) {
   #                             auto.assign = F, warnings=FALSE))
   #                             }
   #        )
-  df <- getYahooDataRobust(sym_yahoo, from_date, to_date)
-  # Replace symbols using vector indexing
+  df <- getYahooData(sym_yahoo, from_date, to_date)
+
+  # Replace symbols using vector indexing - ticker is returned by YahooData function
   dplyr::mutate(df, ticker = lookup_table[ticker])
 }
 
@@ -164,10 +181,7 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, metric = "Adjusted"){
 
   l_prices <- unlist(purrr::pmap_dbl(l, getSymPriceOne))
   return(l_prices)
-## print(l_prices)
-## Other possible return value types: as dor now it is a simple vector of double
-## xts::xts(l_prices, order.by = report_date)
-## data.frame(l_prices, row.names = NULL)
+
 }
 
 
@@ -292,13 +306,17 @@ getLastTickerData = function(ticker) {
 ###
 #'getStockPrice
 #'
-#'For a given ticker or a vector of tickers, this function returns either the last close price from Yahoo service or the last stored price.
+#'For a given ticker or a vector of tickers, this function returns either the last close price from Yahoo service
+#'or the last stored price.
 #'
-#'This will depend upon close parameter. If close is TRUE then Yahoo service is used, otherwise data is retrieved from prices DB
+#'This will depend upon close parameter.
+#'If close is TRUE then Yahoo service is used, otherwise data is retrieved from prices DB.
+#'If no data can be found in prices DB (e.g. sym is not found in DB), then last available Yahoo price is returned.
 #'
 #'This function is vectorized, if no price ticker exists in DB it will then return an empty line for the corresponding ticker.
 #'@param sym string - IBKR style of ticker.
 #'@param close Boolean TRUE/FALSE if true then retrieve last close price else retrieve last stored price.
+#'@param verbose boolean FALSE by default. if true gives some more details
 #'@returns a value
 #'@examples
 #'\dontrun{
@@ -307,400 +325,66 @@ getLastTickerData = function(ticker) {
 #'getStockPrice(sym="USO",close=TRUE)
 #'}
 #'@export
-getStockPrice = function(sym, close = FALSE) {
-  message("getStockPrice")
+getStockPrice = function(sym, close = FALSE, verbose = FALSE) {
+  if (verbose) message("getStockPrice")
+
+  ### Initialize line with data from Yahoo, dated yesterdaym close of business
+  line <- data.frame(
+    datetime = paste(format(Sys.Date() - 1,"%Y%m%d"), "22:00:00"),
+    sym = sym,
+    price = getLastAdjustedPrice(sym)
+  )
 
   if (close) {
-    line <- data.frame(
-      datetime = paste(format(Sys.Date() - 1,"%Y%m%d"), "22:00:00"),
-      sym = sym,
-      price = getLastAdjustedPrice(sym)
-    )
+    if (verbose) message("getLastAdjustedPrice: ", line$price)
   }
 
   ### Just retrieve last price from DB but no update from DB
   else {
     mydb <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
-    line <- DBI::dbGetQuery(mydb, "SELECT * FROM Prices
+
+    ### Retrieve last price stored in DB
+    line_db <- DBI::dbGetQuery(mydb, "SELECT datetime, sym, price FROM Prices
                           WHERE sym = ? ORDER BY ROWID DESC LIMIT 1;", params = list(sym))
     DBI::dbDisconnect(mydb)
+
+    if (nrow(line_db) == 0) message("Stock price: no data found in DB, using Yahoo Data instead")
+    else {
+      line <- line_db
+      if (verbose) message("From DB: ", line$price)
+    }
   }
 
   return(line)
 }
 
-#### Used by Gonet.R script and RAnalysis
-###
-#'getIBKRPrice
-#'
-#'Retrieves a price or a list of price from IBKR and
-#'returns a data frame with date and time (formatted), the list of tickers and corresponding prices, equal to Nan if no price found.
-#'Additionally it stores prices in DB Prices table (only if price different from NaN and not a close price)
-#'
-#'For a given ticker or a list of tickers, this function returns prices from IBKR, using also Tickers table from DB within Python code called.
-#'If IBKR service is not available, it will return an error code and display an error message: 0 if no IBKR service, -1 if contract is unknown.
-#' if unknown then function returns -1
-#'@param sym string or vector of strings- IBKR style of ticker, if unknown then function returns -1
-#'@param reqType integer - should be either 2 or 4, default is 2
-#'@param close Boolean TRUE/FALSE, default is FALSE. if TRUE then retrieve last close price from IBKR, if FALSE then retrieve market price from IBKR
-#'@param verbose Boolean TRUE/FALSE, default is FALSE. if TRUE then print result of retrieved data in IBKR
-#'@returns a data frame with the following fields: \code{datetime} (formatted date and time), \code{sym} (ticker name), \code{price} (price as double)
-#'@examples
-#'\dontrun{
-#'getIBKRPrice("SPY")
-#'getIBKRPrice(c("ESTX50", "USO", "ABBN"))
-#'getIBKRPrice("USO", close=TRUE)
-#'}
 #'@export
-getIBKRPrice <- function(sym, reqType=2, close=FALSE, verbose = FALSE) {
+getStoredMetrics = function(name) {
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
-  ### This will work even if list_sym is a vector and not the other IBKR contract components
-  IBKRPrice <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=reqType, close=close, silent=!verbose)
+  # Check if name is a vector with multiple elements
+  if (length(name) > 1) {
+    # Create a parameterized query for multiple names
+    placeholders <- paste(rep("?", length(name)), collapse = ", ")
+    query <- paste0("SELECT * FROM Prices WHERE sym IN (", placeholders, ") ORDER BY datetime DESC LIMIT ",length(name))
+    prices <- DBI::dbGetQuery(conn, query, params = as.list(name))
 
-  ### Error case do not go further on###
-  if (length(IBKRPrice) == 1) {
-    Tbasics::display_message("IBKR data retrieval did not work - either no connection or contract does not exist")
-    return (IBKRPrice)
-  }
-
-  if (verbose) print(IBKRPrice)
-
-  ### Last close price should not be stored as date and time will be wrong (IBKR returned last day close data...)
-  ### Also only prices that are different from NaN will be stored in DB
-  if (!close) {
-    ### Remove all empty prices if any, print resulting data
-    StoredIBKRPrice <- IBKRPrice[!is.nan(IBKRPrice$price),]
-
-    myconn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-    DBI::dbAppendTable(myconn, "Prices", StoredIBKRPrice)
-    DBI::dbDisconnect(myconn)
-  }
-
-  ### Available readily if needed
-  return(IBKRPrice)
-}
-
-
-#### Used by Ligne module
-###
-#'getOptPrice
-#'
-#'Retrieves an option price from IBKR. This function is not vectorized.
-#'
-#'For a given contract, this function returns a price from IBKR - it may be a last price or a mid price
-#'If IBKR service is not available, or option price not available, or contract does not exist, it will return an error code -1.
-#'@param sym string - IBKR style of ticker, if unknown then function returns -1
-#'@param tradingClass string - optional to retrieve the correct chain for determining price - default is Ticker table in DB
-#'@param right string - can be either P, C or Put, Call
-#'@param expiration number, date or string - expiration date, format is Y/M/D
-#'@param strike string or numeric - option strike
-#'@param currency string - either EUR, CHF or USD - default is  - default is Ticker table in DB
-#'@param exchange string - exchange like SMART, EUREX, CBOE,..., if unknown then function returns -1 -  - default is Ticker table in DB
-#'@returns a number, either option value or -1 is not found
-#'@examples
-#'\dontrun{
-#'getOptPrice("SPX", "SPX", "P", 5000, "20291220", "USD", "SMART")
-#'getOptPrice("SPY", "SPY", "Call", 500.0, as.Date("2026-12-18"), "USD", "SMART")
-#'getOptPrice(sym="SPY", right="Call", strike=500.0, expiration=as.Date("2026-12-18"))
-#'}
-#'@export
-getOptPrice = function(sym, tradingClass, right, strike, expiration, currency="USD", exchange="SMART") {
-  if (tradingClass == "Stock") {
-    Tbasics::display_error_message("A valid Trading Class must be provided!")
-    return(NA)
-  }
-
-  ### If necessary modify right
-  if (right =="Put") right = "P"
-  if (right == "Call") right = "C"
-
-  ### Case where expiration is a number
-  if (is.numeric(expiration)) expiration = as.character(expiration)
-
-  ### Case where expiration has a date class - convert it into a string with IBKR format for expiration date
-  else if (inherits(expiration,"Date")) expiration = format(expiration,"%Y%m%d")
-  else if (!is.character(expiration)) stop("expiration date must be either a date, a number or a character string!")
-
-  strike=as.numeric(strike)
-  # message("NBBO Option value Sym:",sym," Type:",right," Strike:",strike," Expiration:",expiration,
-  #         " Currency:",currency," Exchange:",exchange," tradingClass:",tradingClass)
-  val = tdata_py$getOptValue(sym=sym,expiration=expiration,strikes=strike,
-                                 right=right)$value
-
-  if (is.null(val) || is.nan(val)) val=-1
-  return(val)
-}
-
-
-getIV_DTE <- function(sym, DTE){
-
-  ### Retrieve the expiration dates for sym
-  chain <- tdata_py$getChain(sym)
-  expdates_list <- as.Date(chain[5][[1]], "%Y%m%d")
-
-  target_date <- Sys.Date() + DTE
-  near_expiry <- expdates_list[max(which(expdates_list < target_date))]
-  next_expiry <- expdates_list[min(which(expdates_list > target_date))]
-
-  near_term_options <- getAllOptionPrices(sym, near_expiry)$matched_pairs
-  next_term_options <- getAllOptionPrices(sym, next_expiry)$matched_pairs
-
-  iv_computations <- Tstudy::calculate_vix_optimized(near_term_options, next_term_options,
-                                                         risk_free_rate_near = 0.045, risk_free_rate_next = 0.045,
-                                                         current_time = Sys.time(),
-                                                         near_expiry, next_expiry,
-                                                         target_days = DTE, # Target duration in days (default 30 for standard VIX)
-                                                         sigma_limit = 3, # Limit strikes to n-sigma range
-                                                         round_digits = 3, # Number of significant digits
-                                                         separate_components = TRUE)
-
-  return(list(implied_vol= iv_computations$VIX, iv_call_component = iv_computations$VIX_call_component,
-              iv_put_component = iv_computations$VIX_put_component))
-  # iv_computations :
-  #   VIX = VIX,
-  #   VIX_call_component = VIX_call,
-  #   VIX_put_component = VIX_put,
-  #   target_days = target_days,
-  #   near_term_variance = signif(var_result_near$total_var, round_digits),
-  #   next_term_variance = signif(var_result_next$total_var, round_digits),
-  #   near_term_call_variance = signif(var_result_near$call_var, round_digits),
-  #   near_term_put_variance = signif(var_result_near$put_var, round_digits),
-  #   next_term_call_variance = signif(var_result_next$call_var, round_digits),
-  #   next_term_put_variance = signif(var_result_next$put_var, round_digits),
-  #   time_to_near_expiry = NT1,
-  #   time_to_next_expiry = NT2,
-  #   weight_near = w1,
-  #   weight_next = w2
-  # ))
-
-}
-
-
-###
-#'getAllOptionPrices
-#'
-#'Retrieves a dataframe of option price from IBKR. This function is not vectorized.
-#'
-#'For a given contract and expiration, this function returns a set of prices from IBKR
-#'If IBKR service is not available, or option price not available, or contract does not exist, it will return an error code -1.
-#'@param sym string - IBKR style of ticker, if unknown then function returns -1
-#'@param expiration number, date or string - expiration date, format is Y/M/D
-#'@returns a dataframe with with columns strikes, call, put, empty if no price are found
-#'@examples
-#'\dontrun{
-#'}
-#'@export
-getAllOptionPrices <- function(sym, expiration) {
-
-  test_price <- function(x) {
-    ### x should be different from NA
-    ### x should be greater or equal to 0.01
-    !is.na(x) & (floor(x*100) != 0)
-  }
-
-  ### Case where expiration is a number
-  if (is.numeric(expiration)) expiration = as.character(expiration)
-
-  ### Case where expiration has a date class - convert it into a string with IBKR format for expiration date
-  else if (inherits(expiration,"Date")) expiration = format(expiration,"%Y%m%d")
-  else if (!is.character(expiration)) stop("expiration date must be either a date, a number or a character string!")
-
-  strikes = tdata_py$getStrikesfromExpDate(sym=sym, expdate=expiration, silent=FALSE)
-  current_price = getStockPrice(sym)$price
-  atm_strike = Tbasics::findNearestNumberOrDate(strikes, current_price)
-
-  atm_put <- tdata_py$getOptValue(sym, expiration, atm_strike, "P")
-  atm_call <- tdata_py$getOptValue(sym, expiration, atm_strike, "P")
-  impliedvol <- max(atm_call$impliedvol, atm_put$impliedvol)
-
-  df_put = tdata_py$getOptValue(sym = sym, expiration = expiration, strikes = strikes, right="P", silent = FALSE) |>
-              dplyr::rename(put_value = value, put_bid = bid, put_ask = ask, put_iv = impliedvol, put_delta = delta) |>
-              dplyr::mutate(put_iv = signif(put_iv, 3))
-  df_put <- df_put |> dplyr::mutate(put_mid = (put_bid + put_ask)/2)
-
-  df_call = tdata_py$getOptValue(sym = sym, expiration = expiration, strikes = strikes, right = "C") |>
-              dplyr::rename(call_value = value, call_bid = bid, call_ask = ask, call_iv = impliedvol, call_delta = delta) |>
-              dplyr::mutate(call_iv = signif(call_iv, 3))
-  df_call <- df_call |> dplyr::mutate(call_mid = (call_bid + call_ask)/2)
-
-  option_prices <- dplyr::full_join(df_call, df_put, by= "strike") |> ### Join on strike column
-                    dplyr::mutate(
-                        has_call = test_price(call_value) | test_price(call_bid)  | test_price(call_ask) ,
-                        has_put = test_price(put_value) | test_price(put_bid)  | test_price(put_ask))
-
-  # 1. Matched pairs (inner join equivalent)
-  matched_pairs <- option_prices |>
-    dplyr::filter(has_call == TRUE, has_put == TRUE) |>
-    dplyr::select(strike, call_bid, call_ask, put_bid, put_ask, call_mid, put_mid, call_iv, put_iv, call_value, put_value)
-
-  # 2. Calls without matching puts
-  unmatched_calls <- option_prices |>
-    dplyr::filter(has_call == TRUE, has_put == FALSE)
-
-  # 3. Puts without matching calls
-  unmatched_puts <- option_prices |>
-    dplyr::filter(has_call == FALSE, has_put == TRUE)
-
-  return(list(matched_pairs, unmatched_calls, unmatched_puts))
-
-  ### Data.Frame with columns strikes, call, put
-}
-
-#' Enhanced Yahoo Finance service check with retry logic
-#'
-#' @param tickers Data frame from getTickers() containing YahooName column
-#' @param sample_size Number of tickers to test
-#' @param asset_coverage Ensure coverage across different asset types if sampling
-#' @param timeout Seconds to wait before timeout
-#' @param retries Number of retry attempts for each ticker
-#' @param retry_delay Seconds to wait between retries
-#' @return List with status and detailed diagnostics
-#' @export
-check_yahoo_service_multi <- function(tickers, sample_size = 8, asset_coverage = TRUE,
-                                      timeout = 5, retries = 2, retry_delay = 1) {
-  # Ensure we have the right data format
-  if (!("YahooName" %in% colnames(tickers))) {
-    stop("Input must be a data frame with 'YahooName' column")
-  }
-
-  # Extract unique ticker symbols
-  yahoo_tickers <- unique(tickers$YahooName)
-
-  # If we're sampling and want asset coverage, try to get diverse instruments
-  test_tickers <- yahoo_tickers
-  if (length(yahoo_tickers) > sample_size) {
-    if (asset_coverage && "Type" %in% colnames(tickers)) {
-      # Ensure we sample across different asset types
-      types <- unique(tickers$Type)
-      test_tickers <- c()
-
-      # Take at least one from each type, then distribute remaining slots
-      for (type in types) {
-        type_tickers <- tickers$YahooName[tickers$Type == type]
-        sample_count <- max(1, round(sample_size * length(type_tickers) / nrow(tickers)))
-        sample_count <- min(sample_count, length(type_tickers))
-
-        if (length(type_tickers) > 0) {
-          test_tickers <- c(test_tickers, sample(type_tickers, sample_count))
-        }
-      }
-
-      # Ensure we don't exceed sample size
-      if (length(test_tickers) > sample_size) {
-        test_tickers <- sample(test_tickers, sample_size)
-      }
-    } else {
-      # Simple random sampling if we don't need asset coverage
-      test_tickers <- sample(yahoo_tickers, sample_size)
+    # Reorder results to match input order
+    if (nrow(prices) > 0) {
+      # Create a factor with levels in the same order as the input vector
+      prices$OriginalOrder <- factor(prices$sym, levels = name)
+      # Sort by this factor
+      prices <- prices[order(prices$OriginalOrder), ]
+      # Remove the temporary column
+      prices$OriginalOrder <- NULL
     }
+  } else {
+    # Original query for single name
+    prices <- DBI::dbGetQuery(conn,
+                               "SELECT * FROM Prices WHERE sym = ? ORDER BY ROWID DESC LIMIT 1;",
+                               params = list(name))
   }
-
-  # Always include indices with special characters like ^STOXX50E
-  # as these often cause problems
-  special_chars_tickers <- grep("^\\^", yahoo_tickers, value = TRUE)
-  if (length(special_chars_tickers) > 0 &&
-      !any(special_chars_tickers %in% test_tickers)) {
-    # Replace one random ticker with a special char ticker
-    if (length(test_tickers) > 0) {
-      test_tickers[sample(length(test_tickers), 1)] <- sample(special_chars_tickers, 1)
-    } else {
-      test_tickers <- sample(special_chars_tickers, 1)
-    }
-  }
-
-  # Set timeout temporarily
-  old_timeout <- getOption("timeout")
-  on.exit(options(timeout = old_timeout))
-  options(timeout = timeout)
-
-  # Test each ticker with retry logic
-  results <- lapply(test_tickers, function(ticker) {
-    for (attempt in 1:retries) {
-      result <- tryCatch({
-        # Use a shorter time window to minimize data transfer
-        test_data <- quantmod::getSymbols(ticker,
-                                          src = "yahoo",
-                                          from = Sys.Date() - 3,
-                                          to = Sys.Date(),
-                                          auto.assign = FALSE,
-                                          warnings = FALSE)
-
-        # Perform basic validation on returned data
-        if (is.null(test_data) || nrow(test_data) == 0) {
-          return(list(ticker = ticker, status = FALSE,
-                      message = "Empty data returned", attempt = attempt))
-        }
-
-        return(list(ticker = ticker, status = TRUE,
-                    message = "OK", attempt = attempt))
-      },
-      error = function(e) {
-        err_msg <- as.character(e)
-        return(list(ticker = ticker, status = FALSE,
-                    message = err_msg, attempt = attempt))
-      })
-
-      # If successful, return result
-      if (result$status) {
-        return(result)
-      }
-
-      # Otherwise, wait and retry
-      if (attempt < retries) {
-        Sys.sleep(retry_delay)
-      }
-    }
-
-    # Return the last failed result if all attempts failed
-    return(result)
-  })
-
-  # Analyze results
-  working_tickers <- sapply(results, function(x) x$status)
-
-  # Calculate success metrics
-  success_rate <- sum(working_tickers) / length(working_tickers)
-  failing_tickers <- sapply(results[!working_tickers], function(x) x$ticker)
-
-  # Categorize failures if possible
-  failure_patterns <- list()
-  for (result in results[!working_tickers]) {
-    if (!is.null(result$message)) {
-      # Extract error pattern
-      if (grepl("404", result$message)) {
-        pattern <- "404 Not Found"
-      } else if (grepl("401", result$message)) {
-        pattern <- "401 Unauthorized"
-      } else if (grepl("time", result$message, ignore.case = TRUE)) {
-        pattern <- "Timeout"
-      } else if (grepl("SSL", result$message)) {
-        pattern <- "SSL/TLS Error"
-      } else if (grepl("Empty", result$message)) {
-        pattern <- "Empty Data"
-      } else {
-        pattern <- "Other"
-      }
-
-      # Add to the appropriate category
-      if (is.null(failure_patterns[[pattern]])) {
-        failure_patterns[[pattern]] <- c(result$ticker)
-      } else {
-        failure_patterns[[pattern]] <- c(failure_patterns[[pattern]], result$ticker)
-      }
-    }
-  }
-
-  # Determine overall status based on success rate
-  overall_status <- success_rate >= 0.7  # 70% threshold for "service working"
-
-  return(list(
-    status = overall_status,
-    message = sprintf("%.1f%% of tested tickers accessible (%d/%d)",
-                      success_rate * 100, sum(working_tickers), length(working_tickers)),
-    failing_tickers = failing_tickers,
-    failure_patterns = failure_patterns,
-    details = results
-  ))
+  return(prices)
 }
 
 #' Ultra-robust Yahoo Finance data retrieval for problematic tickers
@@ -715,19 +399,24 @@ check_yahoo_service_multi <- function(tickers, sample_size = 8, asset_coverage =
 #' @param verbose Whether to print progress messages
 #' @return Data frame with columns: date, ticker, Open, High, Low, Close, Adjusted, and Volume
 #' @export
-getYahooDataRobust <- function(tickers, from_date, to_date = Sys.Date(),
+getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date(),
                                max_retries = 5, retry_delay = 2,
                                timeout = 10, chunk_size = 5,
                                verbose = FALSE) {
 
   # Process input to get ticker names
   if (is.data.frame(tickers) && "YahooName" %in% colnames(tickers)) {
-    ticker_names <- tickers$YahooName
+    ### Keep only ticker where YahooName is not NA
+    tickers <- tickers[!is.na(tickers$YahooName),]
+    ### Test if there is at least one ticker left
+    if (nrow(tickers) == 0) Tbasics::display_error_message("At least one ticker should have non-NA Yahoo name declared")
+    else ticker_names <- tickers$YahooName
   } else if (is.character(tickers)) {
     ticker_names <- tickers
   } else {
-    stop("Tickers must be either a character vector or a data frame with YahooName column")
+    Tbasics::display_error_message("Tickers must be either a character vector or a data frame with YahooName column")
   }
+
 
   # If any duplicate then stop - there should be no duplicate in call
   if (any(duplicated(ticker_names))) stop("Tickers cannot be duplicated")
@@ -910,4 +599,5 @@ getYahooDataRobust <- function(tickers, from_date, to_date = Sys.Date(),
   rownames(final_df) <- NULL
   return(final_df)
 }
+
 

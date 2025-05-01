@@ -20,3 +20,7 @@ inst/python/__pycache__/
 /Meta/
 
 R/sandbox.R
+
+data.rds
+
+inst/python/sandbox.py

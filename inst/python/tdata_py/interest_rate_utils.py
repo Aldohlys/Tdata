@@ -3,8 +3,8 @@ import numpy as np
 import datetime
 from dateutil.relativedelta import relativedelta
 from ib_insync import *
-from .IB_connection import safe_ib_connect
-from .contract import getValue
+from tdata_py.IB_connection import safe_ib_connect
+from tdata_py.contract import getValue
 import calendar
 import pandas as pd
 
@@ -12,7 +12,8 @@ import pandas as pd
 # Constants for dividend yields and bounds
 DIVIDEND_YIELDS = {
     'ESTX50': 0.025,  # ESTX50: ~2.5%
-    'SPX': 0.015      # S&P 500: ~1.5%
+    'SPX': 0.015,     # S&P 500: ~1.5%
+    'SMI': 0.028      # Swiss Market Index: ~2.8%
 }
 
 INTEREST_RATE_BOUNDS = {
@@ -27,7 +28,7 @@ def create_future_contracts(symbol):
     Create a list of future contracts for the given symbol
     
     Args:
-        symbol: Index symbol ('ESTX50' or 'SPX')
+        symbol: either "ESTX50", "SPX", or "SMI"
         
     Returns:
         list: List of IB Contract objects
@@ -49,8 +50,19 @@ def create_future_contracts(symbol):
             Contract(secType='FUT', symbol='ES', exchange='CME', currency='USD', lastTradeDateOrContractMonth='202509'),
             Contract(secType='FUT', symbol='ES', exchange='CME', currency='USD', lastTradeDateOrContractMonth='202512')
         ]
+    elif symbol == 'SMI':
+        return [
+            Contract(secType='FUT', symbol='SMI', exchange='EUREX', currency='CHF', 
+                     lastTradeDateOrContractMonth='202506', tradingClass='FSMI'),
+            Contract(secType='FUT', symbol='SMI', exchange='EUREX', currency='CHF', 
+                     lastTradeDateOrContractMonth='202509', tradingClass='FSMI'),
+            Contract(secType='FUT', symbol='SMI', exchange='EUREX', currency='CHF', 
+                     lastTradeDateOrContractMonth='202512', tradingClass='FSMI'),
+            Contract(secType='FUT', symbol='SMI', exchange='EUREX', currency='CHF', 
+                     lastTradeDateOrContractMonth='202603', tradingClass='FSMI')
+        ]    
     else:
-        raise ValueError(f"Unsupported symbol: {symbol}. Only 'ESTX50' and 'SPX' are supported.")
+        raise ValueError(f"Unsupported symbol: {symbol}. Only 'ESTX50', 'SMI' and 'SPX' are supported.")
 
 def parse_contract_expiry(expiry_str):
     """
@@ -143,10 +155,10 @@ def get_future_price(ib, future_contract):
         float: Future price
     """
     try:
-        ticker = ib.reqMktData(future_contract)
+        ticker = ib.reqTickers(future_contract)
         ib.sleep(1)
+        
         future_price = ticker.marketPrice()
-        ib.cancelMktData(future_contract)
         return future_price
     except Exception as e:
         print(f"Error getting future price: {e}")
@@ -166,6 +178,11 @@ def calculate_implied_rate(spot_price, future_price, time_to_expiry, dividend_yi
         float: Implied interest rate
     """
     try:
+        print(f"Spot price: {spot_price}")
+        print(f"Future price: {future_price}")
+        print(f"Ratio future/spot: {future_price/spot_price}")
+        print(f"Log of ratio: {math.log(future_price/spot_price)}")
+        print(f"Time component: {math.log(future_price/spot_price)/time_to_expiry}")
         implied_rate = (math.log(future_price / spot_price) / time_to_expiry) + dividend_yield
         
         # Constrain the result to reasonable bounds
@@ -237,6 +254,9 @@ def get_interest_rate_from_futures(ib, symbol, expiry_date):
     implied_rate = calculate_implied_rate(spot_price, future_price, time_to_expiry, dividend_yield)
     
     # Print results
+    print(f"Spot price: {spot_price}")
+    print(f"Ratio future/spot: {future_price/spot_price}")
+    print(f"Log component: {math.log(future_price/spot_price)/time_to_expiry}")
     print(f"Future contract: {best_future.localSymbol}")
     print(f"Future expiry: {future_expiry}")
     print(f"Future price: {future_price}")
@@ -245,213 +265,6 @@ def get_interest_rate_from_futures(ib, symbol, expiry_date):
     print(f"Implied interest rate: {implied_rate*100:.2f}%")
     
     return implied_rate
-
-
-def get_interest_rate_for_expiry(ib, expiry_date):
-    """
-    Get risk-free interest rate using Treasury securities with maturity close to expiry date
-    
-    Args:
-        ib: IB connection object
-        expiry_date: The option expiry date
-        
-    Returns:
-        float: The interest rate as a decimal (e.g., 0.035 for 3.5%)
-    """
-    today = datetime.now().date()
-    days_to_expiry = (expiry_date - today).days
-    
-    # Choose the appropriate Treasury based on time to expiry
-    if days_to_expiry <= 90:
-        bond_symbol = "13061"  # 3-month T-Bill CUSIP prefix
-    elif days_to_expiry <= 180:
-        bond_symbol = "13062"  # 6-month T-Bill CUSIP prefix
-    elif days_to_expiry <= 365:
-        bond_symbol = "13063"  # 1-year T-Bill CUSIP prefix
-    elif days_to_expiry <= 730:
-        bond_symbol = "912828"  # 2-year T-Note CUSIP prefix
-    elif days_to_expiry <= 1825:
-        bond_symbol = "912828"  # 5-year T-Note CUSIP prefix
-    else:
-        bond_symbol = "912828"  # 10-year T-Note CUSIP prefix
-    
-    bond_exchange = "SMART"
-    
-    # Create a bond contract
-    bond_contract = Contract(symbol=bond_symbol, secType='BOND', exchange=bond_exchange, currency='USD')
-    
-    # Try to get bond details
-    try:
-        bond_details = ib.reqContractDetails(bond_contract)
-        ib.sleep(1)
-        
-        # Find the bond with maturity closest to our option expiry
-        closest_bond = None
-        min_days_diff = float('inf')
-        
-        for detail in bond_details:
-            bond_maturity = detail.contractDetails.maturity
-            bond_maturity_date = datetime.strptime(bond_maturity, '%Y%m%d').date()
-            days_diff = abs((bond_maturity_date - expiry_date).days)
-            
-            if days_diff < min_days_diff:
-                min_days_diff = days_diff
-                closest_bond = detail.contract
-        
-        if closest_bond:
-            # Get the yield for the closest bond
-            bond_ticker = ib.reqMktData(closest_bond)
-            ib.sleep(1)
-            
-            # Extract yield from market data
-            bond_yield = bond_ticker.marketPrice() / 100.0  # Convert to decimal
-            ib.cancelMktData(closest_bond)
-            
-            print(f"Using Treasury with maturity closest to option expiry, {min_days_diff} days difference")
-            return bond_yield
-    except Exception as e:
-        print(f"Error getting bond data: {e}")
-    
-    # Fallback interest rates based on time to expiry
-    if days_to_expiry <= 30:
-        return 0.025  # Short-term rate
-    elif days_to_expiry <= 365:
-        return 0.03   # Medium-term rate
-    else:
-        return 0.035  # Long-term rate
-
-def calculate_implied_interest_rate(ib, symbol='ESTX50', expiry_date=None):
-    """
-    Calculate implied interest rate from put-call parity using ESTX50 options
-    
-    Args:
-        ib: IB connection
-        symbol: Index symbol (default ESTX50)
-        expiry_date: Option expiry date (datetime.date object)
-        
-    Returns:
-        float: Annualized implied interest rate
-    """
-    # If no expiry provided, use a standard expiry about 3 months out
-    if expiry_date is None:
-        today = datetime.datetime.now().date()
-        # Find next quarter-end date roughly
-        month = today.month
-        if month <= 3:
-            expiry_date = datetime.date(today.year, 3, 20)
-        elif month <= 6:
-            expiry_date = datetime.date(today.year, 6, 20)
-        elif month <= 9:
-            expiry_date = datetime.date(today.year, 9, 20)
-        else:
-            expiry_date = datetime.date(today.year, 12, 20)
-        
-        # If we're past that date already, use the next one
-        if expiry_date <= today:
-            if month > 9:
-                expiry_date = datetime.date(today.year + 1, 3, 20)
-            else:
-                expiry_date = datetime.date(today.year, month + 3, 20)
-    
-    # Format expiry date
-    expiry_str = expiry_date.strftime('%Y%m%d')
-    
-    # Get current index price
-    underlying = Contract(symbol=symbol, secType='IND', exchange='EUREX', currency='EUR')
-    qualified = ib.qualifyContracts(underlying)
-    if qualified:
-        underlying = qualified[0]
-    
-    ticker = ib.reqMktData(underlying)
-    ib.sleep(1)
-    current_price = ticker.marketPrice()
-    ib.cancelMktData(underlying)
-    print(f"Current {symbol} price: {current_price}")
-    
-    # Find ATM strike
-    increment = 50.0  # ESTX50 standard increment
-    atm_strike = round(current_price / increment) * increment
-    print(f"Using ATM strike: {atm_strike}")
-    
-    # Get call and put with same strike and expiry
-    call_contract = Contract(
-        secType='OPT',
-        symbol=symbol,
-        lastTradeDateOrContractMonth=expiry_str,
-        strike=atm_strike,
-        right='C',
-        exchange='EUREX',
-        currency='EUR'
-    )
-    
-    put_contract = Contract(
-        secType='OPT',
-        symbol=symbol,
-        lastTradeDateOrContractMonth=expiry_str,
-        strike=atm_strike,
-        right='P',
-        exchange='EUREX',
-        currency='EUR'
-    )
-    
-    # Get contract details to ensure we have valid contracts
-    call_details = ib.reqContractDetails(call_contract)
-    put_details = ib.reqContractDetails(put_contract)
-    
-    if not call_details or not put_details:
-        print("Could not find matching call and put contracts")
-        return None
-    
-    # Use the qualified contracts
-    call_contract = call_details[0].contract
-    put_contract = put_details[0].contract
-    
-    # Get market data for both options
-    call_ticker = ib.reqMktData(call_contract)
-    put_ticker = ib.reqMktData(put_contract)
-    ib.sleep(2)  # Give time for data to arrive
-    
-    # Use mid prices (average of bid and ask)
-    if call_ticker.bid and call_ticker.ask and put_ticker.bid and put_ticker.ask:
-        call_price = (call_ticker.bid + call_ticker.ask) / 2
-        put_price = (put_ticker.bid + put_ticker.ask) / 2
-    else:
-        # Fall back to last price if bid/ask not available
-        call_price = call_ticker.last
-        put_price = put_ticker.last
-    
-    ib.cancelMktData(call_contract)
-    ib.cancelMktData(put_contract)
-    
-    print(f"Call price: {call_price}, Put price: {put_price}")
-    
-    # Calculate time to expiry in years
-    today = datetime.datetime.now().date()
-    days_to_expiry = (expiry_date - today).days
-    time_to_expiry = days_to_expiry / 365.0
-    
-    # Get estimated dividend yield for ESTX50 (approximately 2.5-3%)
-    # This could be refined with actual dividend projection data
-    div_yield = 0.025  # Typical for ESTX50
-    
-    # Calculate implied interest rate using put-call parity
-    # C - P = S * e^(-q*T) - K * e^(-r*T)
-    # Solving for r:
-    # r = -ln((S*e^(-q*T) - (C - P))/K) / T
-    
-    # First, adjust stock price for dividends
-    dividend_factor = math.exp(-div_yield * time_to_expiry)
-    adjusted_stock = current_price * dividend_factor
-    
-    # Then calculate implied interest rate
-    try:
-        implied_rate = -math.log((adjusted_stock - (call_price - put_price)) / atm_strike) / time_to_expiry
-        print(f"Implied interest rate: {implied_rate*100:.2f}%")
-        return implied_rate
-    except (ValueError, ZeroDivisionError) as e:
-        print(f"Error calculating implied rate: {e}")
-        return None
-
 
 def getInterestRate(months, currency):
       # Connect to Interactive Brokers
@@ -469,9 +282,216 @@ def getInterestRate(months, currency):
     print("future_date:", future_date,"  currency:", currency)
     
     if (currency == "USD"): rate = get_interest_rate_from_futures(ib, "SPX", future_date)
-    if (currency == "EUR"): rate = get_interest_rate_from_futures(ib, "ESTX50", future_date)
+    elif (currency == "EUR"): rate = get_interest_rate_from_futures(ib, "ESTX50", future_date)
+    elif (currency == "CHF"): rate = get_interest_rate_from_futures(ib, "SMI", future_date)
     
     ### Close properly ib
     ib.disconnect()
     
     return rate
+
+def get_interest_rate_for_expiry(ib, expiry_date):
+    """
+    Get risk-free interest rate using Treasury securities with maturity close to expiry date
+
+    Args:
+        ib: IB connection object
+        expiry_date: The option expiry date
+
+    Returns:
+        float: The interest rate as a decimal (e.g., 0.035 for 3.5%)
+    """
+    today = datetime.now().date()
+    days_to_expiry = (expiry_date - today).days
+
+    # Choose the appropriate Treasury based on time to expiry
+    if days_to_expiry <= 90:
+        bond_symbol = "13061"  # 3-month T-Bill CUSIP prefix
+    elif days_to_expiry <= 180:
+        bond_symbol = "13062"  # 6-month T-Bill CUSIP prefix
+    elif days_to_expiry <= 365:
+        bond_symbol = "13063"  # 1-year T-Bill CUSIP prefix
+    elif days_to_expiry <= 730:
+        bond_symbol = "912828"  # 2-year T-Note CUSIP prefix
+    elif days_to_expiry <= 1825:
+        bond_symbol = "912828"  # 5-year T-Note CUSIP prefix
+    else:
+        bond_symbol = "912828"  # 10-year T-Note CUSIP prefix
+
+    bond_exchange = "SMART"
+
+    # Create a bond contract
+    bond_contract = Contract(symbol=bond_symbol, secType='BOND', exchange=bond_exchange, currency='USD')
+
+    # Try to get bond details
+    try:
+        bond_details = ib.reqContractDetails(bond_contract)
+        ib.sleep(1)
+
+        # Find the bond with maturity closest to our option expiry
+        closest_bond = None
+        min_days_diff = float('inf')
+
+        for detail in bond_details:
+            bond_maturity = detail.contractDetails.maturity
+            bond_maturity_date = datetime.strptime(bond_maturity, '%Y%m%d').date()
+            days_diff = abs((bond_maturity_date - expiry_date).days)
+
+            if days_diff < min_days_diff:
+                min_days_diff = days_diff
+                closest_bond = detail.contract
+
+        if closest_bond:
+            # Get the yield for the closest bond
+            bond_ticker = ib.reqMktData(closest_bond)
+            ib.sleep(1)
+
+            # Extract yield from market data
+            bond_yield = bond_ticker.marketPrice() / 100.0  # Convert to decimal
+            ib.cancelMktData(closest_bond)
+
+            print(f"Using Treasury with maturity closest to option expiry, {min_days_diff} days difference")
+            return bond_yield
+    except Exception as e:
+        print(f"Error getting bond data: {e}")
+
+    # Fallback interest rates based on time to expiry
+    if days_to_expiry <= 30:
+        return 0.025  # Short-term rate
+    elif days_to_expiry <= 365:
+        return 0.03   # Medium-term rate
+    else:
+        return 0.035  # Long-term rate
+# 
+# def calculate_implied_interest_rate(ib, symbol='ESTX50', expiry_date=None):
+#     """
+#     Calculate implied interest rate from put-call parity using ESTX50 options
+#     
+#     Args:
+#         ib: IB connection
+#         symbol: Index symbol (default ESTX50)
+#         expiry_date: Option expiry date (datetime.date object)
+#         
+#     Returns:
+#         float: Annualized implied interest rate
+#     """
+#     # If no expiry provided, use a standard expiry about 3 months out
+#     if expiry_date is None:
+#         today = datetime.datetime.now().date()
+#         # Find next quarter-end date roughly
+#         month = today.month
+#         if month <= 3:
+#             expiry_date = datetime.date(today.year, 3, 20)
+#         elif month <= 6:
+#             expiry_date = datetime.date(today.year, 6, 20)
+#         elif month <= 9:
+#             expiry_date = datetime.date(today.year, 9, 20)
+#         else:
+#             expiry_date = datetime.date(today.year, 12, 20)
+#         
+#         # If we're past that date already, use the next one
+#         if expiry_date <= today:
+#             if month > 9:
+#                 expiry_date = datetime.date(today.year + 1, 3, 20)
+#             else:
+#                 expiry_date = datetime.date(today.year, month + 3, 20)
+#     
+#     # Format expiry date
+#     expiry_str = expiry_date.strftime('%Y%m%d')
+#     
+#     # Get current index price
+#     underlying = Contract(symbol=symbol, secType='IND', exchange='EUREX', currency='EUR')
+#     qualified = ib.qualifyContracts(underlying)
+#     if qualified:
+#         underlying = qualified[0]
+#     
+#     ticker = ib.reqMktData(underlying)
+#     ib.sleep(1)
+#     current_price = ticker.marketPrice()
+#     ib.cancelMktData(underlying)
+#     print(f"Current {symbol} price: {current_price}")
+#     
+#     # Find ATM strike
+#     increment = 50.0  # ESTX50 standard increment
+#     atm_strike = round(current_price / increment) * increment
+#     print(f"Using ATM strike: {atm_strike}")
+#     
+#     # Get call and put with same strike and expiry
+#     call_contract = Contract(
+#         secType='OPT',
+#         symbol=symbol,
+#         lastTradeDateOrContractMonth=expiry_str,
+#         strike=atm_strike,
+#         right='C',
+#         exchange='EUREX',
+#         currency='EUR'
+#     )
+#     
+#     put_contract = Contract(
+#         secType='OPT',
+#         symbol=symbol,
+#         lastTradeDateOrContractMonth=expiry_str,
+#         strike=atm_strike,
+#         right='P',
+#         exchange='EUREX',
+#         currency='EUR'
+#     )
+#     
+#     # Get contract details to ensure we have valid contracts
+#     call_details = ib.reqContractDetails(call_contract)
+#     put_details = ib.reqContractDetails(put_contract)
+#     
+#     if not call_details or not put_details:
+#         print("Could not find matching call and put contracts")
+#         return None
+#     
+#     # Use the qualified contracts
+#     call_contract = call_details[0].contract
+#     put_contract = put_details[0].contract
+#     
+#     # Get market data for both options
+#     call_ticker = ib.reqMktData(call_contract)
+#     put_ticker = ib.reqMktData(put_contract)
+#     ib.sleep(2)  # Give time for data to arrive
+#     
+#     # Use mid prices (average of bid and ask)
+#     if call_ticker.bid and call_ticker.ask and put_ticker.bid and put_ticker.ask:
+#         call_price = (call_ticker.bid + call_ticker.ask) / 2
+#         put_price = (put_ticker.bid + put_ticker.ask) / 2
+#     else:
+#         # Fall back to last price if bid/ask not available
+#         call_price = call_ticker.last
+#         put_price = put_ticker.last
+#     
+#     ib.cancelMktData(call_contract)
+#     ib.cancelMktData(put_contract)
+#     
+#     print(f"Call price: {call_price}, Put price: {put_price}")
+#     
+#     # Calculate time to expiry in years
+#     today = datetime.datetime.now().date()
+#     days_to_expiry = (expiry_date - today).days
+#     time_to_expiry = days_to_expiry / 365.0
+#     
+#     # Get estimated dividend yield for ESTX50 (approximately 2.5-3%)
+#     # This could be refined with actual dividend projection data
+#     div_yield = 0.025  # Typical for ESTX50
+#     
+#     # Calculate implied interest rate using put-call parity
+#     # C - P = S * e^(-q*T) - K * e^(-r*T)
+#     # Solving for r:
+#     # r = -ln((S*e^(-q*T) - (C - P))/K) / T
+#     
+#     # First, adjust stock price for dividends
+#     dividend_factor = math.exp(-div_yield * time_to_expiry)
+#     adjusted_stock = current_price * dividend_factor
+#     
+#     # Then calculate implied interest rate
+#     try:
+#         implied_rate = -math.log((adjusted_stock - (call_price - put_price)) / atm_strike) / time_to_expiry
+#         print(f"Implied interest rate: {implied_rate*100:.2f}%")
+#         return implied_rate
+#     except (ValueError, ZeroDivisionError) as e:
+#         print(f"Error calculating implied rate: {e}")
+#         return None
+# 

@@ -430,15 +430,6 @@ getIBKR <- function(silent=TRUE) {
 
   DBI::dbAppendTable(conn,"Account", account_data)
 
-  #### 2. Process new prices for tickers - that should include also underlyings part of the portfolio  ##########
-  message("\n#####  Retrieving price data from Tickers DB... \n")
-
-  ### Do not load any security related to exchange like LSEETF or EBS
-  tickers = dplyr::filter(Tdata::getAllTickers(), Exchange == "SMART" | Exchange == "EUREX" | Exchange == "CBOE")
-
-  ### Store in DB all IBKR prices from tickers$Name
-  getIBKRPrice(tickers$Name)
-
   #### Process portfolio last position #############
   portf_data = l[[2]]
 
@@ -590,7 +581,6 @@ getIBKRActiveCurrencyValues <- function() {
   currency_pairs <- currency_data$FXPair
   direct_conv <- currency_data$DirectConversion
 
-
   Tbasics::display_message("Call IBKR to retrieve data...")
   currency_pairs_data <- tdata_py$retrieveCurrencyPairs(currencies, currency_pairs, direct_conv)
 
@@ -671,7 +661,7 @@ getGonet <- function() {
   portf = dplyr::left_join(portf, portf_cashflow, by = c("sym_yahoo" = "sym_yahoo"))
 
   ### get prices from IBKR using list_sec= "STK", and otherwise values from GonetTrades
-  last_price <- getIBKRPrice(sym = portf$sym_ibkr)
+  last_price <- getStoredMetrics(name = portf$sym_ibkr)
 
   #### price_user is the subset of last_price where price = NaN, i.e. price could not be retrieved from IBKR
   price_user <- last_price[is.nan(last_price$price),]
@@ -700,7 +690,7 @@ getGonet <- function() {
   ### Open connection to user DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   DBI::dbAppendTable(conn,"Gonet", portf)
-  ### Non NaN prices already been stored in DB by getIBKRPrice function - so only price_user need to be stored in DB
+  ### Non NaN prices already been stored in DB by getIBKRMetrics function - so only price_user need to be stored in DB
   DBI::dbAppendTable(conn,"Prices", price_user)
   DBI::dbDisconnect(conn)
 }

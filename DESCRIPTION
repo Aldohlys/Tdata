@@ -23,12 +23,14 @@ Imports:
     utils,
     xts,
     zoo,
-    magrittr,
     PerformanceAnalytics,
     stats,
     ggplot2,
     tidyr,
-    Tstudy
+    httr,
+    jsonlite,
+    rvest,
+    parallel
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Suggests: 

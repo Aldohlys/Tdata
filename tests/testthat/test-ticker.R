@@ -14,14 +14,14 @@ test_that("getTicker works with a character vector", {
   expect_true(nrow(data) == 2)
 })
 
-test_that("addTicker works", {
+test_that("addTicker returns 0 fi ticker laready exists", {
   data <- addTicker("SPY")
-  expect_equal(data , 0)
+  expect_true(data == 0)
 })
 
-test_that("addTicker works", {
+test_that("addTicker works and returns a record", {
   data <- addTicker("USO")
-  expect_equal(data , 1)
+  expect_equal(length(data) , 15)
 })
 
 test_that("removeTicker works", {

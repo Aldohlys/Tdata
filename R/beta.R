@@ -1,20 +1,22 @@
 #' Calculate beta of a security against SPX using Yahoo Finance data with currency adjustment
 #'
-#' @param ticker Character string of the security ticker
+#'This function may be called even if ticker does not exist in DB
+#'
+#' @param sym Character string of the security ticker
 #' @param benchmark Character string of the benchmark ticker (default: "^GSPC" for S&P 500)
 #' @param from Start date for historical data (default: 1 year ago)
 #' @param to End date for historical data (default: current date)
 #' @param currency Character string of the security's currency (default: "USD")
-#'
 #' @return A list containing ticker, benchmark, period, beta value, and number of data points
 #' @export
-calculate_beta_vs_spx <- function(ticker,
+calculate_beta_vs_spx <- function(sym,
                                   benchmark = "^GSPC",
                                   from = Sys.Date() - 365,
                                   to = Sys.Date(),
                                   currency = "USD") {
+
   # Download historical price data for the security and benchmark
-  security_data <- quantmod::getSymbols(ticker, src = "yahoo", from = from, to = to, auto.assign = FALSE)
+  security_data <- quantmod::getSymbols(sym, src = "yahoo", from = from, to = to, auto.assign = FALSE)
   benchmark_data <- quantmod::getSymbols(benchmark, src = "yahoo", from = from, to = to, auto.assign = FALSE)
 
   # If currency is not USD, get the exchange rate data
@@ -102,6 +104,8 @@ calculate_beta_vs_spx <- function(ticker,
   ))
 }
 
+#' calculate_beta_vs_spx_periods
+#'
 #' Calculate beta for a security over multiple time periods with currency adjustment
 #'
 #' @param ticker Character string of the security ticker

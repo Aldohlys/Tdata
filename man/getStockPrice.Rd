@@ -4,21 +4,26 @@
 \alias{getStockPrice}
 \title{getStockPrice}
 \usage{
-getStockPrice(sym, close = FALSE)
+getStockPrice(sym, close = FALSE, verbose = FALSE)
 }
 \arguments{
 \item{sym}{string - IBKR style of ticker.}
 
 \item{close}{Boolean TRUE/FALSE if true then retrieve last close price else retrieve last stored price.}
+
+\item{verbose}{boolean FALSE by default. if true gives some more details}
 }
 \value{
 a value
 }
 \description{
-For a given ticker or a vector of tickers, this function returns either the last close price from Yahoo service or the last stored price.
+For a given ticker or a vector of tickers, this function returns either the last close price from Yahoo service
+or the last stored price.
 }
 \details{
-This will depend upon close parameter. If close is TRUE then Yahoo service is used, otherwise data is retrieved from prices DB
+This will depend upon close parameter.
+If close is TRUE then Yahoo service is used, otherwise data is retrieved from prices DB.
+If no data can be found in prices DB (e.g. sym is not found in DB), then last available Yahoo price is returned.
 
 This function is vectorized, if no price ticker exists in DB it will then return an empty line for the corresponding ticker.
 }

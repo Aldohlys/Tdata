@@ -1,10 +1,15 @@
-#### Created on 31.12.2023
-### This is to remove warning messages from check()
-### Quote from R Packages manual:
-#'The “no visible binding” note is a peculiarity of using dplyr and unquoted variable names inside a package,
-#'where the use of bare variable names (english and temp) looks suspicious.
+#' Global variables
 #'
-### See also https://r-pkgs.org/package-within.html
+#' These variables are defined to avoid R CMD check "no visible binding" notes
+#' when using dplyr's non-standard evaluation.
+#'
+#' These global definitions remove warning messages from check().
+#' See also https://r-pkgs.org/package-within.html
+#' @keywords internal
+#' @usage NULL
+
+#### for documentation purposes
+Global <- NULL
 
 ### for getOpenDate
 TradeNr <- Statut <- TradeDate <- Strategy <- exp_date <- Exp.Date <- Pos <- NULL

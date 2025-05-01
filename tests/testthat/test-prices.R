@@ -59,14 +59,14 @@ test_that("It is possible to retrieve a vector of prices corresponding to a vect
 })
 
 test_that("Retrieve a tibble with all last prices from a vector of tickers",{
-  df <- getLastSymPrice(c("SPY","XSP"))
+  df <- getLastSymPrice(c("SPY","SPX"))
   expect_true(is.data.frame(df))
-  expect_true(all(df$sym == c("SPY","XSP")))
+  expect_true(all(df$sym == c("SPY","SPX")))
   expect_true(all(is.numeric(df$value)))
   expect_true(all(class(df$date) == "Date"))
 })
 
-test_that("getYahooDataRobust retrieves data for reliable tickers correctly", {
+test_that("getYahoo retrieves data for reliable tickers correctly", {
   skip_if_offline()  # Skip test if internet connection is unavailable
 
   # Explicitly use xts namespace without loading the whole package
@@ -79,7 +79,7 @@ test_that("getYahooDataRobust retrieves data for reliable tickers correctly", {
 
   # Run the function with verbose=FALSE to avoid cluttering test output
   result <- tryCatch({
-    getYahooDataRobust(test_ticker, start_date, end_date,
+    getYahooData(test_ticker, start_date, end_date,
                        verbose = FALSE,
                        max_retries = 3,
                        timeout = 5)  # Increase timeout for CI environments
@@ -107,7 +107,7 @@ test_that("getYahooDataRobust retrieves data for reliable tickers correctly", {
   expect_true(nrow(result) >= 10) # Should have at least 10 trading days in a month
 })
 
-test_that("getYahooDataRobust handles non-existent tickers gracefully", {
+test_that("getYahooData handles non-existent tickers gracefully", {
   skip_if_offline()  # Skip test if internet connection is unavailable
 
   # Test with a mix of valid and invalid tickers
@@ -118,7 +118,7 @@ test_that("getYahooDataRobust handles non-existent tickers gracefully", {
   # catch errors to make test more robust
   result <- tryCatch({
     suppressWarnings(
-      getYahooDataRobust(test_tickers, start_date, chunk_size = 3,
+      getYahooData(test_tickers, start_date, chunk_size = 3,
                          verbose = FALSE, timeout = 1)
     )
   }, error = function(e) {
@@ -139,7 +139,7 @@ test_that("getYahooDataRobust handles non-existent tickers gracefully", {
   expect_true(any(c("AAPL", "MSFT") %in% result$ticker))
 })
 
-test_that("getYahooDataRobust works with mock ticker data", {
+test_that("getYahoo works with mock ticker data", {
   skip_if_offline()  # Skip test if internet connection is unavailable
 
   # Create a mock getTickers output - just use one reliable ticker for speed
@@ -152,7 +152,7 @@ test_that("getYahooDataRobust works with mock ticker data", {
   # Test the function with the mock data frame
   result <- tryCatch({
     suppressWarnings(
-      getYahooDataRobust(mock_tickers, Sys.Date() - 5, verbose = FALSE, timeout = 5)
+      getYahooData(mock_tickers, Sys.Date() - 5, verbose = FALSE, timeout = 5)
     )
   }, error = function(e) {
     skip(paste("Yahoo Finance API unavailable:", e$message))

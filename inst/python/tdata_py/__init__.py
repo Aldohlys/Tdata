@@ -82,10 +82,21 @@ except ImportError as e:
 # Import and expose dividend functions
 try:
     from .dividend_utils import (
-        getDividend  
+        getTTMDividend  
     )
 except ImportError as e:
     print(f"Error importing dividend_utils: {e}")
+
+
+# Import volatility function
+try:
+    from .impliedvol import (
+        get_volatility_metrics  
+    )
+except ImportError as e:
+    print(f"Error importing impliedvol: {e}")
+
+
 
 # Version number
 __version__ = '0.1.0'

@@ -27,6 +27,7 @@
 #'  Delayed Frozen	4	Requests delayed "frozen" data for a user without market data subscriptions.
 # 
 
+import sys
 import math
 import datetime
 import locale
@@ -36,37 +37,9 @@ import logging
 from ib_insync import *
 
 # Import from other modules
-from .core import CONFIG, ticker_db
+from .core import CONFIG, ticker_db, validate_contract_params, find_nearest_number
 from .IB_connection import safe_ib_connect
 
-def find_nearest_number(numbers, target):
-    """
-    Find the number in a list that is closest to the target value.
-    
-    Args:
-        numbers (list): List of numbers to search
-        target (float): Target value to find closest match
-        
-    Returns:
-        float: Number from the list closest to the target
-        
-    Raises:
-        ValueError: If the list is empty
-    """
-    if not numbers:
-        raise ValueError("The list of numbers is empty.")
-    
-    nearest = numbers[0]
-    diff = abs(nearest - target)
-    
-    for number in numbers:
-        current_diff = abs(number - target)
-        
-        if current_diff < diff:
-            diff = current_diff
-            nearest = number
-    
-    return nearest
 
 def getValue(list_sym, reqType=2, ib=None, close=True, silent=True):
     """
@@ -98,12 +71,21 @@ def getValue(list_sym, reqType=2, ib=None, close=True, silent=True):
     contracts = []
     for sym in symbols:
         ticker_info = ticker_db.get_ticker_info(sym)
-        contract = Contract(
-            secType=ticker_info['Type'],
-            symbol=sym,
-            currency=ticker_info['Currency'],
-            exchange=ticker_info['Exchange']
-        )
+        secType = ticker_info['Type']
+        currency = ticker_info['Currency']
+        exchange = ticker_info['Exchange']
+
+        ## For futures only sym used as local symbol
+        if (secType == "FUT"):
+          contract = Contract(secType=secType, localSymbol = sym, currency = currency, exchange = exchange)
+        
+        ### For T-Bill - conId is the symbol name (like in Reporting)
+        elif (secType == "BILL"):
+          contract = Contract(secType=secType, conId=sym, exchange=exchange)
+
+        ### Other cases
+        else : contract = Contract(secType = secType, symbol = sym, currency = currency, exchange = exchange)
+
         contracts.append(contract)
     
     ### Print info
@@ -182,6 +164,13 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
     # Get ticker information from database if not provided
     ticker_info = ticker_db.get_ticker_info(sym)
     
+    ## Check taht it is possible to have options on sym
+    sym_type = ticker_info.get('Type', 'STK')
+    if not (sym_type in ["FUT", "STK", "IND"]):
+        return None
+    
+    YahooName =  ticker_info.get('YahooName', sym)
+    
     if currency is None:
         currency = ticker_info.get('Currency', 'USD')
     
@@ -203,19 +192,27 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
         strikes = [strikes]
         
     # Create option contracts for each strike
-    contracts = [Contract(symbol=sym, secType="OPT", lastTradeDateOrContractMonth=expiration,
+    
+    if (sym_type == "FUT"):
+      contracts = [Contract(symbol=YahooName, secType="FOP", lastTradeDateOrContractMonth=expiration,
+                        strike=strike_c, right=right,
+                        exchange=exchange, currency=currency, tradingClass=tradingClass) 
+                for strike_c in strikes]
+    
+    else :
+      contracts = [Contract(symbol=sym, secType="OPT", lastTradeDateOrContractMonth=expiration,
                         strike=strike_c, right=right,
                         exchange=exchange, currency=currency, tradingClass=tradingClass) 
                 for strike_c in strikes] 
     
-    if (not silent): print("\nContracts:", contracts)
+    if (not silent): print("\nCONTRACTS:", contracts)
     
     if(ib.qualifyContracts(*contracts)):
         # Use frozen market data (type 2) for consistent pricing
         ib.reqMarketDataType(2)
         
         tickers = ib.reqTickers(*contracts)
-        if (not silent): print("\nTickers:", tickers)
+        if (not silent): print("\nTICKERS:", tickers)
         
         # Handle potential None values in model Greeks
         result_dic = [{
@@ -441,7 +438,8 @@ def getChain(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=Non
     if (not silent): print("\nChain: NaN")
     return float('NaN')
 
-def getStrikesfromExpDate(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=None, tradingClass=None, expdate=None, silent=True):
+def getStrikesfromExpDate(sym, secType=None, currency=None, 
+       exchangeSec=None, exchangeOpt=None, tradingClass=None, expdate=None, silent=True):
     """
     Get available strikes for a specific option expiration date.
     
@@ -457,9 +455,24 @@ def getStrikesfromExpDate(sym, secType=None, currency=None, exchangeSec=None, ex
     Returns:
         list or None: List of available strikes if successful, None if connection error
     """
-    if expdate is None:
-        raise ValueError("Expiration date (expdate) must be provided")
     
+    is_valid, errors = validate_contract_params(
+        sym=sym, 
+        secType=secType,
+        currency=currency,
+        exchangeOpt=exchangeOpt, 
+        exchangeSec=exchangeSec, 
+        tradingClass=tradingClass, 
+        expdate=expdate
+    )    
+    
+    if not is_valid:
+        for error in errors:
+            print(f"- {error}")
+    
+    if not silent:
+        print("getStrikesfromExpDate arguments validated", file=sys.stderr)
+        
     # Get ticker information from database if not provided
     ticker_info = ticker_db.get_ticker_info(sym)
     
@@ -508,11 +521,16 @@ def getStrikesfromExpDate(sym, secType=None, currency=None, exchangeSec=None, ex
     # Extract list of strikes from chain
     all_strikes = chain[5]
     
-    # Try all strikes for the expdate to see which are valid
-    contracts = [Contract(secType='OPT', symbol=sym, lastTradeDateOrContractMonth=expdate,
-              strike=strike_c, right='Put', exchange=exchangeOpt, tradingClass=tradingClass) 
-              for strike_c in all_strikes]
-
+    # Try all strikes for the expdate to see which are valid, using Put options (should be the same for Call)
+    if (secType == "STK") or (secType == "IND"):
+        contracts = [Contract(secType='OPT', symbol=sym, lastTradeDateOrContractMonth=expdate,
+                  strike=strike_c, right='Put', exchange=exchangeOpt, tradingClass=tradingClass) 
+                  for strike_c in all_strikes]
+    elif (secType == "FUT"):
+        contracts = [Contract(secType='FOP', symbol=sym, lastTradeDateOrContractMonth=expdate,
+                  strike=strike_c, right='Put', exchange=exchangeOpt, tradingClass=tradingClass) 
+                  for strike_c in all_strikes]
+      
     updated_strikes = []
     
     # Process in batches of 20 contracts
@@ -554,7 +572,9 @@ def getStrikesFromRange(sym, current_price, expdate, strikes, sigma, volatility)
     Returns:
         list or None: List of available strikes if successful, None if connection error
     """
-    get_dividend_yield(ib, underlying_contract)
+    
+    
+    div_yield = get_dividend_yield(ib, underlying_contract)
     
     # Calculate expected dividends during the option's life
     expected_dividends = current_price * div_yield * time_to_expiry

@@ -189,7 +189,9 @@ class TickerDatabase:
                 'Exchange': self.determine_primary_exch(symbol),
                 'OptExchange': self.determine_exch(symbol),
                 'Currency': 'USD',
-                'TradingClass': symbol
+                'TradingClass': symbol,
+                'YahooName': symbol,
+                'Expiration': ''
             }
             
         # Clean symbol if needed (remove exchange suffix)
@@ -205,7 +207,9 @@ class TickerDatabase:
                 'Exchange': self.determine_primary_exch(symbol),
                 'OptExchange': self.determine_exch(symbol),
                 'Currency': 'USD',
-                'TradingClass': symbol
+                'TradingClass': symbol,
+                'YahooName': symbol,
+                'Expiration': ''
             }
     
     # Keep old functions as instance methods for backward compatibility
@@ -270,3 +274,93 @@ class TickerDatabase:
 
 # Initialize the ticker database
 ticker_db = TickerDatabase()
+
+def validate_contract_params(
+    sym, 
+    secType=None, 
+    currency=None, 
+    exchangeSec=None, 
+    exchangeOpt=None, 
+    tradingClass=None, 
+    expdate=None
+):
+    """
+    Simple validation of contract parameters types.
+    
+    Args:
+        sym (str): Underlying symbol (required)
+        secType (str, optional): Security type
+        currency (str, optional): Currency code
+        exchangeSec (str, optional): Exchange for underlying
+        exchangeOpt (str, optional): Exchange for options
+        tradingClass (str, optional): Trading class
+        expdate (str, optional): Expiration date
+        
+    Returns:
+        tuple: (is_valid, error_messages)
+    """
+    errors = []
+    
+    # Check symbol (required)
+    if not sym:
+        errors.append("Symbol cannot be empty")
+    elif not isinstance(sym, str):
+        errors.append(f"Symbol must be a string, got {type(sym)}")
+    
+    # Check optional string parameters
+    if secType is not None and not isinstance(secType, str):
+        errors.append(f"Security type must be a string, got {type(secType)}")
+    
+    if currency is not None and not isinstance(currency, str):
+        errors.append(f"Currency must be a string, got {type(currency)}")
+    
+    if exchangeSec is not None and not isinstance(exchangeSec, str):
+        errors.append(f"Security exchange must be a string, got {type(exchangeSec)}")
+    
+    if exchangeOpt is not None and not isinstance(exchangeOpt, str):
+        errors.append(f"Option exchange must be a string, got {type(exchangeOpt)}")
+    
+    if tradingClass is not None and not isinstance(tradingClass, str):
+        errors.append(f"Trading class must be a string, got {type(tradingClass)}")
+    
+    # Check expiration date if provided
+    if expdate is not None:
+        if not isinstance(expdate, str):
+            errors.append(f"Expiration date must be a string, got {type(expdate)}")
+        else:
+            # Check for common date formats: YYYYMMDD or YYYYMM
+            import re
+            if not re.match(r'^20\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])?$', expdate):
+                errors.append(f"Expiration date format invalid: {expdate}. Expected format: YYYYMMDD or YYYYMM")
+    
+    return (len(errors) == 0, errors)
+
+
+def find_nearest_number(numbers, target):
+    """
+    Find the number in a list that is closest to the target value.
+    
+    Args:
+        numbers (list): List of numbers to search
+        target (float): Target value to find closest match
+        
+    Returns:
+        float: Number from the list closest to the target
+        
+    Raises:
+        ValueError: If the list is empty
+    """
+    if not numbers:
+        raise ValueError("The list of numbers is empty.")
+    
+    nearest = numbers[0]
+    diff = abs(nearest - target)
+    
+    for number in numbers:
+        current_diff = abs(number - target)
+        
+        if current_diff < diff:
+            diff = current_diff
+            nearest = number
+    
+    return nearest

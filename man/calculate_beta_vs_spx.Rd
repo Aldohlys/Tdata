@@ -5,7 +5,7 @@
 \title{Calculate beta of a security against SPX using Yahoo Finance data with currency adjustment}
 \usage{
 calculate_beta_vs_spx(
-  ticker,
+  sym,
   benchmark = "^GSPC",
   from = Sys.Date() - 365,
   to = Sys.Date(),
@@ -13,7 +13,7 @@ calculate_beta_vs_spx(
 )
 }
 \arguments{
-\item{ticker}{Character string of the security ticker}
+\item{sym}{Character string of the security ticker}
 
 \item{benchmark}{Character string of the benchmark ticker (default: "^GSPC" for S&P 500)}
 
@@ -27,5 +27,5 @@ calculate_beta_vs_spx(
 A list containing ticker, benchmark, period, beta value, and number of data points
 }
 \description{
-Calculate beta of a security against SPX using Yahoo Finance data with currency adjustment
+This function may be called even if ticker does not exist in DB
 }

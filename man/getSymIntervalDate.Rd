@@ -21,7 +21,7 @@ This function gets from Yahoo service all values (Open, High, Low, Close, Volume
 for one of a vector of symbols.
 }
 \details{
-It is based upon getYahooDataRobust, based upon quantmod getSymbols function.
+It is based upon getYahooData, based upon quantmod getSymbols function.
 It converts IBKR-style tickers into Yahoo-style tickers first, by looking up into Tickers table.
 If not found in Tickers table, then just returns what has been given in \code{sym} argument.
 }
