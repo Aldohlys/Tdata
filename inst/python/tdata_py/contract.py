@@ -109,7 +109,8 @@ def getValue(list_sym, reqType=2, ib=None, close=True, silent=True):
             
             # Request tickers for the contracts
             tickers = ib.reqTickers(*contracts)
-            print("\nRetrieve all contracts...")
+            print("\nRetrieve IBKR market price for ", list_sym, " contracts...")
+            
             # Get price data based on close parameter
             if close:
                 values = [ticker.close for ticker in tickers]

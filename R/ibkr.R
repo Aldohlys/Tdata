@@ -49,10 +49,10 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE, verbose = FALSE, numcore
     if (nrow(tickers != 0)) {
 
       #tickers_30d_iv <- get30dIV(tickers)
-      message("Get 180d IV data...")
+      message("Build IV180 from near/next option chains IVs...")
       tickers_180d_iv <- get180dIV(tickers)
 
-      message("Get vol historical data...")
+      message("Get IV30 and RV30 through IBKR historical data...")
       vol_metrics <- getVolMetrics(tickers$Name)
       ### Keep only 3 significant digits
       tickers_vol_metrics <- dplyr::mutate(vol_metrics, dplyr::across(tail(names(vol_metrics), 10), ~signif(.x, 3)))
