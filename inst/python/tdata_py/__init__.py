@@ -82,7 +82,7 @@ except ImportError as e:
 # Import and expose dividend functions
 try:
     from .dividend_utils import (
-        getTTMDividend  
+        getNTMDividend  
     )
 except ImportError as e:
     print(f"Error importing dividend_utils: {e}")

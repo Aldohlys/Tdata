@@ -10,8 +10,10 @@ getDividendYield(tickers, verbose = FALSE)
 \item{tickers}{data frame of tickers}
 }
 \value{
-a list of double, -1 for tickers where no value could be computed, even with Yahoo
+a vector of double, including -1 for tickers where no value could be computed, even with Yahoo, and
+0 for dividends non paying securities like FUT, TBILL, CASH,...
 }
 \description{
 Returns dividend yield for one or a vector of symbols, looking at IBKR or Yahoo through internal getSingleDivYield function.
+Dividend yield is expressed in percent terms, not in decimal terms.
 }

@@ -7,13 +7,14 @@
 updateTicker(name)
 }
 \arguments{
-\item{name}{IBKR security name s}
+\item{name}{one or a vector of IBKR security names}
 }
 \value{
-number of records updated, i.e. 1 (normal case) or 0 (no line updated, error case)
+number of records updated, i.e. length(name) (normal case) or less (partial or no update, error case)
 }
 \description{
-This function is used by scanner functions to update one ticker in DB
+This function allows to update one or a vector of tickers in DB, looking at dividend yields (for STK and IND type of securities)
+and at beta computations for STK, CASH and IND type of securities.
 }
 \examples{
 \dontrun{

@@ -13,5 +13,6 @@ getLastDivYield(names)
 a vector of double, or NA if any missing ticker in DB or if names is not of character type
 }
 \description{
-Looks up at DB and returns dividend yield for one or a vector of symbols
+Looks up at DB and returns dividend yield for one or a vector of symbols.
+It is expressed in decimal terms - i.e. divided by 100 after retrieved from DB
 }
