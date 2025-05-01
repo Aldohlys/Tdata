@@ -370,8 +370,16 @@ getIV_DTE <- function(ticker, DTE=30){
 
     ### Look at case where target date is smaller than the first
     if (target_date < as.integer(expdates_list[1])) {
+      Tbasics::display_message(paste0("getIV_DTE: target date smaller than first date for ", sym))
       near_expiry <- expdates_list[1]
       next_expiry <- expdates_list[2]
+    }
+
+    ## Look at case where target date is greater than last date
+    else if (target_date > as.integer(expdates_list[length(expdates_list)])) {
+      Tbasics::display_message(paste0("getIV_DTE: target date greater than last date for ", sym))
+      near_expiry <- expdates_list[length(expdates_list)-1]
+      next_expiry <- expdates_list[length(expdates_list)]
     }
 
     ### Standard case where target date is within the expdates_list
