@@ -1,7 +1,5 @@
 # .onLoad <- function(libname, pkgname) {
-#   ### system.file is a devtools shim that works both during package development
-#   ### and also once package is installed by end user
-#   ### in both cases it will provide the actual path
+
 #
 #   ### This is where to find Python by default
 #   # First ensure we're using the conda environment
@@ -10,6 +8,26 @@
 #   reticulate::py_run_file(system.file("python/getContractValue.py", package="Tdata"))
 #    ## suppressMessages(.GlobalEnv$mydb <- pool::dbPool(drv = RSQLite::SQLite(),dbname = config::get("DB")))
 # }
+
+
+# Ajouter le chemin Python uniquement s'il n'est pas déjà présent dans sys.path
+add_python_path_if_needed <- function(python_dir) {
+  # Normaliser le chemin (convertir les backslashes en forward slashes)
+  python_dir <- gsub("\\\\", "/", python_dir)
+
+  # Vérifier si le chemin est déjà dans sys.path
+  path_exists <- reticulate::py_eval(sprintf("'%s' in sys.path", python_dir))
+
+  if (!path_exists) {
+    # Ajouter le chemin à sys.path car il n'existe pas encore
+    reticulate::py_run_string(sprintf("import sys; sys.path.append('%s')", python_dir))
+    message("Added Python path: ", python_dir)
+    return(TRUE)
+  } else {
+    message("Python path already exists: ", python_dir)
+    return(FALSE)
+  }
+}
 
 .onLoad <- function(libname, pkgname) {
   tryCatch({
@@ -46,35 +64,16 @@
     }
 
     # Find Python directory
+    ### system.file is a devtools shim that works both during package development
+    ### and also once package is installed by end user
+    ### in both cases it will provide the actual path
     python_dir <- system.file("python", package = pkgname)
     if (!dir.exists(python_dir)) {
       stop("Python directory not found: ", python_dir)
     }
 
-    # # Verify tdata_py subdirectory exists
-    # tdata_py_dir <- file.path(python_dir, "tdata_py")
-    # if (!dir.exists(tdata_py_dir)) {
-    #   stop("tdata_py directory not found: ", tdata_py_dir)
-    # }
-    #
-    # # Verify __init__.py exists with correct name
-    # init_py_path <- file.path(tdata_py_dir, "__init__.py")
-    # if (!file.exists(init_py_path)) {
-    #   warning("__init__.py file not found in tdata_py directory. Check for incorrect filenames like *init*.py")
-    #
-    #   # Try to find and rename *init*.py if it exists
-    #   potential_init <- list.files(tdata_py_dir, pattern = "init", full.names = TRUE)
-    #   if (length(potential_init) > 0) {
-    #     message("Found potential init file: ", potential_init[1])
-    #     message("Trying to copy to __init__.py")
-    #     file.copy(potential_init[1], init_py_path)
-    #   } else {
-    #     stop("No init file found in tdata_py directory")
-    #   }
-    # }
-
-    # Add python dir to Python path so we can import tdata_py
-    reticulate::py_run_string(sprintf("import sys; sys.path.append('%s')", python_dir))
+    # If necessary add python dir to Python path so we can import tdata_py
+    add_python_path_if_needed(python_dir)
 
     # Force reload modules
     reticulate::py_run_string('
@@ -97,6 +96,11 @@ for module in modules_to_reload:
 
     # Assign to package environment
     assign("tdata_py", tdata_py, envir = parent.env(environment()))
+
+    # Initialiser le package avec le logging par défaut
+    # Configurer le logging
+    tdata_setup_logger("WARN", daily_log = TRUE, control_ibinsync = TRUE, ibinsync_level = "ERROR")
+    tdata_log_info("Tdata package loaded")
 
   }, error = function(e) {
     warning(sprintf("\nFailed to initialize Python environment: %s", e$message))

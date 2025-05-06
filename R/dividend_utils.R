@@ -4,12 +4,18 @@
 ## It returns -1 in case of errors
 getSingleDivYield <- function(type="STK", name=NA, yahoo_name=NA, currency="USD", exchange="SMART") {
 
+  tdata_log_info("getSingleDivYield started")
+
   ### test first that correct arguments were given, if not returns -1 - name is mandatory to retrieve a price
-  if ((length(type) != 1) | (length(name) != 1)| (length(yahoo_name) != 1) | is.na(name)) return (-1)
+  if ((length(type) != 1) | (length(name) != 1)| (length(yahoo_name) != 1) | is.na(name)) {
+    tdata_log_info("Error in arguments")
+    return (-1)
+  }
   price_data <- getStockPrice(name)
+  tdata_log_info("Price data", list(price_data=price_data))
 
   if (is.null(price_data) || is.na(price_data$price) || price_data$price <= 0) {
-    Tbasics::display_message(paste("Invalid price for", name, "- got:", price_data$price))
+    tdata_log_error("Invalid price - returns -1", list(name=name))
     return(-1)
   }
 
@@ -27,27 +33,35 @@ getSingleDivYield <- function(type="STK", name=NA, yahoo_name=NA, currency="USD"
           sum_div <- sum(quantmod::getDividends(yahoo_name, from = Sys.Date() - 365, to = Sys.Date()))
         }, error = function(e) {
           # This will execute instead
-          Tbasics::display_message(paste("Error with Yahoo in getSingleDivYield for", name, ":", e$message))
+          tdata_log_error("Error with Yahoo in getSingleDivYield for", list(name=name))
+          tdata_log_exception(e, "Message d'erreur - returns -1")
           return(-1)
         })
       }
 
       #### Data is rounded to 2 decimals - x.yz% expected
-      return(round(100*sum_div / price_data$price, 2))
+      result <- round(100*sum_div / price_data$price, 2)
+      tdata_log_info("dividend yield", list(type=type, result=result))
+      return(result)
   }
 
   #### For index options such as ESTX50, SPX, RUT, etc...
   else if (type == "IND") {
-    return(switch(name,
-                  ESTX50 = 2.86,
-                  SPX=,
-                  XSP= round(7.1655/5.2641, 2), ### Using SPY ETF as approximation
-                  -1 ### Unknown index
-    ))
+    result <- switch(name,
+                     ESTX50 = 2.86,
+                     SPX=,
+                     XSP= round(7.1655/5.2641, 2), ### Using SPY ETF as approximation
+                     -1 ### Unknown index
+    )
+    tdata_log_info("dividend yield", list(type=type, result=result))
+    return(result)
   }
 
   ### Other cases like TBILL, FUT, CASH,... - normally should not be sent
-  else return(0)
+  else {
+    tdata_log_info("type different from STK and IND - no dividend", list(type=type))
+    return(0)
+  }
 }
 
 #' getDividendYield
@@ -58,21 +72,27 @@ getSingleDivYield <- function(type="STK", name=NA, yahoo_name=NA, currency="USD"
 #' @return a vector of double, including -1 for tickers where no value could be computed, even with Yahoo, and
 #' 0 for dividends non paying securities like FUT, TBILL, CASH,...
 #' @export
-getDividendYield <- function(tickers, verbose = FALSE) {
-  message("getDividendYield")
+getDividendYield <- function(tickers) {
+  tdata_log_info("getDividendYield started")
 
   ### Test that tickers is of the right type and there should be at least 1 ticker, with Type, Name and YahooName columns
   if (!is.data.frame(tickers) || (!all(c("Type", "Name", "YahooName") %in% names(tickers))) || nrow(tickers) == 0) return (NA)
 
   ##
-  if (verbose) print(tickers$Name)
+  tdata_log_info("Tickers name", list(Type=tickers$Type, Name=tickers$Name, YahooName = tickers$YahooName))
 
-  if (nrow(tickers) == 1) return(getSingleDivYield(type=tickers$Type, name=tickers$Name, yahoo_name=tickers$YahooName,
+  if (nrow(tickers) == 1) {
+    tdata_log_info("Single ticker info", list(type=tickers$Type, name=tickers$Name, yahoo_name=tickers$YahooName,
+    currency=tickers$Currency, exchange=tickers$Exchange))
+    return(getSingleDivYield(type=tickers$Type, name=tickers$Name, yahoo_name=tickers$YahooName,
                                  currency=tickers$Currency, exchange=tickers$Exchange))
+  }
 
   else return(
     # Creates a list of values for each row
     purrr::pmap_dbl(tickers, function(Type, Name, YahooName, Currency, Exchange,...) {
+      tdata_log_info("Individual ticker", list(type=Type, name=Name, yahoo_name=YahooName,
+                                         currency=Currency, exchange=Exchange))
       getSingleDivYield(type=Type, name=Name, yahoo_name=YahooName, currency=Currency, exchange=Exchange)
     })
   )

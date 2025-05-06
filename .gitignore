@@ -26,3 +26,7 @@ data.rds
 inst/python/sandbox.py
 
 inst/python/tdata_py/__pycache__/
+
+*.log
+
+*.Rd

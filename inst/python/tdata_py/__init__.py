@@ -35,14 +35,18 @@ try:
     )
 except ImportError as e:
     print(f"Error importing IB_connection: {e}")
-    # Provide fallback implementations
-    def safe_ib_connect():
-        print("Warning: Using fallback safe_ib_connect")
-        return False
-        
-    def isIBAvailable():
-        print("Warning: Using fallback isIBAvailable")
-        return False
+
+try:
+    from fin_logger import(
+      setup_logging,
+      set_all_loggers_level,
+      configure_ibinsync_logging,
+      get_logger,
+      log_with_context,
+      log_execution_time
+    )
+except ImportError as e:
+    print(f"Error importing fin_logger: {e}")
 
 # Import and expose contract functions  
 try:

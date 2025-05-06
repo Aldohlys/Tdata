@@ -2,13 +2,38 @@ import datetime
 import xml.etree.ElementTree as ET
 import calendar
 import math
+import time
 from ib_insync import Contract
 
 # Import from other modules
 from .core import CONFIG, ticker_db
 from .IB_connection import safe_ib_connect
+from fin_logger import get_logger, log_execution_time
 
+# Créez un logger pour ce module
+logger = get_logger("tdata_py.dividend")
+
+@log_execution_time
 def getNTMDividend(symbol, secType=None, currency=None, exchange = None):
+    """
+    Get the next 12 month dividend for a symbol
+    
+    Args:
+        symbol: Stock symbol
+        secType: Security type
+        currency: Currency code
+        exchange: Exchange name
+        
+    Returns:
+        float: Dividend value or -1 if not available
+    """
+    # Log function call
+    logger.info("Getting dividend data", {
+        "symbol": symbol,
+        "secType": secType,
+        "currency": currency,
+        "exchange": exchange
+    })
     
     ticker_info = ticker_db.get_ticker_info(symbol)
     
@@ -33,13 +58,21 @@ def getNTMDividend(symbol, secType=None, currency=None, exchange = None):
     
     # Return -1 if connection failed
     if not ib.isConnected():
+        logger.error("Failed to connect to Interactive Brokers")
         return -1
   
     d = get_NTM_dividend(ib, contract)
     
     ib.disconnect()
+    
+    logger.info("Dividend data retrieved", {
+        "symbol": symbol,
+        "dividend": d
+    })
+    
     return d
 
+@log_execution_time
 def get_NTM_dividend(ib, contract):
     """
     Get the annual dividend for a given security, and try a guess for index options
@@ -51,6 +84,8 @@ def get_NTM_dividend(ib, contract):
     Returns:
         float: Next or Past 12 months dividend per share
     """
+    symbol = contract.symbol
+    logger.debug("Requesting dividend data", {"symbol": symbol})
     
     try:
         ib.qualifyContracts(contract)
@@ -62,30 +97,36 @@ def get_NTM_dividend(ib, contract):
         return ticker.dividends.next12Months
         
     except Exception as e:
-        print(f"Error getting next 12 months dividend from ticker: {e}")
+        logger.warn("Error getting next 12 months dividend", {"error": str(e)})
         
         try:
-            return ticker.dividends.past12Months
+            dividend = ticker.dividends.past12Months
+            logger.debug("Using past 12 months dividend", {"dividend": dividend})
+            return dividend
           
         except Exception as e:
-            print(f"Error getting past 12 months dividend from ticker: {e}")
+            logger.warn("Error getting past 12 months dividend", {"error": str(e)})
 
-            # Extract symbol from the contract
-            symbol = contract.symbol
-    
-            # Fallback: use typical values for common symbols
+            # Fallback logic: use typical values for common symbols
+            logger.debug("Using fallback dividend values for symbol", {"symbol": symbol})
+            
             if symbol in ['ESTX50', 'SX5E']:
+                logger.info("Using fallback dividend for ESTX50", {"dividend": 142})
                 return 142  # ESTX50: ~3.0% = 2.86% as of 20.04.2025
             elif symbol in ['SPY']:
-                return 7.1655  # S&P 500 ETFs: ~1.5% Quarterly dividend: 1.6955+1.9655+1.7455+1.759=7.1655
+                logger.info("Using fallback dividend for SPY", {"dividend": 7.1655})
+                return 7.1655  # S&P 500 ETFs: ~1.5% Quarterly dividend
             elif symbol in ['QQQ']:
+                logger.info("Using fallback dividend for QQQ", {"dividend": 1.63})
                 return 1.63  # Nasdaq ETF: ~0.5%
             elif symbol in ['IWM']:
+                logger.info("Using fallback dividend for IWM", {"dividend": 0.012})
                 return 0.012  # Russell 2000 ETF: ~1.2%
             elif symbol in ["SLV", "GLD", "USO"]:
+                logger.info("Using zero dividend for commodity ETF", {"symbol": symbol})
                 return 0
             else:
-                return -1   # Don't know answer
-
+                logger.warn("No dividend data available for symbol", {"symbol": symbol})
+                return -1  # Don't know answer
 
 
