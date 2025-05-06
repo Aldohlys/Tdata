@@ -19,13 +19,14 @@ test_that("addTicker returns 0 fi ticker laready exists", {
   expect_true(data == 0)
 })
 
-test_that("addTicker works and returns a record", {
-  data <- addTicker("USO")
-  expect_equal(length(data) , 15)
+test_that("addTicker works and returns 1 record with 16 columns", {
+  data <- addTicker("XOM")
+  expect_equal(nrow(data), 1)
+  expect_equal(ncol(data) , 16)
 })
 
 test_that("removeTicker works", {
-  data <- removeTicker("USO")
+  data <- removeTicker("XOM")
   expect_equal(data , 1)
 })
 

@@ -15,6 +15,9 @@ add_python_path_if_needed <- function(python_dir) {
   # Normaliser le chemin (convertir les backslashes en forward slashes)
   python_dir <- gsub("\\\\", "/", python_dir)
 
+  # Importer sys explicitement avant d'y accéder
+  reticulate::py_run_string("import sys")
+
   # Vérifier si le chemin est déjà dans sys.path
   path_exists <- reticulate::py_eval(sprintf("'%s' in sys.path", python_dir))
 
