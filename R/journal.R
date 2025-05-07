@@ -57,16 +57,17 @@ writeJournalEntry <- function(entry) {
 #' It checks first that close is numeric and change is character. Otherwise it just sends the update request to DB.
 #'@returns number of lines modified, if no error it returns 1. It returns 0 if there is an error
 #'@param entryId, integer - entry key to modify into the Journal
+#'@param sym, string - symbol to be updated
 #'@param close, numeric, equal to last close value for the symbol
 #'@param change, character - percentage change between last day and penultimate day
 #'@param text, string - comment, remark
 #'@export
-modifyJournalEntry <- function(entryId, close, change, text) {
+modifyJournalEntry <- function(entryId, sym, close, change, text) {
   if( (!(is.numeric(close))) | (!(is.character(change))) ) Tbasics::display_error_message("Please provide numerical value for close and percentage for change")
   else {
     conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-    status <- DBI::dbExecute(conn, "UPDATE Journal SET close = ?, change =?, text = ? WHERE entryId = ?;",
-                             params=list(close, change, text, entryId))
+    status <- DBI::dbExecute(conn, "UPDATE Journal SET sym = ?, close = ?, change =?, text = ? WHERE entryId = ?;",
+                             params=list(sym, close, change, text, entryId))
     DBI::dbDisconnect(conn)
     status
   }
