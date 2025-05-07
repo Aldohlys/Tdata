@@ -5,6 +5,10 @@ import re
 import sqlite3
 import pandas as pd
 from ib_insync import *
+from fin_logger import get_logger, log_execution_time
+
+# Créez un logger pour ce module
+logger = get_logger("tdata_py.core")
 
 def find_config_file(filename="config.yml", max_levels=3):
     """
@@ -167,7 +171,7 @@ class TickerDatabase:
             
             # Convert DataFrame to a dictionary for faster lookups
             self.tickers = {row['Name']: row.to_dict() for _, row in df.iterrows()}
-            print(f"Loaded {len(self.tickers)} tickers from database")
+            logger.info(f"Loaded {len(self.tickers)} tickers from database")
         except Exception as e:
             print(f"Error loading tickers: {e}")
             self.tickers = {}

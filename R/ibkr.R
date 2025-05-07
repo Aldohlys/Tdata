@@ -23,14 +23,14 @@
 #'getIBKRMetrics("USO", close=TRUE)
 #'}
 #'@export
-getIBKRMetrics <- function(sym, reqType=2, close=FALSE, verbose = FALSE, numcores = 3) {
+getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
 
   ### This will work even if sym is a vector and not the other IBKR contract components
-  IBKRPrice <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=reqType, close=close, silent=!verbose)
+  IBKRPrice <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=reqType, close=close)
 
   ### Error case do not go further on###
   if (length(IBKRPrice) == 1) {
-    Tbasics::display_message("IBKR data retrieval did not work - either no connection or contract does not exist")
+    tdata_log_warn("IBKR data retrieval did not work - either no connection or contract does not exist")
     return (IBKRPrice)
   }
 
@@ -46,13 +46,13 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE, verbose = FALSE, numcore
 
     ### Retrieve 30days IV for each ticker, each time applicable - -1 or NA if not
     ### Do nothing if no ticker has IV
-    if (nrow(tickers != 0)) {
+    if (nrow(tickers) != 0) {
 
       #tickers_30d_iv <- get30dIV(tickers)
-      message("Build IV180 from near/next option chains IVs...")
+      tdata_log_info("Build IV180 from near/next option chains IVs...")
       tickers_180d_iv <- get180dIV(tickers)
 
-      message("Get IV30 and RV30 through IBKR historical data...")
+      tdata_log_info("Get IV30 and RV30 through IBKR historical data...")
       vol_metrics <- getVolMetrics(tickers$Name)
       ### Keep only 3 significant digits
       tickers_vol_metrics <- dplyr::mutate(vol_metrics, dplyr::across(tail(names(vol_metrics), 10), ~signif(.x, 3)))
@@ -68,17 +68,17 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE, verbose = FALSE, numcore
         DBI::dbDisconnect(myconn)
       },
       error = function(cond) {
-        message(conditionMessage(cond))
+        tdata_log_error("Error while trying to write to DB", cond)
         NA
       },
       warning = function(cond) {
-        message(conditionMessage(cond))
+        tdata_log_warn(conditionMessage(cond))
         # Choose a return value in case of warning
         NULL
       })
       return(StoredIBKRPrice)
     }
-    else message("All IBKR Prices equal to NA (did not get any data from exchange) or IV set to NO")
+    else tdata_log_info("All IBKR Prices equal to NA (did not get any data from exchange) or IV set to NO")
 
   }
 

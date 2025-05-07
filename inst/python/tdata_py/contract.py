@@ -39,9 +39,13 @@ from ib_insync import *
 # Import from other modules
 from .core import CONFIG, ticker_db, validate_contract_params, find_nearest_number
 from .IB_connection import safe_ib_connect
+from fin_logger import get_logger, log_execution_time
 
+# Créez un logger pour ce module
+logger = get_logger("tdata_py.dividend")
 
-def getValue(list_sym, reqType=2, ib=None, close=True, silent=True):
+@log_execution_time
+def getValue(list_sym, reqType=2, ib=None, close=True):
     """
     Get current or close value for one or multiple securities from Interactive Brokers.
     Uses TickerDatabase to automatically determine security details.
@@ -74,7 +78,13 @@ def getValue(list_sym, reqType=2, ib=None, close=True, silent=True):
         secType = ticker_info['Type']
         currency = ticker_info['Currency']
         exchange = ticker_info['Exchange']
-
+            # Log function call
+        logger.info("getValue data", {
+            "symbol": sym,
+            "secType": secType,
+            "currency": currency,
+            "exchange": exchange
+        })
         ## For futures only sym used as local symbol
         if (secType == "FUT"):
           contract = Contract(secType=secType, localSymbol = sym, currency = currency, exchange = exchange)
@@ -89,12 +99,12 @@ def getValue(list_sym, reqType=2, ib=None, close=True, silent=True):
         contracts.append(contract)
     
     ### Print info
-    if (not silent): print("\nContracts: ", contracts)
+    
     
     # Connect to Interactive Brokers if ib has not been given as argument
     ## If ib has been given as argument - do not disconnect it
     disconnect = True
-    if (ib is None): ib = safe_ib_connect(silent=silent)
+    if (ib is None): ib = safe_ib_connect()
     else: disconnect= False
     
     # Return 0 if connection failed
@@ -104,12 +114,15 @@ def getValue(list_sym, reqType=2, ib=None, close=True, silent=True):
     try:
         # Try to qualify contracts
         if ib.qualifyContracts(*contracts):
+            
+            logger.info("Contracts: ", {"Contracts": [contract.conId for contract in contracts]})
+            
             # Set market data type based on parameter
             ib.reqMarketDataType(int(reqType))
             
             # Request tickers for the contracts
             tickers = ib.reqTickers(*contracts)
-            print("\nRetrieve IBKR market price for ", list_sym, " contracts...")
+            logger.info("Retrieve IBKR market price for all contracts")
             
             # Get price data based on close parameter
             if close:
@@ -136,8 +149,7 @@ def getValue(list_sym, reqType=2, ib=None, close=True, silent=True):
             return -1
     except Exception as e:
         # Handle any unexpected errors
-        import logging
-        logging.error(f"Error getting values: {str(e)}")
+        logger.error("Error getting values:", e)
         return -1
     finally:
         # Ensure connection is always closed - except if ib was given as parameter

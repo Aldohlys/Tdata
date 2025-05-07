@@ -24,15 +24,19 @@ add_python_path_if_needed <- function(python_dir) {
   if (!path_exists) {
     # Ajouter le chemin à sys.path car il n'existe pas encore
     reticulate::py_run_string(sprintf("import sys; sys.path.append('%s')", python_dir))
-    message("Added Python path: ", python_dir)
+    tdata_log_info(paste0("Added Python path: ", python_dir))
     return(TRUE)
   } else {
-    message("Python path already exists: ", python_dir)
+    tdata_log_info(paste0("Python path already exists: ", python_dir))
     return(FALSE)
   }
 }
 
 .onLoad <- function(libname, pkgname) {
+  # Initialiser le package avec le logging par défaut
+  # Configurer le logging
+  tdata_setup_logger("DEBUG", daily_log = TRUE, control_ibinsync = TRUE, ibinsync_level = "ERROR")
+
   tryCatch({
     # Set RETICULATE_PYTHON environment variable directly if you know the path
     if (Sys.getenv("RETICULATE_PYTHON") == "") {
@@ -99,14 +103,10 @@ for module in modules_to_reload:
 
     # Assign to package environment
     assign("tdata_py", tdata_py, envir = parent.env(environment()))
-
-    # Initialiser le package avec le logging par défaut
-    # Configurer le logging
-    tdata_setup_logger("WARN", daily_log = TRUE, control_ibinsync = TRUE, ibinsync_level = "ERROR")
     tdata_log_info("Tdata package loaded")
 
   }, error = function(e) {
-    warning(sprintf("\nFailed to initialize Python environment: %s", e$message))
+    tdata_log_error("Failed to initialize Python environment", e)
     reticulate::py_last_error()
   })
 }
