@@ -86,7 +86,12 @@ def retrieveAccountHistory(ib, days_back=180):
     return pd.DataFrame()  # Return empty DataFrame if no data
 
 def retrieveAccountData(ib):
+
     df = util.df(ib.accountSummary())
+    
+    # Add a short sleep
+    ib.sleep(1)
+
     dt = datetime.date.today()
     
     #### This script looks only into BASE currency stats - it does not look for currency specifics

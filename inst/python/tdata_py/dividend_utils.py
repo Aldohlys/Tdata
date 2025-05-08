@@ -86,6 +86,7 @@ def get_NTM_dividend(ib, contract):
     """
     symbol = contract.symbol
     logger.debug("Requesting dividend data", {"symbol": symbol})
+    dividend = 0
     
     try:
         ib.qualifyContracts(contract)
@@ -93,8 +94,7 @@ def get_NTM_dividend(ib, contract):
         # Try to get dividend data from ticker: expected value for 12 coming months
         ticker = ib.reqMktData(contract, '456')
         ib.sleep(1)
-        
-        return ticker.dividends.next12Months
+        dividend = ticker.dividends.next12Months
         
     except Exception as e:
         logger.warn("Error getting next 12 months dividend", {"error": str(e)})
@@ -102,8 +102,7 @@ def get_NTM_dividend(ib, contract):
         try:
             dividend = ticker.dividends.past12Months
             logger.debug("Using past 12 months dividend", {"dividend": dividend})
-            return dividend
-          
+            
         except Exception as e:
             logger.warn("Error getting past 12 months dividend", {"error": str(e)})
 
@@ -112,21 +111,23 @@ def get_NTM_dividend(ib, contract):
             
             if symbol in ['ESTX50', 'SX5E']:
                 logger.info("Using fallback dividend for ESTX50", {"dividend": 142})
-                return 142  # ESTX50: ~3.0% = 2.86% as of 20.04.2025
+                dividend = 142  # ESTX50: ~3.0% = 2.86% as of 20.04.2025
             elif symbol in ['SPY']:
                 logger.info("Using fallback dividend for SPY", {"dividend": 7.1655})
-                return 7.1655  # S&P 500 ETFs: ~1.5% Quarterly dividend
+                dividend =  7.1655  # S&P 500 ETFs: ~1.5% Quarterly dividend
             elif symbol in ['QQQ']:
                 logger.info("Using fallback dividend for QQQ", {"dividend": 1.63})
-                return 1.63  # Nasdaq ETF: ~0.5%
+                dividend =  1.63  # Nasdaq ETF: ~0.5%
             elif symbol in ['IWM']:
                 logger.info("Using fallback dividend for IWM", {"dividend": 0.012})
-                return 0.012  # Russell 2000 ETF: ~1.2%
+                dividend =  0.012  # Russell 2000 ETF: ~1.2%
             elif symbol in ["SLV", "GLD", "USO"]:
                 logger.info("Using zero dividend for commodity ETF", {"symbol": symbol})
-                return 0
+                dividend =  0
             else:
                 logger.warn("No dividend data available for symbol", {"symbol": symbol})
-                return -1  # Don't know answer
+                dividend =  -1  # Don't know answer
 
-
+    finally:
+        ib.cancelMktData(contract)  # Cancel the subscription
+        return dividend

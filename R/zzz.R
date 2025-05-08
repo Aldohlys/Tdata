@@ -35,7 +35,7 @@ add_python_path_if_needed <- function(python_dir) {
 .onLoad <- function(libname, pkgname) {
   # Initialiser le package avec le logging par défaut
   # Configurer le logging
-  tdata_setup_logger("INFO", daily_log = TRUE, control_ibinsync = TRUE, ibinsync_level = "ERROR")
+  tdata_setup_logger("ERROR", daily_log = TRUE, control_ibinsync = TRUE, ibinsync_level = "ERROR")
 
   tryCatch({
     # Set RETICULATE_PYTHON environment variable directly if you know the path
