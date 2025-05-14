@@ -7,6 +7,7 @@ options data, and account information from Interactive Brokers.
 
 import sys
 import os
+import logging
 
 # For debugging - print the files in the current directory
 # print(f"tdata_py package directory: {os.path.dirname(os.path.abspath(__file__))}")
@@ -38,13 +39,21 @@ except ImportError as e:
 
 try:
     from fin_logger import(
+      setup_logging_from_config,
+      get_logger,
       setup_logging,
       set_all_loggers_level,
       configure_ibinsync_logging,
-      get_logger,
       log_with_context,
       log_execution_time
     )
+    
+    setup_logging_from_config()
+
+    # Get logger for the package
+    package_logger = get_logger("tdata_py")
+    package_logger.info("tdata_py package initialized")
+    
 except ImportError as e:
     print(f"Error importing fin_logger: {e}")
 

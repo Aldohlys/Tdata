@@ -316,7 +316,6 @@ getLastTickerData = function(ticker) {
 #'This function is vectorized, if no price ticker exists in DB it will then return an empty line for the corresponding ticker.
 #'@param sym string - IBKR style of ticker.
 #'@param close Boolean TRUE/FALSE if true then retrieve last close price else retrieve last stored price.
-#'@param verbose boolean FALSE by default. if true gives some more details
 #'@returns a value
 #'@examples
 #'\dontrun{
@@ -325,8 +324,8 @@ getLastTickerData = function(ticker) {
 #'getStockPrice(sym="USO",close=TRUE)
 #'}
 #'@export
-getStockPrice = function(sym, close = FALSE, verbose = FALSE) {
-  if (verbose) message("getStockPrice")
+getStockPrice = function(sym, close = FALSE) {
+  t_log_info("getStockPrice starts...")
 
   ### Initialize line with data from Yahoo, dated yesterdaym close of business
   line <- data.frame(
@@ -336,22 +335,22 @@ getStockPrice = function(sym, close = FALSE, verbose = FALSE) {
   )
 
   if (close) {
-    if (verbose) message("getLastAdjustedPrice: ", line$price)
+    t_log_info("getLastAdjustedPrice", list(price=line$price))
   }
 
   ### Just retrieve last price from DB but no update from DB
   else {
-    mydb <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
+    conn <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
+    on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
     ### Retrieve last price stored in DB
-    line_db <- DBI::dbGetQuery(mydb, "SELECT datetime, sym, price FROM Prices
+    line_db <- DBI::dbGetQuery(conn, "SELECT datetime, sym, price FROM Prices
                           WHERE sym = ? ORDER BY ROWID DESC LIMIT 1;", params = list(sym))
-    DBI::dbDisconnect(mydb)
 
     if (nrow(line_db) == 0) message("Stock price: no data found in DB, using Yahoo Data instead")
     else {
       line <- line_db
-      if (verbose) message("From DB: ", line$price)
+      t_log_info("From DB: ", list(price=line$price))
     }
   }
 
@@ -361,6 +360,7 @@ getStockPrice = function(sym, close = FALSE, verbose = FALSE) {
 #'@export
 getStoredMetrics = function(name) {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
   # Check if name is a vector with multiple elements
   if (length(name) > 1) {

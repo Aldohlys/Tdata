@@ -194,7 +194,7 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
         tradingClass = ticker_info.get('TradingClass', sym)
     
     # Use safe_ib_connect instead of direct connection
-    ib = safe_ib_connect(silent=silent)
+    ib = safe_ib_connect()
 
     # If connection not available return None
     if not ib.isConnected():
@@ -336,7 +336,7 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, silent=True):
         exchangeSec = ticker_info.get('Exchange', 'SMART')
     
     chains_file = CONFIG.get("chains")
-    
+    print(f"Get chains file: {chains_file}")
     try:
         with open(chains_file, "r") as fp:
             stored_chains = json.load(fp)
@@ -357,7 +357,7 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, silent=True):
   
     # If not in cache or dates expired, fetch from IB
     # Use safe_ib_connect instead of direct connection
-    ib = safe_ib_connect(silent=silent)
+    ib = safe_ib_connect()
 
     # If connection not available return None
     if not ib.isConnected(): 
@@ -522,7 +522,7 @@ def getStrikesfromExpDate(sym, secType=None, currency=None,
   
     # If not in cache, fetch from IB
     # Use safe_ib_connect instead of direct connection
-    ib = safe_ib_connect(silent=silent)
+    ib = safe_ib_connect()
 
     # If connection not available return None
     if not ib.isConnected():

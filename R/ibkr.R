@@ -1,3 +1,26 @@
+
+##############################
+#' isIBAvailable
+#'
+#' This function tries to open a connection to TWS API on 7496 port. If successful, it returns TRUE and disconnect.
+#'  Otherwise returns FALSE
+#'
+#'
+#'@returns TRUE or FALSE
+#'@export
+#'@examples
+#'\dontrun{
+#'isIBAvailable()
+#'}
+isIBAvailable <- function() {
+  ### Open a connection and then close it with IBKR TWS API
+  is_api_available <- tdata_py$isIBAvailable()
+
+  if (is_api_available) t_log_info("Getting IBKR TWS API Access", list(IBKR_API=is_api_available))
+  else t_log_info("No IBKR TWS API Access", list(IBKR_API=is_api_available))
+}
+
+
 #### Used by Gonet.R script and RAnalysis
 ###
 #'getIBKRMetrics
@@ -12,7 +35,6 @@
 #'@param sym string or vector of strings- IBKR style of ticker, if unknown then function returns -1
 #'@param reqType integer - should be either 2 or 4, default is 2
 #'@param close Boolean TRUE/FALSE, default is FALSE. if TRUE then retrieve last close price from IBKR, if FALSE then retrieve market price from IBKR
-#'@param verbose Boolean TRUE/FALSE, default is FALSE. if TRUE then print result of retrieved data in IBKR
 #'@returns a data frame with the following fields: \code{datetime} (formatted date and time), \code{sym} (ticker name),
 #' \code{price} (price as double),  \code{iv180} IV for 6 months expiration, \code{iv30} IV for 1 month expiration,
 #' \code{ivp} IV percentile, \code{rv30}, realized volatility for the last month,  \code{rvp} realized volatility percentile.
@@ -40,6 +62,7 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
   if (!close) {
     ### Remove all empty prices if any, print resulting data
     StoredIBKRPrice <- IBKRPrice[!is.nan(IBKRPrice$price),]
+    tdata_log_info(StoredIBKRPrice)
 
     ### Retrieve tickers returned by IBKRPrice and filter out non relevant tickers
     tickers <- getTickers(StoredIBKRPrice$sym) |> dplyr::filter(IV == "YES")
@@ -64,8 +87,8 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
 
       tryCatch({
         myconn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+        on.exit(DBI::dbDisconnect(myconn), add=TRUE)
         DBI::dbAppendTable(myconn, "Prices", StoredIBKRPrice)
-        DBI::dbDisconnect(myconn)
       },
       error = function(cond) {
         tdata_log_error("Error while trying to write to DB", cond)
@@ -147,10 +170,10 @@ getSliceAllIBKRMetrics <- function(first=1, last=0) {
   message(paste0("\n#####  Retrieving price data from ticker n°",first," to ticker n°",last," ..."))
   tickers = tickers[first:last,]
 
-  message(paste0("Unfiltered: ",paste(tickers$Name, collapse=" ")))
+  message(paste0("\nUnfiltered: ",paste(tickers$Name, collapse=" ")))
   ### Do not load any security related to exchange like LSEETF or EBS
   tickers <- dplyr::filter(tickers, Exchange == "SMART" | Exchange == "EUREX" | Exchange == "CBOE")
-  message(paste0("Filtered: ",paste(tickers$Name, collapse=" ")))
+  message(paste0("\nFiltered: ",paste(tickers$Name, collapse=" ")))
 
   ### Store in DB all IBKR prices from tickers$Name, return final result
 

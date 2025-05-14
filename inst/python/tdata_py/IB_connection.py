@@ -2,6 +2,10 @@
 import socket
 import random
 from ib_insync import *
+from fin_logger import get_logger
+
+# Get logger for this module
+logger = get_logger()
 
 def is_port_in_use(port):
     """
@@ -17,7 +21,7 @@ def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('localhost', port)) == 0
 
-def getPort(silent=True):
+def getPort():
     """
     Generate a random available port for IB connection.
     Keeps trying until it finds an available port.
@@ -31,14 +35,14 @@ def getPort(silent=True):
     for _ in range(max_attempts):
         port_id = random.randint(1, 9990)
         if not is_port_in_use(port_id):
-            if (not silent): print("Port id:", port_id)
+            logger.info("Port selected successfully", context = {"Port id": port_id})
             return port_id
-        print(f"Port {port_id} is in use, trying another port...")
+        logger.info(f"Port {port_id} is in use, trying another port...")
     
     # If we've tried max_attempts times and found no open port
     raise RuntimeError(f"Could not find an available port after {max_attempts} attempts")
 
-def safe_ib_connect(host='127.0.0.1', port=7496, client_id=None, readonly=False, silent=True):
+def safe_ib_connect(host='127.0.0.1', port=7496, client_id=None, readonly=False):
     """
     Safely connect to Interactive Brokers with proper error handling.
     
@@ -47,44 +51,53 @@ def safe_ib_connect(host='127.0.0.1', port=7496, client_id=None, readonly=False,
         port (int): IB port number
         client_id (int): Client ID for the connection, if None a random port is used
         readonly (bool): Whether to use readonly mode
-        silent (bool): Whether to suppress connection error messages
-        
+
     Returns:
         IB instance - The IB instance
     """
     if client_id is None:
-        client_id = getPort(silent)
+        client_id = getPort()
         
     ib = IB()
+    
     try:
         ib.connect(host, port, clientId=client_id, readonly=readonly)
-    except Exception as e:
-        if not silent:
-            print(f"IB connection error: {str(e)}")
+        logger.info(f"Successfully connected to IB at {host}:{port}", context={
+            "client_id": client_id,
+            "readonly": readonly
+        })
+    except Exception:  # Don't need 'as e' since exception captures it
+        logger.exception("IB connection failed", context={
+            "host": host,
+            "port": port,
+            "client_id": client_id
+        })
+    finally:
+        return ib
 
-    return ib
-
-def isIBAvailable(silent=True):
+def isIBAvailable():
     """
     Check if Interactive Brokers TWS/Gateway is available by attempting a connection.
-    
-    Args:
-        silent (bool): Whether to suppress connection error messages
     
     Returns:
         bool: True if connection successful, False otherwise
     """
     # Use safe_ib_connect instead of direct connection
-    ib= safe_ib_connect(silent=silent)
+    ib= safe_ib_connect()
 
     # Check if connection was successful before proceeding
-
-    # If connection not available return None
-    if not ib.isConnected(): 
-        if not silent:
-            print("Interactive Brokers is not available")
+    if not ib.isConnected():
+        logger.info("IB connection not available", context={
+            "function": "isIBAvailable",
+            "status": "disconnected"
+        })
         return False
     
+    # Connection successful
+    logger.info("IB connection available", context={
+        "function": "isIBAvailable", 
+        "status": "connected"
+    })
     ib.disconnect()
     ib.sleep(0)
     return True

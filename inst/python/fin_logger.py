@@ -10,8 +10,10 @@ import sys
 import os
 import time
 import inspect
-from datetime import datetime
 import json
+from datetime import datetime
+from config_reader import get_logging_config
+
 
 # Implémentation personnalisée de wraps
 def wraps(wrapped):
@@ -38,11 +40,71 @@ def wraps(wrapped):
 # Configuration globale
 _GLOBAL_CONFIG = {
     "initialized": False,
-    "default_level": "INFO",
+    "default_level": "ERROR",
     "loggers": {},
 }
 
-def setup_logging(level="INFO", log_file=None, add_timestamp=True, 
+def setup_logging_from_config(config_path=None, **kwargs):
+    """
+    Setup logging using configuration from config.yml
+    
+    Args:
+        config_path: Path to config.yml file
+        **kwargs: Additional arguments to override config values
+    
+    Returns:
+        logging.Logger: Configured logger
+    """
+    # Get configuration
+    config = get_logging_config()
+    
+    if config is None:
+        # Fallback to defaults if config not found
+        config = {
+            'level': 'INFO',
+            'control_ibinsync': False,
+            'ibinsync_level': 'ERROR'
+        }
+    
+    # Override with any provided kwargs
+    config.update(kwargs)
+
+    # Debug: Print what we got from config
+    print(f"[PY] Logging config loaded: {config}")
+
+    # Determine log file path
+    log_file = None
+    if config.get('log_dir') and config.get('daily_log'):
+        # Create daily log file
+        log_dir = config['log_dir']
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+        
+        # Create filename with date
+        today = datetime.now().strftime('%Y%m%d')
+        log_file = os.path.join(log_dir, f't_system_{today}.log')
+        
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+    
+    # Setup logging
+    logger = setup_logging(
+        level=config.get('level', 'INFO'),
+        log_file=log_file,
+        add_timestamp=True,
+        reset_handlers=True
+    )
+    
+    # Configure ib_insync logging if requested
+    if config.get('control_ibinsync', False):
+        print(f"[PY] Configuring ib_insync logging to level: {config.get('ibinsync_level', 'ERROR')}")
+        configure_ibinsync_logging(config.get('ibinsync_level', 'ERROR'))
+    else:
+        print("[PY] ib_insync control not enabled in config")
+    
+    return logger
+
+def setup_logging(level="ERROR", log_file=None, add_timestamp=True, 
                   reset_handlers=True, propagate=False, fmt=None):
     """
     Configure le système de logging Python
@@ -148,14 +210,14 @@ def set_all_loggers_level(level):
     
     return True
 
-def configure_ibinsync_logging(level="INFO"):
+def configure_ibinsync_logging(level="ERROR"):
     """
     Configure spécifiquement le niveau de log des modules ib_insync
     
     Args:
         level: Niveau de log (TRACE, DEBUG, INFO, WARN, ERROR, FATAL)
     """
-    # Convertir niveau string en niveau Python
+    # Convert level string to Python level
     level_map = {
         "TRACE": logging.DEBUG,
         "DEBUG": logging.DEBUG,
@@ -167,7 +229,21 @@ def configure_ibinsync_logging(level="INFO"):
         "CRITICAL": logging.CRITICAL
     }
     
-    py_level = level_map.get(level.upper(), logging.INFO)
+    py_level = level_map.get(level.upper(), logging.ERROR)
+    
+    # Configure all ib_insync loggers comprehensively
+    ib_modules = [
+        'ib_insync',
+        'ib_insync.wrapper',
+        'ib_insync.client',  
+        'ib_insync.ib',
+        'ib_insync.contract',
+        'ib_insync.order',
+        'ib_insync.util'
+    ]
+    
+    for module in ib_modules:
+        logging.getLogger(module).setLevel(py_level)
     
     # Configurer tous les loggers ib_insync
     for logger_name in logging.root.manager.loggerDict:

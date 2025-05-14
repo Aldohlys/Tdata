@@ -54,7 +54,7 @@ def getNTMDividend(symbol, secType=None, currency=None, exchange = None):
     )
     
     # Connect to Interactive Brokers
-    ib = safe_ib_connect(silent=True)
+    ib = safe_ib_connect()
     
     # Return -1 if connection failed
     if not ib.isConnected():

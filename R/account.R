@@ -370,23 +370,7 @@ greeksNet = function(portf) {
   }
 }
 
-##############################
-#' isIBAvailable
-#'
-#' This function tries to open a connection to TWS API on 7496 port. If successful, it returns TRUE and disconnect.
-#'  Otherwise returns FALSE
-#'
-#'
-#'@param silent Optional- print debug info, default is no info print
-#'@returns TRUE or FALSE
-#'@export
-#'@examples
-#'\dontrun{
-#'isIBAvailable(silent=FALSE)
-#'}
-isIBAvailable <- function(silent=TRUE) {
-  tdata_py$isIBAvailable(silent=silent)
-}
+
 
 
 ##############################
@@ -410,7 +394,7 @@ getIBKR <- function(silent=TRUE) {
   # }
 
   ### Test first if IB is available - no use to continue if not
-  if (!isIBAvailable(silent=silent)) {
+  if (!isIBAvailable()) {
     Tbasics::display_message("IBKR not available !")
     return()
   }

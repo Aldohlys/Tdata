@@ -268,7 +268,7 @@ def get_interest_rate_from_futures(ib, symbol, expiry_date):
 
 def getInterestRate(months, currency):
       # Connect to Interactive Brokers
-    ib = safe_ib_connect(silent=True)
+    ib = safe_ib_connect()
     
     # Return 0.0425 if connection failed
     if not ib.isConnected():

@@ -5,6 +5,10 @@ from ib_insync import *
 # Import from other modules
 from .IB_connection import safe_ib_connect
 from .core import util
+from fin_logger import get_logger
+
+# Get logger for this module
+logger = get_logger()
 
 def retrieveCurrencyPairs(currencies, currency_pairs, direct_conv):
     # Use safe_ib_connect instead of direct connection
@@ -15,11 +19,12 @@ def retrieveCurrencyPairs(currencies, currency_pairs, direct_conv):
         return float('nan')
    
     ##### Forex data retrieval ###############
-    print("### Retrieve currency pairs contracts...")
-    # print(currencies)
-    # print(currency_pairs)
-    # print(direct_conv)
+    logger.info("### Retrieve currency pairs contracts...")
     
+    logger.debug("Currencies", {"currencies":currencies})
+    logger.debug("Currency pairs", {"currency_pairs":currency_pairs})
+    logger.debug("Direct conversion", {"direct_conv":direct_conv})
+
     ### currencies is a list of currencies to which to convert from/to USD
     ### this function will return values in the same order as sorted currencies list
     contracts = [Forex(fx_pair) for fx_pair in currency_pairs]
@@ -41,7 +46,8 @@ def retrieveCurrencyPairs(currencies, currency_pairs, direct_conv):
         else: 
             res.append(round(1/ticker.marketPrice(), 4))
     
-    print(currencies, res)
+    log.info("Result", {"currencies":currencies, "res":res})
+    
     return [currencies, res]
 
 def retrieveAccountHistory(ib, days_back=180):
@@ -81,8 +87,10 @@ def retrieveAccountHistory(ib, days_back=180):
         df = df[['date', 'close']].rename(columns={'close': 'value'})
         df['date'] = pd.to_datetime(df['date'])
         df.set_index('date', inplace=True)
+        log.debug("AccountHistory", {"AccountHistory":df})
         return df
-            
+    
+    log.debug("No bars returned")   
     return pd.DataFrame()  # Return empty DataFrame if no data
 
 def retrieveAccountData(ib):
@@ -171,8 +179,10 @@ def retrieveAccountMarginData(contracts):
 def retrievePortfolioData(ib, df):
     options = []
     for i, row in df.iterrows():            # Use iterrows to print output
-        if (row['secType'] == "OPT"): 
+        if (row['secType'] == "OPT") or (row['secType'] == 'FOP') : 
             options.append(row['contract'])
+    
+    logger.debug("Options", {"options": options})
     
     # IB Market data type 4 works for EUREX and also for US options but in US opening hours
     # IB Market data type 2 works for only US options (in or out US opening hours)
@@ -194,15 +204,16 @@ def retrievePortfolioData(ib, df):
     opt = 0
     for i, row in df.iterrows():
         #### Iterate over each contract
-        if (row['secType'] == "OPT"):
+        if (row['secType'] == "OPT") or (row['secType'] == 'FOP'):
             optionComputation = tickers[opt].modelGreeks
             opt = opt + 1
         else:  
             optionComputation = [0, 0, 0, 0, 0, 0, 0, 0, 0]
         ### Construction de option computation à revoir
         option_c.loc[len(option_c.index)] = optionComputation
+        
     df = df.join(option_c)
-    
+
     ### Extract meaningful columns
     cols = ["date", "heure", "secType", "conId", "symbol", "lastTradeDateOrContractMonth", "strike", "right", "position", 
     "marketPrice", "optPrice", "marketValue", "averageCost", "unrealizedPNL", "impliedVol", "pvDividend",
@@ -239,7 +250,8 @@ def getIBKRData():
         return 0
 
     #### Get account related data #########
-    print("\n#####  Retrieving account data... \n")
+    print("\n#####  Retrieving account data...\n")
+    
     account_data = retrieveAccountData(ib)
     print(account_data)
 
