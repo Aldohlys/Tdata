@@ -25,13 +25,12 @@ Imports:
     zoo,
     PerformanceAnalytics,
     stats,
-    ggplot2,
     tidyr,
     httr,
     jsonlite,
     rvest,
-    parallel,
-    futile.logger
+    Tlogger,
+    logger
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Suggests: 

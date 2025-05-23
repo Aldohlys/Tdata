@@ -45,7 +45,12 @@ try:
       set_all_loggers_level,
       configure_ibinsync_logging,
       log_with_context,
-      log_execution_time
+      log_execution_time,
+      DEBUG,
+      INFO,
+      WARNING,
+      ERROR,
+      CRITICAL
     )
     
     setup_logging_from_config()

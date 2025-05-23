@@ -23,27 +23,37 @@
 #' @title Initialize minimal logging
 #' @keywords internal
 .init_package_logging <- function(pkgname) {
-    # Initialize logging namespace for Tdata
-    tryCatch({
-      # Make sure root logger is initialized
-      if (is.null(futile.logger::flog.threshold())) {
-        Tbasics::t_init_logging()
-      }
 
-      # Configure Tdata namespace for proper module display
-      root_threshold <- futile.logger::flog.threshold()
-      root_layout <- futile.logger::flog.layout()
-      root_appender <- futile.logger::flog.appender()
+  pkg_config <- Tlogger::get_config_namespace(namespace = pkgname)
 
-      futile.logger::flog.threshold(root_threshold, name = pkgname)
-      futile.logger::flog.layout(root_layout, name = pkgname)
-      futile.logger::flog.appender(root_appender, name = pkgname)
+  # Validate config values are scalar
+  console_level <- pkg_config$console_level
+  file_level <- pkg_config$file_level
 
-      # Log initialization
-      Tbasics::t_log_info(paste(pkgname, "logging configured"), module = pkgname)
-    }, error = function(e) {
-      warning(sprintf("Failed to configure %s logging: %s", pkgname, e$message))
-    })
+  # Ensure single values (take first if vector)
+  if (length(console_level) != 1) {
+    console_level <- console_level[1]
+    warning("console_level was not scalar, using first value: ", console_level)
+  }
+
+  if (length(file_level) != 1) {
+    file_level <- file_level[1]
+    warning("file_level was not scalar, using first value: ", file_level)
+  }
+
+  # Provide defaults if NULL/missing
+  console_level <- console_level %||% "INFO"
+  file_level <- file_level %||% "DEBUG"
+
+  Tlogger::setup_namespace_logging(
+      pkgname,
+      console_level = pkg_config$console_level,
+      file_level = pkg_config$file_level,
+      formatter = logger::formatter_pander
+  )
+
+  invisible(TRUE)
+
 }
 
 #' @title Add directory to Python path if not already present
@@ -86,14 +96,14 @@ if '%s' not in sys.path:
     }
 
     if (!python_initialized) {
-      Tbasics::t_log_error("Could not initialize any Python environment", module = pkgname)
+      tdata_log_error("Could not initialize any Python environment")
       return(FALSE)
     }
 
     # Find Python directory
     python_dir <- system.file("python", package = pkgname)
     if (!dir.exists(python_dir)) {
-      Tbasics::t_log_error("Python directory not found", list(path = python_dir), module = pkgname)
+      tdata_log_error("Python directory not found", list(path = python_dir))
       return(FALSE)
     }
 
@@ -105,9 +115,9 @@ if '%s' not in sys.path:
 import sys
 modules_to_reload = ["tdata_py"]
 for name in list(sys.modules.keys()):
-    if name.startswith("tdata_py."):
+    if name.startswith("tdata_py."):  ### searches for all tdata_py submodules
         modules_to_reload.append(name)
-for module in modules_to_reload:
+for module in modules_to_reload:  ### This removes modules_to_reload from cache - then import must be done
     if module in sys.modules:
         del sys.modules[module]
 ')
@@ -117,24 +127,26 @@ for module in modules_to_reload:
 
     # Debug: Check available attributes (optionnel avec logging)
     available_attrs <- reticulate::py_list_attributes(tdata_py)
-    Tbasics::t_log_debug("Available attributes in tdata_py",
-                           list(attributes = paste(available_attrs, collapse = ", ")),
-                           module = pkgname)
+    # Tbasics::t_log_debug("Available attributes in tdata_py",
+    #                        list(attributes = paste(available_attrs, collapse = ", ")),
+    #                        module = pkgname)
+    # Add this debug line to your .onLoad to confirm assignment location
+    tdata_log_debug("Assigning tdata_py to environment",
+                         list(env_class = class(parent.env(environment())),
+                              env_name = environmentName(parent.env(environment()))))
 
     # Assign to package environment
     assign("tdata_py", tdata_py, envir = parent.env(environment()))
 
     # Log success - UTILISER TBASICS DIRECTEMENT AVEC MODULE
-    Tbasics::t_log_info("Python environment initialized successfully", module = pkgname)
-    Tbasics::t_log_info("Tdata package loaded successfully", module = pkgname)
+    tdata_log_info("Python environment initialized successfully")
 
-    return(TRUE)
+        return(TRUE)
 
   }, error = function(e) {
     # Utiliser Tbasics directement avec module spécifié
-    Tbasics::t_log_error("Failed to initialize Python environment",
-                           list(error = e$message),
-                           module = pkgname)
+    tdata_log_error("Failed to initialize Python environment",
+                           list(error = e$message))
 
     # Afficher l'erreur Python détaillée
     tryCatch({

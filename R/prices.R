@@ -325,7 +325,7 @@ getLastTickerData = function(ticker) {
 #'}
 #'@export
 getStockPrice = function(sym, close = FALSE) {
-  t_log_info("getStockPrice starts...")
+  tdata_log_info("getStockPrice starts...")
 
   ### Initialize line with data from Yahoo, dated yesterdaym close of business
   line <- data.frame(
@@ -335,7 +335,7 @@ getStockPrice = function(sym, close = FALSE) {
   )
 
   if (close) {
-    t_log_info("getLastAdjustedPrice", list(price=line$price))
+    tdata_log_info("getLastAdjustedPrice", list(price=line$price))
   }
 
   ### Just retrieve last price from DB but no update from DB
@@ -350,7 +350,7 @@ getStockPrice = function(sym, close = FALSE) {
     if (nrow(line_db) == 0) message("Stock price: no data found in DB, using Yahoo Data instead")
     else {
       line <- line_db
-      t_log_info("From DB: ", list(price=line$price))
+      tdata_log_info("From DB: ", list(price=line$price))
     }
   }
 

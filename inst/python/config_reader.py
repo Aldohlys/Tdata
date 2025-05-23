@@ -24,7 +24,8 @@ def read_config(config_path=None):
         dict: Configuration dictionary
     """
     # Get config environment from R_CONFIG_ACTIVE or default to 'default'
-    config_env = os.environ.get('R_CONFIG_ACTIVE', 'development')
+    ## config_env = os.environ.get('R_CONFIG_ACTIVE', 'default')
+    config_env = "default"
     
     # If config_path is None, search in common locations
     if config_path is None:
@@ -95,5 +96,4 @@ def get_logging_config(config=None):
         'control_ibinsync': python_config.get('control_ibinsync', False),
         'ibinsync_level': python_config.get('ibinsync_level', 'ERROR'),
         'log_dir': logging_config.get('log_dir'),
-        'daily_log': logging_config.get('daily_log', False)
     }

@@ -16,8 +16,14 @@ isIBAvailable <- function() {
   ### Open a connection and then close it with IBKR TWS API
   is_api_available <- tdata_py$isIBAvailable()
 
-  if (is_api_available) t_log_info("Getting IBKR TWS API Access", list(IBKR_API=is_api_available))
-  else t_log_info("No IBKR TWS API Access", list(IBKR_API=is_api_available))
+  if (is_api_available) {
+    tdata_log_debug(message="Getting IBKR TWS API Access", context=list(IBKR_API=is_api_available))
+    tdata_log_info("Connected")
+    ##else tdata_log_info(message="Connected") ### Will not be printed at DEBUG level to avoid redundance
+  }
+
+  else tdata_log_info(message="No IBKR TWS API Access", context=list(IBKR_API=is_api_available))
+  return(is_api_available)
 }
 
 
@@ -62,7 +68,7 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
   if (!close) {
     ### Remove all empty prices if any, print resulting data
     StoredIBKRPrice <- IBKRPrice[!is.nan(IBKRPrice$price),]
-    tdata_log_info(StoredIBKRPrice)
+    tdata_log_debug(StoredIBKRPrice)
 
     ### Retrieve tickers returned by IBKRPrice and filter out non relevant tickers
     tickers <- getTickers(StoredIBKRPrice$sym) |> dplyr::filter(IV == "YES")

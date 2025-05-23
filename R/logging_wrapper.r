@@ -5,11 +5,11 @@
 #' @param message Message to log
 #' @param context Named list of contextual information
 #' @return Invisibly returns TRUE
-#' @export
 tdata_log_debug <- function(message, context = NULL) {
-    #Wrapper for Tbasics
-    t_log_debug(message, context)
+  argts <- paste(names(context), context, sep="=", collapse=", ")
+  logger::log_debug(message, argts , namespace = "Tdata")
 }
+
 
 #' @title Log an info message
 #'
@@ -18,10 +18,9 @@ tdata_log_debug <- function(message, context = NULL) {
 #' @param message Message to log
 #' @param context Named list of contextual information
 #' @return Invisibly returns TRUE
-#' @export
 tdata_log_info <- function(message, context = NULL) {
-  # Wrapper for Tbasics
-  t_log_info(message, context)
+  argts <- paste(names(context), context, sep="=", collapse=", ")
+  logger::log_info(message, argts , namespace = "Tdata")
 }
 
 #' @title Log a warning message
@@ -31,10 +30,9 @@ tdata_log_info <- function(message, context = NULL) {
 #' @param message Message to log
 #' @param context Named list of contextual information
 #' @return Invisibly returns TRUE
-#' @export
 tdata_log_warn <- function(message, context = NULL) {
-  # Wrapper for Tbasics
-  t_log_warn(message, context)
+  argts <- paste(names(context), context, sep="=", collapse=", ")
+  logger::log_warn(message, argts , namespace = "Tdata")
 }
 
 #' @title Log an error message
@@ -44,36 +42,33 @@ tdata_log_warn <- function(message, context = NULL) {
 #' @param message Message to log
 #' @param context Named list of contextual information
 #' @return Invisibly returns TRUE
-#' @export
 tdata_log_error <- function(message, context = NULL) {
-  # Wrapper for Tbasics
-  t_log_error(message, context)
+  argts <- paste(names(context), context, sep="=", collapse=", ")
+  logger::log_error(message, argts , namespace = "Tdata")
 }
 
-#' @title Log an exception with details
+#' #' @title Log an exception with details
+#' #'
+#' #' @description Log an error with exception details
+#' #'
+#' #' @param e Error object from tryCatch
+#' #' @param message Additional message to log
+#' #' @param context Named list of contextual information
+#' #' @return Invisibly returns TRUE
+#' tdata_log_exception <- function(e, message = "Exception occurred", context = NULL) {
+#'   # Wrapper for Tbasics
+#'   t_log_exception(e, message, context)
+#' }
 #'
-#' @description Log an error with exception details
+#' #' @title Create a function wrapper that logs execution time
+#' #'
+#' #' @description Wrap a function to log its execution time
+#' #'
+#' #' @param func Function to wrap
+#' #' @param func_name Optional function name (defaults to function name)
+#' #' @return Wrapped function with timing
+#' tdata_log_execution_time <- function(func, func_name = NULL) {
+#'     # Wrapper for Tbasics
+#'     t_log_execution_time(func, func_name)
+#' }
 #'
-#' @param e Error object from tryCatch
-#' @param message Additional message to log
-#' @param context Named list of contextual information
-#' @return Invisibly returns TRUE
-#' @export
-tdata_log_exception <- function(e, message = "Exception occurred", context = NULL) {
-  # Wrapper for Tbasics
-  t_log_exception(e, message, context)
-}
-
-#' @title Create a function wrapper that logs execution time
-#'
-#' @description Wrap a function to log its execution time
-#'
-#' @param func Function to wrap
-#' @param func_name Optional function name (defaults to function name)
-#' @return Wrapped function with timing
-#' @export
-tdata_log_execution_time <- function(func, func_name = NULL) {
-    # Wrapper for Tbasics
-    t_log_execution_time(func, func_name)
-}
-

@@ -14,6 +14,12 @@ import json
 from datetime import datetime
 from config_reader import get_logging_config
 
+# Export logging levels
+DEBUG = logging.DEBUG
+INFO = logging.INFO
+WARNING = logging.WARNING
+ERROR = logging.ERROR
+CRITICAL = logging.CRITICAL
 
 # Implémentation personnalisée de wraps
 def wraps(wrapped):
@@ -74,7 +80,7 @@ def setup_logging_from_config(config_path=None, **kwargs):
 
     # Determine log file path
     log_file = None
-    if config.get('log_dir') and config.get('daily_log'):
+    if config.get('log_dir'):
         # Create daily log file
         log_dir = config['log_dir']
         if not os.path.exists(log_dir):
@@ -82,7 +88,7 @@ def setup_logging_from_config(config_path=None, **kwargs):
         
         # Create filename with date
         today = datetime.now().strftime('%Y%m%d')
-        log_file = os.path.join(log_dir, f't_system_{today}.log')
+        log_file = os.path.join(log_dir, f't-{today}.log')
         
         if not os.path.exists(log_dir):
             os.makedirs(log_dir, exist_ok=True)

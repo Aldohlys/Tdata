@@ -46,7 +46,7 @@ def retrieveCurrencyPairs(currencies, currency_pairs, direct_conv):
         else: 
             res.append(round(1/ticker.marketPrice(), 4))
     
-    log.info("Result", {"currencies":currencies, "res":res})
+    logger.info("Result", {"currencies":currencies, "res":res})
     
     return [currencies, res]
 

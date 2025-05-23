@@ -2,7 +2,7 @@
 import socket
 import random
 from ib_insync import *
-from fin_logger import get_logger
+from fin_logger import get_logger, DEBUG, INFO
 
 # Get logger for this module
 logger = get_logger()
@@ -35,9 +35,9 @@ def getPort():
     for _ in range(max_attempts):
         port_id = random.randint(1, 9990)
         if not is_port_in_use(port_id):
-            logger.info("Port selected successfully", context = {"Port id": port_id})
+            logger.debug("Port selected successfully", context = {"Port id": port_id})
             return port_id
-        logger.info(f"Port {port_id} is in use, trying another port...")
+        logger.debug(f"Port {port_id} is in use, trying another port...")
     
     # If we've tried max_attempts times and found no open port
     raise RuntimeError(f"Could not find an available port after {max_attempts} attempts")
@@ -62,10 +62,13 @@ def safe_ib_connect(host='127.0.0.1', port=7496, client_id=None, readonly=False)
     
     try:
         ib.connect(host, port, clientId=client_id, readonly=readonly)
-        logger.info(f"Successfully connected to IB at {host}:{port}", context={
-            "client_id": client_id,
-            "readonly": readonly
-        })
+        if logger.logger.level <= DEBUG:
+            logger.debug(f"Successfully connected to IB at {host}:{port}", context={
+                "client_id": client_id,
+                "readonly": readonly })
+        else:
+            logger.info("Successfully connected to IB")
+        
     except Exception:  # Don't need 'as e' since exception captures it
         logger.exception("IB connection failed", context={
             "host": host,

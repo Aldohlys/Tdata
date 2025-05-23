@@ -233,8 +233,8 @@ calculate_target_vol <- function(near_options, next_options,
 #' @param DTE Numeric. Days to expiration
 #' @return Numeric. The calculated forward price.
 #' @examples
-#' forward_price(100, 0.05, 0.02, 100)
-#' forward_price(50, 0.03, 0, 50)
+#' getForwardPrice(100, 0.05, 0.02, 100)
+#' getForwardPrice(50, 0.03, 0, 50)
 #' @export
 getForwardPrice <- function(spot_price, risk_free_rate, dividend_yield, DTE) {
   # Cost of carry is the difference between interest rate and dividend yield
@@ -256,8 +256,10 @@ getForwardPrice <- function(spot_price, risk_free_rate, dividend_yield, DTE) {
 #' @param tickers data frame with each row a ticker
 #' @return a tibble with Name and IV30 as columns. IV30 is rounded to 3rd decimal
 #' @examples
+#' \dontrun{
 #' get30dIV(getTicker("AI"))
 #' get30dIV(getTickers(c("AI", "SPX")))
+#' }
 #' @export
 get30dIV <- function(tickers) {
 
@@ -283,8 +285,10 @@ get30dIV <- function(tickers) {
 #' @param tickers data frame with each row a ticker
 #' @return a tibble with Name and IV180 as columns. IV180 is rounded to 3rd decimal
 #' @examples
+#' \dontrun{
 #' get180dIV(getTicker("AI"))
 #' get180dIV(getTickers(c("AI", "SPX")))
+#' }
 #' @export
 get180dIV <- function(tickers) {
 
@@ -319,13 +323,15 @@ getVolMetrics <- function(sym_list) {
 #'
 #'
 #' @param ticker one ticker - data frame with one row, or list
-#' @param dte numeric - should not be smaller than 10 days as model would not work correctly for target days smaller than 8 days,
+#' @param DTE numeric - should not be smaller than 10 days as model would not work correctly for target days smaller than 8 days,
 #' should be less than 2 years (730 days)
 #' @return a list containing the following: near_forward, next_forward, near_atm_vol, next_atm_vol
 #' near_variance, next_variance, weights, variance_day, v - v is the implied volatility
 #' @examples
-#' getIV_DTE(getTicker("AI"), 30)
-#' getIV_DTE(getTickers(c("AI", "SPX")), 30)
+#' \dontrun{
+#'   getIV_DTE(getTicker("AI"), 30)
+#'   getIV_DTE(getTickers(c("AI", "SPX")), 30)
+#' }
 #' @export
 getIV_DTE <- function(ticker, DTE=30){
 
@@ -469,10 +475,8 @@ getIV_DTE <- function(ticker, DTE=30){
 #'If IBKR service is not available, or option price not available, or contract does not exist, it will return an error code -1.
 #'@param sym string - IBKR style of ticker, if unknown then function returns -1
 #'@param expiration number, date or string - expiration date, format is Y/M/D
+#'@param strikes double vector - strikes to get value from
 #'@returns a dataframe with with columns strikes, call, put, empty if no price are found
-#'@examples
-#'\dontrun{
-#'}
 #'@export
 getOptionPrices <- function(sym, strikes, expiration) {
 

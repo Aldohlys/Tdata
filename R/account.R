@@ -380,24 +380,20 @@ greeksNet = function(portf) {
 #'
 #' Account data will be stored in Account table, portfolio data in Uxxx or DUxxx table, depending upon account data.
 #'
-#'@param silent Optional- print debug info, default is no info print
 #'@returns No value
 #'@export
 #'@examples
 #'\dontrun{
 #'getIBKR(silent=FALSE)
 #'}
-getIBKR <- function(silent=TRUE) {
+getIBKR <- function() {
 
   # replace_date  <- function(x) {
   #   sub("(\\d{2}).(\\d{2}).(\\d{4})","\\3\\2\\1",x)
   # }
 
   ### Test first if IB is available - no use to continue if not
-  if (!isIBAvailable()) {
-    Tbasics::display_message("IBKR not available !")
-    return()
-  }
+  if (!isIBAvailable()) return()
 
   ### Retrieve account and portfolio data in a list
   l = tdata_py$getIBKRData()
@@ -548,10 +544,7 @@ getIBKRActiveCurrencyValues <- function() {
   # Sys.sleep(1)
 
   ### Test first if IB is available - no use to continue if not
-  if (!isIBAvailable()) {
-    Tbasics::display_message("IBKR not available !")
-    return()
-  }
+  if (!isIBAvailable()) return()
 
   ### Open connection to user DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
@@ -616,10 +609,7 @@ getIBKRActiveCurrencyValues <- function() {
 getGonet <- function() {
 
   ### Test first if IB is available - no use to continue if not
-  if (!isIBAvailable()) {
-    Tbasics::display_message("IBKR not available !")
-    return()
-  }
+  if (!isIBAvailable()) return()
 
   gonet_pos = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetPos.csv",delim=";",
                                                     show_col_types = FALSE,
