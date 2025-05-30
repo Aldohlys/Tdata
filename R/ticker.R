@@ -43,6 +43,7 @@ getAllTickers = function() {
 #'@export
 addTicker <- function(name, yahoo_name, trading_class, multiplier = 100, type="STK",
                       currency="USD", exchange="SMART", opt_exchange="SMART", IV="YES", expiration = "") {
+
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
@@ -65,15 +66,15 @@ addTicker <- function(name, yahoo_name, trading_class, multiplier = 100, type="S
     beta_1y = NA,
     beta_3y = NA
   )
-  div_yield = NA
+  div_yield = -1
 
   ### Beta gets computed only if yahoo_name parameter is not equal to NA and security type is either STK, IND or CASH
   ### There is historical data for TBILL under Yahoo but with current yield and it does not relate to price
   ###
   if ((!is.na(yahoo_name)) && (type %in% c("STK", "IND", "CASH"))) beta <- calculate_beta_vs_spx_periods(ticker=yahoo_name, benchmark = "^GSPC", currency=currency)
 
-  ### Compute div yield - name unknown from ticker DB yet
-  if (type %in% c("STK", "IND")) div_yield <- getSingleDivYield(type=type, name=NA, yahoo_name=yahoo_name, currency=currency, exchange=exchange)
+  ### it is not possible to compute dividend yield as we do not know price data at this point of time
+  ### if (type %in% c("STK", "IND")) div_yield <- getSingleDivYield(type=type, name=name, yahoo_name=yahoo_name, currency=currency, exchange=exchange)
 
   ### Build df for storage in DB
   df <- data.frame(Name = name, YahooName = yahoo_name, Type = type,

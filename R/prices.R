@@ -8,7 +8,7 @@
 #'
 #'It is based upon getYahooData, based upon quantmod getSymbols function.
 #'It converts IBKR-style tickers into Yahoo-style tickers first, by looking up into Tickers table.
-#'If not found in Tickers table, then just returns what has been given in \code{sym} argument.
+#'If not found in Tickers table, then returns NA.
 #'
 #'@param sym one or a vector of symbols
 #'@param from_date a start date from which to retrieve symbols
@@ -30,46 +30,60 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date()) {
   ####  sym = dplyr::if_else(sym %in% names(lookup_yahoo), lookup_yahoo[sym], sym)
 
   sym_yahoo = sapply(sym, \(x){
+                tdata_log_debug(sprintf("ticker: %s", x))
+
                 ticker <- getTickers(x)
 
-                ### If ticker does not exist in Ticker table then just return the name - this is default or when new
-                if (nrow(ticker) == 0) return(x)
+                ### If ticker does not exist in Ticker table then just return NA - ticker has to be defined
+                if (nrow(ticker) == 0) {
+                  tdata_log_debug(sprintf("Ticker %s is not in Ticker DB", x))
+                  return(NA)
+                }
 
                 ### Ticker has been found - update
                 if (ticker$Type %in% c("STK", "CASH", "IND")) return(ticker$YahooName)
 
                 ### Else no Yahoo search possible or does not make sense (i.e. T-Bill)
-                else return (NA)
+                else {
+                  tdata_log_debug(sprintf("Ticker type %s is outside of allowed types for Yahoo search", ticker$Type))
+                  return (NA)
+                }
                 })
+
+  tdata_log_debug(sprintf("Yahoo retrieved/taken as such sym's: %s", sym_yahoo))
 
   ### Check first if there are some NA in Yahoo Names (e.g. futures)
   if (any(is.na(sym_yahoo))) {
     ### This assumes that sym order is the same as sym_yahoo order - i.e. sapply does not change order, should be Ok
     sym_list = paste(sym[is.na(sym_yahoo)], collapse = " ")
-    Tbasics::display_message(paste0("One or several tickers cannot be analyzed through Yahoo service: ", sym_list))
+    tdata_log_info(sprintf("One or several tickers cannot be analyzed through Yahoo service: %s", sym_list))
 
     ### Remove NA-Yahoo from the list to analyze
     sym <- sym[!is.na(sym_yahoo)]
     sym_yahoo <- sym_yahoo[!is.na(sym_yahoo)]
   }
 
-  # Create a named vector for efficient lookup
-  # This is faster than repeated indexing for large vectors
-  lookup_table <- sym
-  names(lookup_table) <- sym_yahoo
+  if (length(sym) > 0) {
+    # Create a named vector for efficient lookup
+    # This is faster than repeated indexing for large vectors
+    lookup_table <- sym
+    names(lookup_table) <- sym_yahoo
 
-  #
-  # ### sapply would not work here as it tries to simplify the returned structure which does not work with getSymbols function
-  #### auto.assign=TRUE is necessary if multiple symbols at the same time
-  # lapply(as.character(sym_yahoo), function(x) {
-  #                             suppressMessages(quantmod::getSymbols(x, from = from_date, to = to_date,
-  #                             auto.assign = F, warnings=FALSE))
-  #                             }
-  #        )
-  df <- getYahooData(sym_yahoo, from_date, to_date)
+    #
+    # ### sapply would not work here as it tries to simplify the returned structure which does not work with getSymbols function
+    #### auto.assign=TRUE is necessary if multiple symbols at the same time
+    # lapply(as.character(sym_yahoo), function(x) {
+    #                             suppressMessages(quantmod::getSymbols(x, from = from_date, to = to_date,
+    #                             auto.assign = F, warnings=FALSE))
+    #                             }
+    #        )
+    df <- getYahooData(sym_yahoo, from_date, to_date)
 
-  # Replace symbols using vector indexing - ticker is returned by YahooData function
-  dplyr::mutate(df, ticker = lookup_table[ticker])
+    # Replace symbols using vector indexing - ticker is returned by YahooData function
+    return(dplyr::mutate(df, ticker = lookup_table[ticker]))
+  }
+
+  else return(NA)
 }
 
 #' getSymMetricIntervalDate
@@ -90,25 +104,32 @@ getSymMetricIntervalDate = function(sym, from_date, to_date = Sys.Date(), metric
   if (length(to_date) != 1) stop("length to_date must be equal to 1!")
 
   sym_all = getSymIntervalDate(sym, from_date, to_date)
+  tdata_log_debug(sprintf("getSymMetricIntervalDate: %s", sym_all))
+  if (all(is.na(sym_all))) {
+    tdata_log_info(sprintf("Yahoo service did not find any data for sym %s", sym_all))
+    return(NA)
+  }
 
-  ### Extract column equal to OHLCVA value (by default equal to "Adjusted")
-  df_subset = sym_all[, c("date", "ticker", metric)]
+  else {
+    ### Extract column equal to OHLCVA value (by default equal to "Adjusted")
+    df_subset = sym_all[!is.na(sym_all["ticker"]), c("date", "ticker", metric)]
 
-  ### Pivot data to from long to wide format
-  wide_df <- tidyr::pivot_wider(
-    data = df_subset,
-    id_cols = date,
-    names_from = ticker,
-    values_from = dplyr::all_of(metric) ## This to evaluate metric
-  )
+    ### Pivot data to from long to wide format
+    wide_df <- tidyr::pivot_wider(
+      data = df_subset,
+      id_cols = date,
+      names_from = ticker,
+      values_from = dplyr::all_of(metric) ## This to evaluate metric
+    )
 
-  # Ensure date is properly formatted
-  wide_df$date <- as.Date(wide_df$date)
+    # Ensure date is properly formatted
+    wide_df$date <- as.Date(wide_df$date)
 
-  # Sort by date
-  wide_df <- wide_df[order(wide_df$date), ]
+    # Sort by date
+    wide_df <- wide_df[order(wide_df$date), ]
 
-  return(wide_df)
+    return(wide_df)
+  }
 }
 
 
@@ -165,6 +186,7 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, metric = "Adjusted"){
     if (one_date == Sys.Date() - 1) prices_list <- getSymMetricIntervalDate(one_sym, one_date - 5, one_date + 1, metric)
     else prices_list <- getSymMetricIntervalDate(one_sym, one_date - 5, one_date + 2, metric)
 
+    tdata_log_debug("Prices returned by getSymMetricIntervalDate", prices_list)
     ### Find nearest date to one_date, one_date becomes the nearest recorded day in Yahoo
     ### Monday date will be taken for Sunday, and Friday for Saturday
     one_date = Tbasics::findNearestNumberOrDate(prices_list$date, one_date)
@@ -206,22 +228,35 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, metric = "Adjusted"){
 getLastSymPrice <- function(sym) {
   data = getSymIntervalDate(sym, from_date=Sys.Date()-5)
 
-  # Subset and rename columns
-  df <- data[, c("date", "ticker", "Adjusted")]
-  names(df) <- c("date", "sym", "value")
+  if (all(is.na(data))) {
+    tdata_log_info("Yahoo service did not find any data for: ", list(sym=sym))
+    line <- data.frame(
+      datetime = format(Sys.time(),"%Y%m%d %H:%M:%S"),
+      sym = sym,
+      price = NA
+    )
+    return(line)
+  }
 
-  # Create a factor in the original sym order before processing
-  original_order <- unique(df$sym)
-  df$sym <- factor(df$sym, levels = original_order)
+  else {
+    # Subset and rename columns
+    ## Rows already filtered by getSymIntervalDate
+    df <- data[, c("date", "ticker", "Adjusted")]
+    names(df) <- c("date", "sym", "value")
 
-  # Apply the slicing operation (default is 1, i.e. get max slice)
-  # Use base R pipe operator instead of magrittr %>%
-  result <- df |>
-    dplyr::group_by(sym) |>
-    dplyr::slice_max(date) |>
-    dplyr::ungroup()
+    # Create a factor in the original sym order before processing
+    original_order <- unique(df$sym)
+    df$sym <- factor(df$sym, levels = original_order)
 
-  return(result)
+    # Apply the slicing operation (default is 1, i.e. get max slice)
+    # Use base R pipe operator instead of magrittr %>%
+    result <- df |>
+      dplyr::group_by(sym) |>
+      dplyr::slice_max(date) |>
+      dplyr::ungroup()
+
+    return(result)
+  }
 }
 
 
@@ -241,8 +276,8 @@ getLastAdjustedPrice = function(ticker) {
   if (length(ticker) == 0) return(NA)
   if ((length(ticker) == 1) && (is.na(ticker) || ticker %in% c("","All","STOCK") )) return(NA)
 
-  getLastSymPrice(ticker)$value
-
+  ### This may return NA if ticker is unknown
+  return(getLastSymPrice(ticker)$value)
 }
 
 ###
@@ -262,7 +297,9 @@ getLastPriceDate = function(ticker) {
   if (length(ticker) == 0) return(as.Date(NA))
   if ((length(ticker) == 1) && (is.na(ticker) || ticker %in% c("","All","STOCK") )) return(as.Date(NA))
 
-  getLastSymPrice(ticker)$date
+  ### This may return current date and time if ticker is unknown
+  return(getLastSymPrice(ticker)$date)
+
 }
 
 ### Retrieve data from Yahoo Finance - no need to launch IBKR TWS
@@ -290,12 +327,15 @@ getLastTickerData = function(ticker) {
 
   tryCatch({
     ticks = getSymIntervalDate(ticker, Sys.Date() - 5) ## Case Tuesday morning and US market not yet opened + Monday and Friday were off -> Get Wed and THur data
-    last_data = ticks[nrow(ticks), "Adjusted"]
-    p_last_data = ticks[nrow(ticks) - 1, "Adjusted"]
-    return(list(
-      last = round(last_data, 2),
-      change = scales::label_percent(accuracy = 0.01)(Tbasics::change(p_last_data, last_data))
-    ))
+    if (is.na(ticks)) return(list(last = NA, change = NA))
+    else {
+      last_data = ticks[nrow(ticks), "Adjusted"]
+      p_last_data = ticks[nrow(ticks) - 1, "Adjusted"]
+      return(list(
+        last = round(last_data, 2),
+        change = scales::label_percent(accuracy = 0.01)(Tbasics::change(p_last_data, last_data))
+      ))
+    }
   }, error = function(e) {
     print(paste("Error:", e))
     return(list(last = NA, change = NA))
@@ -325,13 +365,14 @@ getLastTickerData = function(ticker) {
 #'}
 #'@export
 getStockPrice = function(sym, close = FALSE) {
-  tdata_log_info("getStockPrice starts...")
+  tdata_log_info("getStockPrice using Yahoo or DB")
 
-  ### Initialize line with data from Yahoo, dated yesterdaym close of business
+
+  ### Initialize line with data from Yahoo, dated yesterday close of business
   line <- data.frame(
     datetime = paste(format(Sys.Date() - 1,"%Y%m%d"), "22:00:00"),
     sym = sym,
-    price = getLastAdjustedPrice(sym)
+    price = getLastAdjustedPrice(sym) ### This may be equal to NA if unknown by Yahoo
   )
 
   if (close) {

@@ -5,9 +5,9 @@
 #' @param message Message to log
 #' @param context Named list of contextual information
 #' @return Invisibly returns TRUE
-tdata_log_debug <- function(message, context = NULL) {
-  argts <- paste(names(context), context, sep="=", collapse=", ")
-  logger::log_debug(message, argts , namespace = "Tdata")
+tdata_log_debug <- function(message, ...) {
+  ### message <- paste(message, paste(names(context), context, sep="=", collapse=", "))
+  logger::log_debug(message, ..., namespace = "Tdata")
 }
 
 
@@ -18,9 +18,13 @@ tdata_log_debug <- function(message, context = NULL) {
 #' @param message Message to log
 #' @param context Named list of contextual information
 #' @return Invisibly returns TRUE
-tdata_log_info <- function(message, context = NULL) {
-  argts <- paste(names(context), context, sep="=", collapse=", ")
-  logger::log_info(message, argts , namespace = "Tdata")
+tdata_log_info <- function(message, context = NULL, ...) {
+  if (!is.null(context)) {
+    # Let glue handle the interpolation with context values
+    message <- paste(message, paste(names(context), context, sep="=", collapse=", "))
+  }
+  args = c(list(message), list(...))
+  do.call(logger::log_info, args)
 }
 
 #' @title Log a warning message
@@ -30,9 +34,9 @@ tdata_log_info <- function(message, context = NULL) {
 #' @param message Message to log
 #' @param context Named list of contextual information
 #' @return Invisibly returns TRUE
-tdata_log_warn <- function(message, context = NULL) {
-  argts <- paste(names(context), context, sep="=", collapse=", ")
-  logger::log_warn(message, argts , namespace = "Tdata")
+tdata_log_warn <- function(message, context = NULL, ...) {
+  message <- paste(message, paste(names(context), context, sep="=", collapse=", "))
+  logger::log_warn(message, ..., namespace = "Tdata")
 }
 
 #' @title Log an error message
@@ -42,9 +46,9 @@ tdata_log_warn <- function(message, context = NULL) {
 #' @param message Message to log
 #' @param context Named list of contextual information
 #' @return Invisibly returns TRUE
-tdata_log_error <- function(message, context = NULL) {
-  argts <- paste(names(context), context, sep="=", collapse=", ")
-  logger::log_error(message, argts , namespace = "Tdata")
+tdata_log_error <- function(message, context = NULL, ...) {
+  message <- paste(message, paste(names(context), context, sep="=", collapse=", "))
+  logger::log_error(message, ..., namespace = "Tdata")
 }
 
 #' #' @title Log an exception with details

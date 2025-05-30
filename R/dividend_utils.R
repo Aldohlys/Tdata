@@ -6,7 +6,7 @@ getSingleDivYield <- function(type="STK", name=NA, yahoo_name=NA, currency="USD"
 
   ### test first that correct arguments were given, if not returns -1 - name is mandatory to retrieve a price
   if ((length(type) != 1) | (length(name) != 1)| (length(yahoo_name) != 1) | is.na(name)) {
-    tdata_log_info("Error in arguments")
+    tdata_log_info("getSingleDivYield does not have the right arguments", list(type=type, name=name, yahoo_name=yahoo_name))
     return (-1)
   }
   price_data <- getStockPrice(name)

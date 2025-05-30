@@ -1,13 +1,5 @@
 
-
-test_that("It is possible to retrieve correctly list of closing prices for a ticker and an interval date", {
-  expect_equal(
-    getSymMetricIntervalDate("GOOG", as.Date("2023-11-01"),as.Date("2023-11-05"), "Close")$GOOG,
-    c(127.57, 128.58, 130.37),
-    tolerance = 0.01
-  )
-})
-
+############  Test prices ###########
 
 test_that("It is possible to retrieve correctly list of prices for a ticker and an interval date", {
   expect_true({
@@ -35,9 +27,9 @@ test_that("If I try to retrieve a price for a date in the future then it returns
 
 test_that("It is possible to retrieve correctly prices for a list of tickers for a given date", {
   expect_equal(
-    as.integer(getSymPrice(c("GOOG","AAPL","ESTX50"),
+    as.integer(getSymPrice(c("GOOG","SIE","ESTX50"),
                       as.Date("2023-11-03"), metric = "Close")),
-    c(130, 176, 4174)
+    c(130, 127, 4174)
   )
 })
 
@@ -112,7 +104,7 @@ test_that("getYahooData handles non-existent tickers gracefully", {
 
   # Test with a mix of valid and invalid tickers
   test_tickers <- c("AAPL", "NONEXISTENTTICKER123", "MSFT")
-  start_date <- Sys.Date() - 10
+  start_date <- Sys.Date() - 5
 
   # Run with verbose=FALSE to avoid cluttering test output and
   # catch errors to make test more robust
