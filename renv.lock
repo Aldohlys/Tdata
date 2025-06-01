@@ -187,10 +187,10 @@
     },
     "Tbasics": {
       "Package": "Tbasics",
-      "Version": "1.4.1",
+      "Version": "1.4.2",
       "Source": "Local",
       "RemoteType": "local",
-      "RemoteUrl": "C:/Users/aldoh/Documents/RApplication/Tbasics_1.4.1.tar.gz",
+      "RemoteUrl": "C:/Users/aldoh/Documents/RApplication/Tbasics_1.4.2.tar.gz",
       "Requirements": [
         "DescTools",
         "Tlogger",
@@ -209,21 +209,21 @@
         "vctrs",
         "withr"
       ],
-      "Hash": "aca471a28d83bfd3e4d36c76a3c17a31"
+      "Hash": "616be1b3df27386c584aa8eabcfb8ba8"
     },
     "Tlogger": {
       "Package": "Tlogger",
-      "Version": "0.2.5",
+      "Version": "0.3.0",
       "Source": "Local",
       "RemoteType": "local",
-      "RemoteUrl": "C:/Users/aldoh/Documents/RApplication/Tlogger_0.2.5.tar.gz",
+      "RemoteUrl": "C:/Users/aldoh/Documents/RApplication/Tlogger_0.3.0.tar.gz",
       "Requirements": [
         "config",
         "crayon",
         "logger",
         "yaml"
       ],
-      "Hash": "731c1fa816cfd0561e60773261f661cb"
+      "Hash": "cf6d3b423dbf23285c323e113702ff78"
     },
     "askpass": {
       "Package": "askpass",
