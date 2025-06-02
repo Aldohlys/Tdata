@@ -7,7 +7,7 @@
 #' @return Invisibly returns TRUE
 tdata_log_debug <- function(message, ...) {
   ### message <- paste(message, paste(names(context), context, sep="=", collapse=", "))
-  logger::log_debug(message, ..., namespace = "Tdata")
+  return(logger::log_debug(message, ..., namespace = "Tdata"))
 }
 
 

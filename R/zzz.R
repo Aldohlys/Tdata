@@ -48,8 +48,7 @@
   Tlogger::setup_namespace_logging(
       pkgname,
       console_level = console_level,
-      file_level = file_level,
-      formatter = logger::formatter_pander
+      file_level = file_level
   )
 
   invisible(TRUE)

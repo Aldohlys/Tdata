@@ -69,10 +69,8 @@ test_that("getYahoo retrieves data for reliable tickers correctly", {
   start_date <- Sys.Date() - 30  # Last 30 days
   end_date <- Sys.Date()
 
-  # Run the function with verbose=FALSE to avoid cluttering test output
   result <- tryCatch({
     getYahooData(test_ticker, start_date, end_date,
-                       verbose = FALSE,
                        max_retries = 3,
                        timeout = 5)  # Increase timeout for CI environments
   }, error = function(e) {
@@ -106,12 +104,10 @@ test_that("getYahooData handles non-existent tickers gracefully", {
   test_tickers <- c("AAPL", "NONEXISTENTTICKER123", "MSFT")
   start_date <- Sys.Date() - 5
 
-  # Run with verbose=FALSE to avoid cluttering test output and
-  # catch errors to make test more robust
   result <- tryCatch({
     suppressWarnings(
       getYahooData(test_tickers, start_date, chunk_size = 3,
-                         verbose = FALSE, timeout = 1)
+                         timeout = 1)
     )
   }, error = function(e) {
     skip(paste("Yahoo Finance API unavailable:", e$message))
@@ -144,7 +140,7 @@ test_that("getYahoo works with mock ticker data", {
   # Test the function with the mock data frame
   result <- tryCatch({
     suppressWarnings(
-      getYahooData(mock_tickers, Sys.Date() - 5, verbose = FALSE, timeout = 5)
+      getYahooData(mock_tickers, Sys.Date() - 5, timeout = 5)
     )
   }, error = function(e) {
     skip(paste("Yahoo Finance API unavailable:", e$message))
@@ -157,4 +153,61 @@ test_that("getYahoo works with mock ticker data", {
   # Should return some data
   expect_true(!is.null(result))
   expect_true("AAPL" %in% result$ticker)
+})
+
+
+test_that("getStockPrice works with symbol SPY",{
+  spy <- getStockPrice("SPY", close=FALSE)
+  expect_true(all(is.character(c(spy$datetime, spy$sym))))
+  expect_true(is.numeric(spy$price))
+})
+
+test_that("getStockPrice works with symbol SPY",{
+  spy <- getStockPrice("SPY", close=TRUE)
+  expect_true(all(is.character(c(spy$datetime, spy$sym))))
+  expect_true(is.numeric(spy$price))
+})
+
+test_that("getStockPrice works with symbol SPY",{
+  spy <- getStockPrice("SPY")
+  expect_true(all(is.character(c(spy$datetime, spy$sym))))
+  expect_true(is.numeric(spy$price))
+})
+
+test_that("getStockPrice works with 2 symbols SPY, XSP", {
+  res <- getStockPrice(c("SPY", "XSP"))
+  expect_true(all(is.character(c(res$datetime, res$sym))))
+  expect_true(is.numeric(res$price))
+  expect_length(res$price, 2)
+})
+
+test_that("getStockPrice works with 3 symbols SPY, SPX and one with non-Yahoo existence - US-T", {
+  res <- getStockPrice(c("SPY", "SPX", "US-T"))
+  expect_true(all(is.character(c(res$datetime, res$sym))))
+  expect_true(is.numeric(res$price))
+  expect_length(res$price, 3)
+})
+
+test_that("getStockPrice returns NA for all non-Yahoo syms - US-T, SOFR3, arggh", {
+  res <- getStockPrice(c("US-T", "SOFR3", "arggh"))
+  expect_true(all(is.character(c(res$datetime, res$sym))))
+  expect_true(is.numeric(res$price))
+  expect_length(res$price, 3)
+  expect_true(all(is.na(res$price)))
+})
+
+test_that("getSymIntervalDate works with SPY and USO", {
+  res <- getSymMetricIntervalDate(sym = c("SPY","USO"), as.Date("2025-05-20"))
+  expect_true(inherits(res$date, "Date"))
+  expect_true(is.numeric(res$SPY))
+  expect_true(is.numeric(res$USO))
+  expect_true(ncol(res) == 3)
+})
+
+test_that("getSymIntervalDate works with US-T, GVGV and USO", {
+  res <- getSymMetricIntervalDate(sym = c("US-T", "GVGV" , "USO"), from=as.Date("2025-05-20"), to=as.Date("2025-05-31"))
+  expect_true(inherits(res$date, "Date"))
+  expect_true(is.numeric(res$USO))
+  expect_true(ncol(res) == 4)
+  expect_true(all(is.na(res$GVGV)))
 })
