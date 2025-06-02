@@ -304,7 +304,7 @@ getLastTickerData = function(ticker) {
 
   tryCatch({
     ticks = getSymIntervalDate(ticker, Sys.Date() - 5) ## Case Tuesday morning and US market not yet opened + Monday and Friday were off -> Get Wed and THur data
-    if (is.na(ticks)) return(list(last = NA, change = NA))
+    if (length(ticks)==1 && is.na(ticks)) return(list(last = NA, change = NA))
     else {
       last_data = ticks[nrow(ticks), "Adjusted"]
       p_last_data = ticks[nrow(ticks) - 1, "Adjusted"]
