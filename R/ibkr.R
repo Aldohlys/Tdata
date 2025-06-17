@@ -1,5 +1,5 @@
 
-##############################
+
 #' isIBAvailable
 #'
 #' This function tries to open a connection to TWS API on 7496 port. If successful, it returns TRUE and disconnect.
@@ -17,12 +17,11 @@ isIBAvailable <- function() {
   is_api_available <- tdata_py$isIBAvailable()
 
   if (is_api_available) {
-    tdata_log_debug(message="Getting IBKR TWS API Access", context=list(IBKR_API=is_api_available))
-    tdata_log_info("Connected")
-    ##else tdata_log_info(message="Connected") ### Will not be printed at DEBUG level to avoid redundance
+    t_log_debug("Getting IBKR TWS API Access: IBKR_API={is_api_available}")
+    t_log_info("Connected")
   }
 
-  else tdata_log_info(message="No IBKR TWS API Access", context=list(IBKR_API=is_api_available))
+  else t_log_info("No IBKR TWS API Access: IBKR_API={is_api_available}")
   return(is_api_available)
 }
 
@@ -55,10 +54,11 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
 
   ### This will work even if sym is a vector and not the other IBKR contract components
   IBKRPrice <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=reqType, close=close)
+  t_log_info("Retrieved price data from IBKR: {IBKRPrice}")
 
   ### Error case do not go further on###
   if (length(IBKRPrice) == 1) {
-    tdata_log_warn("IBKR data retrieval did not work - either no connection or contract does not exist")
+    t_log_warn("IBKR data retrieval did not work - either no connection or contract does not exist")
     return (IBKRPrice)
   }
 
@@ -67,26 +67,26 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
   ### Also only prices that are different from NaN will be stored in DB
   if (!close) {
     ### Remove all empty prices if any, print resulting data
-    StoredIBKRPrice <- IBKRPrice[!is.nan(IBKRPrice$price),]
-    tdata_log_debug(StoredIBKRPrice)
+    LastIBKRPrice <- IBKRPrice[!is.nan(IBKRPrice$price),]
+    t_log_debug("Filtered IBKRPrice: {LastIBKRPrice}")
 
     ### Retrieve tickers returned by IBKRPrice and filter out non relevant tickers
-    tickers <- getTickers(StoredIBKRPrice$sym) |> dplyr::filter(IV == "YES")
+    tickers <- getTickers(LastIBKRPrice$sym) |> dplyr::filter(IV == "YES")
 
     ### Retrieve 30days IV for each ticker, each time applicable - -1 or NA if not
     ### Do nothing if no ticker has IV
     if (nrow(tickers) != 0) {
 
       #tickers_30d_iv <- get30dIV(tickers)
-      tdata_log_info("Build IV180 from near/next option chains IVs...")
-      tickers_180d_iv <- get180dIV(tickers)
+      t_log_info("Build IV180 from near/next option chains IVs...")
+      tickers_180d_iv <- get180dIV(tickers, LastIBKRPrice)
 
-      tdata_log_info("Get IV30 and RV30 through IBKR historical data...")
+      t_log_info("Get IV30 and RV30 through IBKR historical data...")
       vol_metrics <- getVolMetrics(tickers$Name)
       ### Keep only 3 significant digits
-      tickers_vol_metrics <- dplyr::mutate(vol_metrics, dplyr::across(tail(names(vol_metrics), 10), ~signif(.x, 3)))
+      tickers_vol_metrics <- dplyr::mutate(vol_metrics, dplyr::across(utils::tail(names(vol_metrics), 10), ~signif(.x, 3)))
 
-      StoredIBKRPrice <- dplyr::left_join(StoredIBKRPrice, tickers_180d_iv, by = dplyr::join_by(sym == Name)) |>
+      LastIBKRPrice <- dplyr::left_join(LastIBKRPrice, tickers_180d_iv, by = dplyr::join_by(sym == Name)) |>
         dplyr::left_join(dplyr::select(tickers_vol_metrics, symbol, iv30=current_iv, ivp=iv_percentile,
                                        rv30=current_hv, rvp=hv_percentile),
                          by = dplyr::join_by(sym == symbol))
@@ -94,20 +94,20 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
       tryCatch({
         myconn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
         on.exit(DBI::dbDisconnect(myconn), add=TRUE)
-        DBI::dbAppendTable(myconn, "Prices", StoredIBKRPrice)
+        DBI::dbAppendTable(myconn, "Prices", LastIBKRPrice)
       },
       error = function(cond) {
-        tdata_log_error("Error while trying to write to DB", cond)
+        t_log_error("Error while trying to write to DB", cond)
         NA
       },
       warning = function(cond) {
-        tdata_log_warn(conditionMessage(cond))
+        t_log_warn(conditionMessage(cond))
         # Choose a return value in case of warning
         NULL
       })
-      return(StoredIBKRPrice)
+      return(LastIBKRPrice)
     }
-    else tdata_log_info("All IBKR Prices equal to NA (did not get any data from exchange) or IV set to NO")
+    else t_log_info("All IBKR Prices equal to NA (did not get any data from exchange) or IV set to NO")
 
   }
 
@@ -172,7 +172,7 @@ getSliceAllIBKRMetrics <- function(first=1, last=0) {
   if (last > max) Tbasics::display_error_message("Last index ticker exceeds number of tickers !")
   if (last == 0) last = max
 
-  #### Process new prices for tickers - that should include also underlyings part of the portfolio  ##########
+  ### Process new prices for tickers - that should include also underlyings part of the portfolio
   message(paste0("\n#####  Retrieving price data from ticker n°",first," to ticker n°",last," ..."))
   tickers = tickers[first:last,]
 
@@ -184,8 +184,12 @@ getSliceAllIBKRMetrics <- function(first=1, last=0) {
   ### Store in DB all IBKR prices from tickers$Name, return final result
 
   result = data.frame()
+  nb_tickers = nrow(tickers)
 
-  for (name in tickers$Name) {
+  ### seq_len will work also if nb_tickers = 0, unlike 1:nb_tickers
+  for (i in seq_len(nb_tickers)) {
+    name <- tickers[i, "Name"]
+    message(paste0("\n#####  Retrieving price data for ticker ", name, " nr.", i," out of ", nb_tickers," ..."))
     metrics <- getIBKRMetrics(name)
     result <- dplyr::bind_rows(result, metrics)
   }

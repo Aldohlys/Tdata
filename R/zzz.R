@@ -95,14 +95,14 @@ if '%s' not in sys.path:
     }
 
     if (!python_initialized) {
-      tdata_log_error("Could not initialize any Python environment")
+      t_log_error("Could not initialize any Python environment")
       return(FALSE)
     }
 
     # Find Python directory
     python_dir <- system.file("python", package = pkgname)
     if (!dir.exists(python_dir)) {
-      tdata_log_error(sprintf("Python directory not found in %s", path))
+      t_log_error(sprintf("Python directory not found in %s", path))
       return(FALSE)
     }
 
@@ -130,7 +130,7 @@ for module in modules_to_reload:  ### This removes modules_to_reload from cache 
     #                        list(attributes = paste(available_attrs, collapse = ", ")),
     #                        module = pkgname)
     # Add this debug line to your .onLoad to confirm assignment location
-    tdata_log_debug(sprintf("Assigning tdata_py to %s %s",
+    t_log_debug(sprintf("Assigning tdata_py to %s %s",
                          class(parent.env(environment())),
                         environmentName(parent.env(environment()))))
 
@@ -138,13 +138,13 @@ for module in modules_to_reload:  ### This removes modules_to_reload from cache 
     assign("tdata_py", tdata_py, envir = parent.env(environment()))
 
     # Log success
-    tdata_log_info("Python environment initialized successfully")
+    t_log_info("Python environment initialized successfully")
 
         return(TRUE)
 
   }, error = function(e) {
     # Utiliser Tbasics directement avec module spécifié
-    tdata_log_error(sprintf("Failed to initialize Python environment: %s",
+    t_log_error(sprintf("Failed to initialize Python environment: %s",
                            e$message))
 
     # Afficher l'erreur Python détaillée

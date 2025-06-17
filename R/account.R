@@ -47,7 +47,7 @@ readAccount = function(accountnr) {
 
 
 
-############# PORTFOLIO specific functions #############
+############# PORTFOLIO specific functions
 #' readPortfolio
 #'
 #'
@@ -106,7 +106,7 @@ readPortfolio = function(portfname) {
   }
 }
 
-############# PORTFOLIO specific functions #############
+############# PORTFOLIO specific functions
 #' readPortfolioDate
 #'
 #'
@@ -166,7 +166,7 @@ readPortfolioDate = function(portfname, date) {
 }
 
 
-############# PORTFOLIO specific functions #############
+############# PORTFOLIO specific functions
 #' readLastPortfolio
 #'
 #'
@@ -191,7 +191,6 @@ readPortfolioDate = function(portfname, date) {
 #'@export
 readLastPortfolio <- function(portfname) {
   # ### retrieve last recorded (date, time) - Other possible implementation
-  # last_portf = portf[unlist(portf %>% group_rows() %>% last),]
   message("readLastPortfolio")
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
@@ -229,7 +228,6 @@ readLastPortfolio <- function(portfname) {
 
 
 ###############  TWR function
-##############################
 #'   twr
 #'
 #' This function Time Weighted Return computes TWR for
@@ -308,8 +306,6 @@ twr <- function(dates, e_nlv, cashflows) {
   }
 }
 
-#############  greeksNet function ###############
-##############################
 #'   greeksNet
 #'
 #' This function computes for a portfolio the net position of each Greek, summing over all positions the Greek value of each individual position.
@@ -372,8 +368,6 @@ greeksNet = function(portf) {
 
 
 
-
-##############################
 #'   getIBKR
 #'
 #' This function retrieves account, portfolio data from IBKR and then store them in DB
@@ -402,7 +396,7 @@ getIBKR <- function() {
     Tbasics::display_error_message("No value returned from IB!")
   }
 
-  #### 1. Process new account data #################
+  #### 1. Process new account data
   account_data = l[[1]]
 
   ### Open connection to user DB
@@ -410,7 +404,7 @@ getIBKR <- function() {
 
   DBI::dbAppendTable(conn,"Account", account_data)
 
-  #### Process portfolio last position #############
+  #### Process portfolio last position
   portf_data = l[[2]]
 
   ### Following Python extract, all fields are either double or character
@@ -515,7 +509,6 @@ getIBKR <- function() {
 }
 
 
-##############################
 #'   getIBKRActiveCurrencies
 #'
 #' This function retrieves active currencies pairs values from DB ActiveCurrencies table, and then requests value from IBKR.
@@ -561,7 +554,7 @@ getIBKRActiveCurrencyValues <- function() {
   Tbasics::display_message("Call IBKR to retrieve data...")
   currency_pairs_data <- tdata_py$retrieveCurrencyPairs(currencies, currency_pairs, direct_conv)
 
-  #### 3. Process new currency data ##############
+  #### 3. Process new currency data
   currencies_list = currency_pairs_data[[1]]
   currencies_values = currency_pairs_data[[2]]
 
@@ -583,7 +576,6 @@ getIBKRActiveCurrencyValues <- function() {
 
 }
 
-##############################
 #'   getGonet
 #'
 #' This function loads current Gonet positions, the list of all Gonet trades, and retrieves current price information from IBKR (or end-user).
@@ -635,7 +627,7 @@ getGonet <- function() {
   portf = dplyr::left_join(portf, portf_cashflow, by = c("sym_yahoo" = "sym_yahoo"))
 
   ### get prices from IBKR using list_sec= "STK", and otherwise values from GonetTrades
-  last_price <- getStoredMetrics(name = portf$sym_ibkr)
+  last_price <- tdata_py$getValue(list_sym=portf$sym_ibkr, ib=NULL, reqType=2, close=FALSE)
 
   #### price_user is the subset of last_price where price = NaN, i.e. price could not be retrieved from IBKR
   price_user <- last_price[is.nan(last_price$price),]
@@ -670,7 +662,6 @@ getGonet <- function() {
 }
 
 
-############################
 #'   getAccountGonet
 #'
 #'This function reads last portfolio from Gonet and then deduces account record similar to IBKR
@@ -741,7 +732,6 @@ getAccountGonet <- function() {
     DBI::dbDisconnect(conn)
 }
 
-############################
 #'   getAccountLive
 #'
 #'This function reads last portfolio from Gonet and then deduces account record similar to IBKR

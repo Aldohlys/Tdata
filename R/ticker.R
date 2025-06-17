@@ -322,22 +322,15 @@ removeTicker = function(name) {
 #'getYahooName(c("ABT", "ESTX50", "US-T", "SOFR3"))
 #'}
 getYahooName <- function(sym) {
-  # lookup_yahoo = c("ESTX50"="^STOXX50E","MC"="MC.PA","OR"="OR.PA","TTE"="TTE.PA","AI"="AI.PA", "SGO"="SGO.PA", "BN"="BN.PA",
-  #                  "SPX"="^SPX","XSP"="^XSP","RUT"="^RUT","NESN"="NESN.SW", "ABBN" = "ABBN.SW", "HOLN"="HOLN.SW","SLHN"="SLHN.SW",
-  #                  "ROG"="ROG.SW", "SXLV"="SXLV.L", "SXLY"="SXLY.L","SXLK"="SXLK.L","SXLC"="SXLC.L",
-  #                  "CSBGU0"="CSBGU0.SW","DTLA"="DTLA.L","TRE7"="TRE7.L",
-  #                  "U.UN"="U-UN.TO", "USD.CAD"="USDCAD=X",
-  #                  "EUR.USD"="EURUSD=X","CHF.USD"="CHFUSD=X","EUR.CHF"="EURCHF=X")
-  ####  sym = dplyr::if_else(sym %in% names(lookup_yahoo), lookup_yahoo[sym], sym)
 
   sym_yahoo = purrr::map_chr(sym, \(x){
-    tdata_log_debug(sprintf("ticker: %s", x))
+    t_log_debug("ticker: {x}")
 
     ticker <- getTicker(x)
 
     ### If ticker does not exist in Ticker table then just return NA - ticker has to be defined
     if (nrow(ticker) == 0) {
-      tdata_log_debug(sprintf("Ticker %s is not in Ticker DB", x))
+      t_log_debug("Ticker {x} is not in Ticker DB")
       return(NA)
     }
 
@@ -346,11 +339,11 @@ getYahooName <- function(sym) {
 
     ### Else no Yahoo search possible or does not make sense (i.e. T-Bill)
     else {
-      tdata_log_debug(sprintf("Ticker type %s is outside of allowed types for Yahoo search", ticker$Type))
+      t_log_debug("Ticker type {ticker$Type} is outside of allowed types for Yahoo search")
       return (NA)
     }
   })
 
-  tdata_log_debug("Yahoo retrieved/taken : {sym_yahoo}")
+  t_log_debug("Yahoo retrieved/taken : {sym_yahoo}")
   return(sym_yahoo)
 }

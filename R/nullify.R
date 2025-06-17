@@ -11,6 +11,9 @@
 #### for documentation purposes
 Global <- NULL
 
+### for .init_python_environment
+path <- NULL
+
 ### for getOpenDate
 TradeNr <- Statut <- TradeDate <- Strategy <- exp_date <- Exp.Date <- Pos <- NULL
 
@@ -24,8 +27,8 @@ account <- NULL
 secType <- lastTradeDateOrContractMonth <- undPrice <- impliedVol <- position <- NULL
 marketPrice <- marketValue <- averageCost <- unrealizedPnL <- symbol <- right <- NULL
 
-### for stock_price
-exchange <- sec <- NULL
+### for getStockPrice
+datetime.x <- datetime.y <- dt_x <- dt_y <- price.y <- price.x <- datetime <- NULL
 
 ### for greeksNet
 pos <- uPrice <- currency <- multiplier <- delta <- theta <- vega <- dnet <- ddnet <- gnet <- tnet <- vnet <- NULL
@@ -38,7 +41,7 @@ new_date <- heure <- strike <- optPrice <- pvDividend <- expdate <- type <- unre
 Currency <- conId <- marginable <- NULL
 
 ### for getGonet
-sym_ibkr <- sym_yahoo <- orig_date <- price <- mktPrice <- orig_adjusted_price <- NULL
+tdata_py <- sym_ibkr <- sym_yahoo <- orig_date <- price <- mktPrice <- orig_adjusted_price <- NULL
 unPnL <- cost <- avgCost <- orig_adjusted_price <- mktValue <- init_cost <- NULL
 
 ## add for getAccountGonet
@@ -46,6 +49,9 @@ mktValue <- unPnL <- TotalCashBalance <- StockMarketValue <- NetLiquidation <- h
 
 ### add for getInstrument
 initial_trade_date <- Ssjacent <- u_price <- interest_rate <- DTE <- startPrice <- startIV <- NULL
+
+### getInterestRate
+last_ir_update <- ir1week <- ir1month <- ir3months <- ir6months <- ir1year <- ir2years <- NULL
 
 ### add for getClosedTrades
 strategy <- last_date <- NULL
@@ -63,6 +69,10 @@ Exchange <- NULL
 ticker <- NULL
 
 ### getAllOptionPrices
-bid <- ask <- put_iv <- put_bid <- call_bid <- call_ask <- call_iv <- call_value <- put_value <- has_put <- has_call <- call_mid <- put_mid <- NULL
+bid <- ask <- put_iv <- put_bid <- put_ask <- call_bid <- call_ask <- call_iv <- call_value <- put_value <- has_put <- has_call <- call_mid <- put_mid <- NULL
+
+### getOptionPrices
 
 
+### getIBKRMetrics
+IV <- Name <- current_iv <- iv_percentile <- current_hv <- hv_percentile <- NULL

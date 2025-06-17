@@ -43,7 +43,8 @@ compareNA <- function(v1,v2) {
 
 test_that("It is possible to retrieve one instrument for one trade", {
   with_mocked_bindings(
-    getInstrumentQuery = getTestInstrumentQuery, {
+    getInstrumentQuery = getTestInstrumentQuery,
+    getInterestRate = function(...) 0.05, {
       df = getInstrument(tradenr=392,instrument=c("CCJ 19APR24 36 P"))
       expect_true(is.data.frame(df))
       expect_true(nrow(df) == 1)

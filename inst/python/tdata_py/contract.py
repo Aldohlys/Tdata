@@ -42,7 +42,7 @@ from .IB_connection import safe_ib_connect
 from fin_logger import get_logger, log_execution_time
 
 # Créez un logger pour ce module
-logger = get_logger("tdata_py.dividend")
+logger = get_logger("tdata_py.contract")
 
 @log_execution_time
 def getValue(list_sym, reqType=2, ib=None, close=True):

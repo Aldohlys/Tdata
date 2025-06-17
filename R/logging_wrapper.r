@@ -1,55 +1,59 @@
-#' @title Log a debug message
+#' Update log threshold for Tdata
 #'
-#' @description Convenience function to log at DEBUG level
-#'
-#' @param message Message to log
-#' @param context Named list of contextual information
-#' @return Invisibly returns TRUE
-tdata_log_debug <- function(message, ...) {
-  ### message <- paste(message, paste(names(context), context, sep="=", collapse=", "))
-  return(logger::log_debug(message, ..., namespace = "Tdata"))
+#' @param level New log level threshold
+#' @param console_only Update only console threshold
+#' @param file_only Update only file threshold
+#' @keywords internal
+#' @noRd
+set_log_level <- function(level, console_only = FALSE, file_only = FALSE) {
+  Tlogger::update_log_level("Tdata", level, console_only, file_only)
 }
 
+#' @title Log a debug message
+#' @description Convenience function to log at DEBUG level
+#' @param msg Message to log
+#' @noRd
+#' @keywords internal
+t_log_debug <- function(msg,...) {
+  # Evaluate glue string in calling environment
+  evaluated_msg <- glue::glue(msg, .envir = parent.frame())
+  logger::log_debug(evaluated_msg, ..., namespace = "Tdata")
+}
 
 #' @title Log an info message
-#'
 #' @description Convenience function to log at INFO level
-#'
-#' @param message Message to log
-#' @param context Named list of contextual information
-#' @return Invisibly returns TRUE
-tdata_log_info <- function(message, context = NULL, ...) {
-  if (!is.null(context)) {
-    # Let glue handle the interpolation with context values
-    message <- paste(message, paste(names(context), context, sep="=", collapse=", "))
-  }
-  args = c(list(message), list(...))
-  do.call(logger::log_info, args)
-}
-
-#' @title Log a warning message
-#'
-#' @description Convenience function to log at WARN level
-#'
-#' @param message Message to log
-#' @param context Named list of contextual information
-#' @return Invisibly returns TRUE
-tdata_log_warn <- function(message, context = NULL, ...) {
-  message <- paste(message, paste(names(context), context, sep="=", collapse=", "))
-  logger::log_warn(message, ..., namespace = "Tdata")
+#' @param msg Message to log
+#' @keywords internal
+#' @noRd
+t_log_info <- function(msg, ...) {
+  # Evaluate glue string in calling environment
+  evaluated_msg <- glue::glue(msg, .envir = parent.frame())
+  logger::log_info(evaluated_msg, ..., namespace = "Tdata")
 }
 
 #' @title Log an error message
-#'
 #' @description Convenience function to log at ERROR level
-#'
-#' @param message Message to log
-#' @param context Named list of contextual information
-#' @return Invisibly returns TRUE
-tdata_log_error <- function(message, context = NULL, ...) {
-  message <- paste(message, paste(names(context), context, sep="=", collapse=", "))
-  logger::log_error(message, ..., namespace = "Tdata")
+#' @param msg Message to log
+#' @keywords internal
+#' @noRd
+t_log_error <- function(msg, ...) {
+  # Evaluate glue string in calling environment
+  evaluated_msg <- glue::glue(msg, .envir = parent.frame())
+  logger::log_error(evaluated_msg, ..., namespace = "Tdata")
 }
+
+#' @title Log a warning message
+#' @description Convenience function to log at WARN level
+#' @param msg Message to log
+#' @keywords internal
+#' @noRd
+t_log_warn <- function(msg, ...) {
+  # Evaluate glue string in calling environment
+  evaluated_msg <- glue::glue(msg, .envir = parent.frame())
+  logger::log_warn(evaluated_msg, ..., namespace = "Tdata")
+}
+
+
 
 #' #' @title Log an exception with details
 #' #'

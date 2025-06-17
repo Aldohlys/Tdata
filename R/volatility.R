@@ -1,5 +1,6 @@
 
 # Generic walker function that applies a function to numeric elements
+#'@noRd
 walk_apply <- function(x, fun, ...) {
   # For lists, process each element individually
   if (is.list(x)) {
@@ -49,39 +50,13 @@ walk_apply <- function(x, fun, ...) {
 }
 
 # Now create signif_na as a wrapper around walk_apply
+#'@noRd
 signif_na <- function(x, digits = 3) {
   walk_apply(x, signif, digits = digits)
 }
 
-# signif_na <- function(x, digits = 3) {
-#   # Keep original values
-#   result <- x
-#
-#   # Only convert and apply signif to non-NA numeric elements
-#   idx <- !is.na(x) & !is.nan(x) & is.numeric(x)
-#
-#   # Handle case when x is character but contains numeric values
-#   if(!is.numeric(x)) {
-#     # Try to identify which elements can be converted to numeric
-#     numeric_idx <- !is.na(suppressWarnings(as.numeric(x)))
-#     if(any(numeric_idx)) {
-#       # Only convert those elements that can be numeric
-#       result[numeric_idx] <- suppressWarnings(as.numeric(x[numeric_idx]))
-#       # Update which elements to apply signif to
-#       idx <- numeric_idx
-#     }
-#   }
-#
-#
-#   # Apply signif only where appropriate
-#   if(any(idx)) {
-#     result[idx] <- signif(as.numeric(result[idx]), digits = digits)
-#   }
-#
-#   return(result)
-# }
-
-####################  helper function for checking missing IVs ######
+####################  helper function for checking missing IVs
+#'@noRd
 check_na_ivs <- function(option_prices, option_type, sym, expiry) {
   # Determine which IV column to check based on option type
   iv_col <- paste0(option_type, "_iv")
@@ -105,6 +80,7 @@ check_na_ivs <- function(option_prices, option_type, sym, expiry) {
 
 
 # Helper function to calculate forward index level using put-call parity
+#'@noRd
 calculate_forward_index <- function(options, interest_rate, time_to_expiry, dividend_yield) {
   # Find ATM options by minimizing the difference between call and put prices
   price_diffs <- abs(options$call_mid - options$put_mid)
@@ -119,15 +95,17 @@ calculate_forward_index <- function(options, interest_rate, time_to_expiry, divi
 }
 
 # Helper function to fit a parabola to volatility data
+#'@noRd
 fit_volatility_parabola <- function(strikes, ivs) {
   # Fit quadratic model: IV = a*strike^2 + b*strike + c
-  model <- lm(ivs ~ poly(strikes, 2, raw = TRUE))
+  model <- stats::lm(ivs ~ poly(strikes, 2, raw = TRUE))
 
   # Return coefficients as unnamed numeric values
-  return(as.numeric(coef(model)))
+  return(as.numeric(stats::coef(model)))
 }
 
 # Helper function to predict volatility from parabola at a given strike
+#'@noRd
 predict_from_parabola <- function(parabola_coefs, strike) {
   # Extract coefficients
   c <- parabola_coefs[1]  # Intercept
@@ -142,6 +120,7 @@ predict_from_parabola <- function(parabola_coefs, strike) {
 }
 
 ### Target volatility function
+#'@noRd
 calculate_target_vol <- function(near_options, next_options,
                                  dividend_yield, near_interest_rate, next_interest_rate,
                                  target_days = 30) {
@@ -254,21 +233,24 @@ getForwardPrice <- function(spot_price, risk_free_rate, dividend_yield, DTE) {
 #' Computes 30 days IV using option IVs for 30 days target expiration
 #'
 #' @param tickers data frame with each row a ticker
+#' @param LastIBKRPrice data frame with each row a ticker, datetime, sym and price
 #' @return a tibble with Name and IV30 as columns. IV30 is rounded to 3rd decimal
 #' @examples
 #' \dontrun{
-#' get30dIV(getTicker("AI"))
-#' get30dIV(getTickers(c("AI", "SPX")))
+#' get30dIV(getTicker("AI"), getStockPrice("AI"))
+#' get30dIV(getTickers(c("AI", "SPX")), getStockPrice(c("AI", "SPX")))
 #' }
 #' @export
-get30dIV <- function(tickers) {
+get30dIV <- function(tickers, LastIBKRPrice) {
 
   if (!is.data.frame(tickers)) return(NA)
 
-  res <- dplyr::tibble(Name=character(), IV30=numeric())
-  for (i in 1:nrow(tickers)) {
+  res <- dplyr::tibble(Name=character(), iv30=numeric())
+
+  for (i in seq_len(nrow(tickers))) {
     name = tickers[i,1]
-    iv30 = getIV_DTE(ticker=tickers[i,], DTE=30)
+    last_ibkr_price = LastIBKRPrice[i,"price"]
+    iv30 = getIV_DTE(tickers[i,], last_ibkr_price, 30)
     if (is.list(iv30)) iv30 = signif_na(iv30$v)
     else iv30 = NA
     res <- res |> dplyr::add_row(Name=name, iv30=iv30)
@@ -283,21 +265,25 @@ get30dIV <- function(tickers) {
 #' Computes 180 days IV using option IVs for 180 days target days expiration
 #'
 #' @param tickers data frame with each row a ticker
+#' @param LastIBKRPrice data frame with each row a ticker, datetime, sym and price
 #' @return a tibble with Name and IV180 as columns. IV180 is rounded to 3rd decimal
 #' @examples
 #' \dontrun{
-#' get180dIV(getTicker("AI"))
-#' get180dIV(getTickers(c("AI", "SPX")))
+#' get180dIV(getTicker("AI"), getStockPrice("AI"))
+#' get180dIV(getTickers(c("AI", "SPX")), getStockPrice(c("AI", "SPX")))
 #' }
 #' @export
-get180dIV <- function(tickers) {
+get180dIV <- function(tickers, LastIBKRPrice) {
 
   if (!is.data.frame(tickers)) return(NA)
 
   res <- dplyr::tibble(Name=character(), iv180=numeric())
-  for (i in 1:nrow(tickers)) {
+
+  ## seq_len will make this loop work even if nrow(df) = 0
+  for (i in seq_len(nrow(tickers))) {
     name = tickers[i,1]
-    iv180 = getIV_DTE(ticker=tickers[i,], DTE=180)
+    last_ibkr_price = LastIBKRPrice[i,"price"]
+    iv180 = getIV_DTE(tickers[i,], last_ibkr_price, 180)
     if (is.list(iv180)) iv180 = signif_na(iv180$v)
     else iv180 = NA
     res <- res |> dplyr::add_row(Name=name, iv180=iv180)
@@ -305,13 +291,47 @@ get180dIV <- function(tickers) {
   return(res)
 }
 
+
+#' Get volatility data from IBKR
+#'
+#' It will request historical data from IBKR TWS API for a number of days.
+#'
+#' If sym is not present in Ticker DB, it will make assumptions like currency=USD, exchange=SMART, etc...
+#' @param sym_list IBKR symbol or vector of symbols
+#' @param lookback_days number of days to analyze, by default 252 days, i.e.  1 year
+#' @return a data frame with for each row the following fields :
+#' \itemize{
+#' \item{\code{symbol} element of sym_list argument}
+#' \item{\code{days_covered} returns the number of calendar days actually spanned over}
+#' \item{\code{requested_days} equals lookback_days}
+#' \item{\code{data_points} the number of bars actually taken into account for computations}
+#' \item{\code{bar_size} will be 2 hours if lookback_days is smaller or equal to 252, 4 hours if greater.}
+#' \item{\code{current_iv} latest close IV recorded}
+#' \item{\code{iv_percentile} will look at all data points - so it is a lookback_days percentile}
+#' \item{\code{iv_min} minimal IV value for all data points}
+#' \item{\code{iv_max} maximal IV value for all data points}
+#' \item{\code{iv_mean} average IV mean value}
+#' \item{\code{iv_30d_back} IV 30 days ago mean value}
+#' \item{\code{iv_180d_back} IV 180 days ago mean value}
+#' \item{\code{current_hv} latest close HV recorded}
+#' \item{\code{hv_percentile} will look at all data points - so it is a lookback_days percentile}
+#' \item{\code{hv_min} minimal HV value for all data points}
+#' \item{\code{hv_max} maximal HV value for all data points}
+#' \item{\code{hv_mean} average HV mean value}
+#' \item{\code{hv_30d_back} HV 30 days ago mean value}
+#' \item{\code{hv_180d_back} HV 180 days ago mean value}
+#' }
+#'
+#' @examples
+#' getVolMetrics(c("ABT", "AMD"))
+#' getVolMetrics("SBSW")
 #' @export
-getVolMetrics <- function(sym_list) {
+getVolMetrics <- function(sym_list, lookback_days = 252) {
 
   if (!is.character(sym_list)) return(NA)
 
   purrr::list_rbind(purrr::map(sym_list, \(sym) {
-    as.data.frame(tdata_py$get_volatility_metrics(sym=sym, hist=TRUE))
+    as.data.frame(tdata_py$get_volatility_metrics(sym=sym, lookback_days=lookback_days, hist=TRUE))
   }))
 }
 
@@ -323,19 +343,20 @@ getVolMetrics <- function(sym_list) {
 #'
 #'
 #' @param ticker one ticker - data frame with one row, or list
+#' @param spot_price last price known for ticker - or a vector of prices, usually taken from IBKR API
 #' @param DTE numeric - should not be smaller than 10 days as model would not work correctly for target days smaller than 8 days,
 #' should be less than 2 years (730 days)
 #' @return a list containing the following: near_forward, next_forward, near_atm_vol, next_atm_vol
 #' near_variance, next_variance, weights, variance_day, v - v is the implied volatility
 #' @examples
 #' \dontrun{
-#'   getIV_DTE(getTicker("AI"), 30)
-#'   getIV_DTE(getTickers(c("AI", "SPX")), 30)
+#'   getIV_DTE(getTicker("AI"), 175.5, 30)
+#'   getIV_DTE(getTickers(c("AI", "SPX")), c(175.5, 5985), 30)
 #' }
 #' @export
-getIV_DTE <- function(ticker, DTE=30){
+getIV_DTE <- function(ticker, spot_price, DTE=30){
 
-  #### Validate input arguments #############
+  #### Validate input arguments
   ### Should not be used for DTE smaller than 10 days or greater than 730 days
   if ((DTE <= 10)| (DTE >= 730)) return(NA)
 
@@ -345,9 +366,7 @@ getIV_DTE <- function(ticker, DTE=30){
     return(NA)
   }
 
-  print(ticker)
-
-  #### Analyze ticker #############
+  #### Analyze ticker
   ### Test if IV equals NO -> return -1 if this is the case
   ### ticker should be enabled for IV retrieval
   if (ticker$IV == "NO") return(-1)
@@ -404,8 +423,7 @@ getIV_DTE <- function(ticker, DTE=30){
     near_interest_rate = getLastRate(currency, near_DTE)
     next_interest_rate = getLastRate(currency, next_DTE)
 
-    ### Get spot price and theoretical forward prices
-    spot_price = getStockPrice(sym)$price
+    ### Get theoretical forward prices
     near_forward_price <- getForwardPrice(spot_price, near_interest_rate, dividend_yield, near_DTE)
     next_forward_price <- getForwardPrice(spot_price, next_interest_rate, dividend_yield, next_DTE)
 
@@ -417,9 +435,9 @@ getIV_DTE <- function(ticker, DTE=30){
     next_strikes <- tdata_py$getStrikesfromExpDate(sym=sym, expdate=next_expiry)
     next_strikes <- Tbasics::get_nearest_values(next_strikes, next_forward_price, n_below = 4, n_above = 4)
 
-    message("Retrieve option prices for ", near_expiry," ...")
+    t_log_info("Retrieve option prices for {near_expiry}...")
     near_option_prices <- getOptionPrices(sym, near_strikes, near_expiry)
-    message("Retrieve option prices for ", next_expiry," ...")
+    t_log_info("Retrieve option prices for {next_expiry}...")
     next_option_prices <- getOptionPrices(sym, next_strikes, next_expiry)
 
     if( (nrow(near_option_prices$unmatched_calls) != 0) | (nrow(near_option_prices$unmatched_puts) != 0)) {
@@ -440,7 +458,7 @@ getIV_DTE <- function(ticker, DTE=30){
     }
 
 
-    ### Prepare call to calculate_target_vol ##########
+    ### Prepare call to calculate_target_vol
     near_term_options <- near_option_prices$matched_pairs
     next_term_options <- next_option_prices$matched_pairs
     near_term_options$days_to_expiry <- near_DTE
@@ -493,11 +511,13 @@ getOptionPrices <- function(sym, strikes, expiration) {
   else if (inherits(expiration,"Date")) expiration = format(expiration,"%Y%m%d")
   else if (!is.character(expiration)) stop("expiration date must be either a date, a number or a character string!")
 
+  t_log_info("Retrieve put data for {sym} at {expiration} for", strikes)
   df_put = tdata_py$getOptValue(sym = sym, expiration = expiration, strikes = strikes, right="P") |>
     dplyr::rename(put_value = value, put_bid = bid, put_ask = ask, put_iv = impliedvol, put_delta = delta) |>
     dplyr::mutate(put_iv = signif_na(put_iv))
   df_put <- df_put |> dplyr::mutate(put_mid = (put_bid + put_ask)/2)
 
+  t_log_info("Retrieve call data for {sym} at {expiration} for", strikes)
   df_call = tdata_py$getOptValue(sym = sym, expiration = expiration, strikes = strikes, right = "C") |>
     dplyr::rename(call_value = value, call_bid = bid, call_ask = ask, call_iv = impliedvol, call_delta = delta) |>
     dplyr::mutate(call_iv = signif_na(call_iv))

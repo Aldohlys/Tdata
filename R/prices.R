@@ -1,8 +1,5 @@
 
-
-
-
-###################  Retrieve prices functions #######################
+###################  Retrieve prices functions
 
 #'   getSymIntervalDate
 #'
@@ -30,7 +27,7 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date(), sym_yahoo=NU
   if (is.null(sym_yahoo)) sym_yahoo <- getYahooName(sym)
 
   if (length(sym) != length(sym_yahoo)) {
-    tdata_log_error("sym_yahoo and sym must have the same length!!")
+    t_log_error("sym_yahoo and sym must have the same length!!")
     return(NA)
   }
 
@@ -38,8 +35,8 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date(), sym_yahoo=NU
   ### If yes then return NA and do not process further
   if (any(is.na(sym_yahoo))) {
     ### This assumes that sym order is the same as sym_yahoo order - i.e. sapply does not change order, should be Ok
-    sym_list = paste(sym[is.na(sym_yahoo)], collapse = " ")
-    tdata_log_info(sprintf("One or several tickers cannot be analyzed through Yahoo service: %s", sym_list))
+    sym_list = paste(sym[is.na(sym_yahoo)], collapse = ", ")
+    t_log_info("One or several tickers cannot be analyzed through Yahoo service: {sym_list}")
     return(NA)
   }
 
@@ -50,7 +47,7 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date(), sym_yahoo=NU
     names(lookup_table) <- sym_yahoo
 
     df <- getYahooData(sym_yahoo, from_date, to_date)
-    tdata_log_debug("Yahoo Data:", df)
+    t_log_debug("Yahoo Data:", df)
     # Replace symbols using vector indexing - ticker is returned by YahooData function
     return(dplyr::mutate(df, ticker = lookup_table[ticker]))
   }
@@ -83,7 +80,7 @@ getSymMetricIntervalDate = function(sym, from_date, to_date = Sys.Date(), metric
 
   ### Retrieve first Yahoo data
   sub_res = getSymIntervalDate(sub_sym, from_date, to_date, sub_sym_yahoo)
-  tdata_log_debug("getSymMetricIntervalDate: ", sub_res)
+  t_log_debug("getSymMetricIntervalDate: ", sub_res)
 
   ### Build NA data for non-Yahoo symbols - recycling NA and date
   sub_na <- dplyr::tibble(date = Sys.Date(), ticker=sym[is.na(sym_yahoo)],
@@ -164,7 +161,8 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, metric = "Adjusted"){
     if (one_date == Sys.Date() - 1) prices_list <- getSymMetricIntervalDate(one_sym, one_date - 5, one_date + 1, metric)
     else prices_list <- getSymMetricIntervalDate(one_sym, one_date - 5, one_date + 2, metric)
 
-    tdata_log_debug("Prices returned by getSymMetricIntervalDate", prices_list)
+    prices_list_pasted <- glue::glue_collapse(prices_list, sep=', ')
+    t_log_debug("Prices returned by getSymMetricIntervalDate: {prices_list_pasted}")
     ### Find nearest date to one_date, one_date becomes the nearest recorded day in Yahoo
     ### Monday date will be taken for Sunday, and Friday for Saturday
     one_date = Tbasics::findNearestNumberOrDate(prices_list$date, one_date)
@@ -193,18 +191,19 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, metric = "Adjusted"){
 #' To achieve this, it will give argument "today - 5" date to this function- to be sure to get at least one valid date,
 #' even if there are week ends and closed days. It takes then last open date if current date provided does not work.
 #'
-#'@param sym symbol name or list of symbols, as known by IBKR or Yahoo.
+#'@param sym symbol name or vector of symbols, as known by IBKR.
 #'If it belongs to Tickers table, it will be converted to Yahoo ticker name.
 #'Otherwise it is assumed to be good for Yahoo service.
 #'@return a tibble with column names: \code{date, sym, value}, sym column contains the original sym list.
 #'Known also as long data frame format as opposed to wide format.
 #'@examples
-#'getLastSymPrice(c("SPY","XSP"))
+#'getLastSymPrice(c("SPY","SPX"))
+#'@export
 getLastSymPrice <- function(sym) {
   data = getSymIntervalDate(sym, from_date=Sys.Date()-5)
 
   if (all(is.na(data))) {
-    tdata_log_info("Yahoo service did not find any data for: ", list(sym=sym))
+    t_log_info("Yahoo service did not find any data for: {paste(sym, collapse=', ')}")
     line <- data.frame(
       datetime = format(Sys.Date(),"%Y-%m-%d"),
       sym = sym,
@@ -336,17 +335,16 @@ getLastTickerData = function(ticker) {
 #'@returns a value
 #'@examples
 #'\dontrun{
-#'getStockPrice(sym="SPY")
-#'getStockPrice(sym="ESTX50")
-#'getStockPrice(sym="USO",close=TRUE)
+#'getStockPrice(sym = "SPY")
+#'getStockPrice(sym = c("SPX", "USO"))
+#'getStockPrice(sym = "USO", close=TRUE)
 #'}
 #'@export
 getStockPrice = function(sym = NULL, close = FALSE) {
-  tdata_log_info("getStockPrice: using Yahoo and DB, not IBKR")
 
   if (is.null(sym) || all(is.na(sym)) || any(!is.character(sym)) ||
       any(sym %in% c("", "All", "STOCK"))){
-    tdata_log_info("getStockPrice: There must be at least one valid ticker name")
+    t_log_info("getStockPrice: There must be at least one valid ticker name")
     return(NA)
   }
 
@@ -356,7 +354,7 @@ getStockPrice = function(sym = NULL, close = FALSE) {
     else return(getLastAdjustedPrice(s))
   })
 
-  logger::log_debug("prices_list:", prices_list, namespace="Tdata")
+  t_log_debug("prices_list: {paste(prices_list, collapse=', ')}")
 
   ### Initialize all lines with data from Yahoo,
   ###   dated yesterday close of business for US stocks (maybe different for European stocks)
@@ -367,9 +365,8 @@ getStockPrice = function(sym = NULL, close = FALSE) {
     ### price is field name in Prices DB
     price =  prices_list ### This may include NA if unknown by Yahoo
   )
-  logger::log_debug("line:", line, namespace="Tdata")
 
-  ### Just retrieve latest price from DB or Yahoo but no try to update using IBKR
+  ### Just retrieve latest price from DB or Yahoo but no trial to update using IBKR
   if (!close) {
     conn <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
     on.exit(DBI::dbDisconnect(conn), add=TRUE)
@@ -396,12 +393,32 @@ getStockPrice = function(sym = NULL, close = FALSE) {
                                           dplyr::if_else(dt_x > dt_y, price.x, price.y)))
 
     line <- dplyr::select(line, datetime, sym, price)
-    tdata_log_debug("From DB: ", line)
+    t_log_debug("From DB: ", line)
   }
+
+  if (nrow(line) != 0) t_log_info("Most recent price either Yahoo or stored in DB:", line)
+  else  t_log_info("No data retrieved for {paste(sym, collapse=', ')}")
+
 
   return(line)
 }
 
+
+
+#' Retrieve stored price and iv data for a ticker
+#'
+#'For a given ticker or a vector of tickers, this function returns the last stored price (latest from both),
+#'but also implied volatility and historical volatility data.
+#'
+#'If no data can be found in prices DB (e.g. sym is not found in DB), then an empty line is returned
+#'This function is vectorized.
+#'@param name string - IBKR style of ticker.
+#'@returns a data frame, for each row: \code{datetime, sym, price, iv30, iv180, ivp, rv30, rvp}
+#'@examples
+#'\dontrun{
+#'getStoredMetrics(name="SPY")
+#'getStoredMetrics(name=c("ESTX50", "USO"))
+#'}
 #'@export
 getStoredMetrics = function(name) {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
@@ -411,7 +428,13 @@ getStoredMetrics = function(name) {
   if (length(name) > 1) {
     # Create a parameterized query for multiple names
     placeholders <- paste(rep("?", length(name)), collapse = ", ")
-    query <- paste0("SELECT * FROM Prices WHERE sym IN (", placeholders, ") ORDER BY datetime DESC LIMIT ",length(name))
+    query <- paste0("
+        SELECT *  FROM (
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY sym ORDER BY datetime DESC) as rn
+          FROM Prices
+          WHERE sym IN (", placeholders, ")
+        )
+        WHERE rn = 1")
     prices <- DBI::dbGetQuery(conn, query, params = as.list(name))
 
     # Reorder results to match input order
@@ -479,12 +502,12 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
   # Process each chunk
   for (chunk_idx in seq_along(ticker_chunks)) {
     chunk <- ticker_chunks[[chunk_idx]]
-    tdata_log_debug(sprintf("Processing chunk %d of %d (%d tickers)",
+    t_log_debug(sprintf("Processing chunk %d of %d (%d tickers)",
                   chunk_idx, length(ticker_chunks), length(chunk)))
 
     # Process each ticker in the chunk
     for (ticker in chunk) {
-      tdata_log_debug(sprintf("  Fetching %s... ", ticker))
+      t_log_debug(sprintf("  Fetching %s... ", ticker))
 
       success <- FALSE
       last_error <- NULL
@@ -519,16 +542,16 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
           # Success!
           all_results[[ticker]] <- ticker_data
           success <- TRUE
-          tdata_log_debug("Success for {ticker}")
+          t_log_debug("Success for {ticker}")
           break  # Exit retry loop
         },
         error = function(e) {
           last_error <- e
           if (attempt < max_retries) {
-            tdata_log_debug(sprintf("attempt %d failed, retrying... ", attempt))
+            t_log_debug(sprintf("attempt %d failed, retrying... ", attempt))
             Sys.sleep(retry_delay * attempt)  # Exponential backoff
           } else {
-            tdata_log_debug("Fail for {ticker}")
+            t_log_debug("Fail for {ticker}")
           }
           return(NULL)
         })
@@ -560,12 +583,12 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
 
   # Report on overall success rate
   success_rate <- (length(ticker_names) - length(failed_tickers)) / length(ticker_names)
-  tdata_log_debug(sprintf("Retrieved data for %.1f%% of tickers (%d/%d)",
+  t_log_debug(sprintf("Retrieved data for %.1f%% of tickers (%d/%d)",
                 success_rate * 100,
                 length(ticker_names) - length(failed_tickers),
                 length(ticker_names)))
   if (length(failed_tickers) > 0)
-    tdata_log_debug("Failed tickers: ", paste(failed_tickers, collapse=", "))
+    t_log_debug("Failed tickers: {paste(failed_tickers, collapse=', ')}")
 
   # Process results into a consolidated XTS object with ticker as column
   if (length(all_results) == 0) {

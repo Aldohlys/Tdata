@@ -86,9 +86,9 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
     }
     else {
       sql <- paste(sql, ", close = ?")
-      tdata_log_debug(sql)
+      t_log_debug(sql)
       params <- append(params, close)
-      tdata_log_debug(paste(unlist(params), collapse=" "))
+      t_log_debug(paste(unlist(params), collapse=" "))
     }
   }
 
@@ -100,9 +100,9 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
     }
     else {
       sql <- paste(sql, ", change = ?")
-      tdata_log_debug(sql)
+      t_log_debug(sql)
       params <- append(params, change)
-      tdata_log_debug(paste(unlist(params), collapse=" "))
+      t_log_debug(paste(unlist(params), collapse=" "))
       }
   }
 
@@ -114,9 +114,9 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
     }
     else {
       sql <- paste(sql, ", mkt_price = ?")
-      tdata_log_debug(sql)
+      t_log_debug(sql)
       params <- append(params, mkt_price)
-      tdata_log_debug(paste(unlist(params), collapse=" "))
+      t_log_debug(paste(unlist(params), collapse=" "))
     }
   }
 
@@ -128,9 +128,9 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
     }
     else {
       sql <- paste(sql, ", mkt_change = ?")
-      tdata_log_debug(sql)
+      t_log_debug(sql)
       params <- append(params, mkt_change)
-      tdata_log_debug(paste(unlist(params), collapse=" "))
+      t_log_debug(paste(unlist(params), collapse=" "))
     }
   }
 
@@ -142,9 +142,9 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
     }
     else {
       sql <- paste(sql, ", theme = ?")
-      tdata_log_debug(sql)
+      t_log_debug(sql)
       params <- append(params, theme)
-      tdata_log_debug(paste(unlist(params), collapse=" "))
+      t_log_debug(paste(unlist(params), collapse=" "))
     }
   }
 
@@ -156,9 +156,9 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
     }
     else {
       sql <- paste(sql, ", date = ?")
-      tdata_log_debug(sql)
+      t_log_debug(sql)
       params <- append(params, date)
-      tdata_log_debug(paste(unlist(params), collapse=" "))
+      t_log_debug(paste(unlist(params), collapse=" "))
     }
   }
 
@@ -170,23 +170,23 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
     }
     else {
       sql <- paste(sql, ", text = ?")
-      tdata_log_debug(sql)
+      t_log_debug(sql)
       params <- append(params, text)
-      tdata_log_debug(paste(unlist(params), collapse=" "))
+      t_log_debug(paste(unlist(params), collapse=" "))
     }
   }
 
   if (nchar(sql) != 0) {
     sql <- paste(sql, "WHERE entryID =?;")
     params <- append(params, entryId)
-    tdata_log_debug(sql)
-    tdata_log_debug(paste(unlist(params), collapse=" "))
+    t_log_debug(sql)
+    t_log_debug(paste(unlist(params), collapse=" "))
     conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
     on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
     ### In case DB cannot be accesssed - locked for instance
     tryCatch(DBI::dbExecute(conn, sql, params), error = function(e) {
-      tdata_log_error("Error while trying to update Journal DB: ", e)
+      t_log_error("Error while trying to update Journal DB: ", e)
       return(0)}
       )
   }

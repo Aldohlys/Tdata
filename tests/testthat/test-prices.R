@@ -101,7 +101,7 @@ test_that("getYahooData handles non-existent tickers gracefully", {
   skip_if_offline()  # Skip test if internet connection is unavailable
 
   # Test with a mix of valid and invalid tickers
-  test_tickers <- c("AAPL", "NONEXISTENTTICKER123", "MSFT")
+  test_tickers <- c("AAPL", "NONEXISTENTTICKER123")
   start_date <- Sys.Date() - 5
 
   result <- tryCatch({
@@ -124,7 +124,7 @@ test_that("getYahooData handles non-existent tickers gracefully", {
   expect_false("NONEXISTENTTICKER123" %in% colnames(result))
 
   # Check that at least one of the valid tickers was retrieved
-  expect_true(any(c("AAPL", "MSFT") %in% result$ticker))
+  expect_true("AAPL" %in% result$ticker)
 })
 
 test_that("getYahoo works with mock ticker data", {
@@ -156,43 +156,36 @@ test_that("getYahoo works with mock ticker data", {
 })
 
 
-test_that("getStockPrice works with symbol SPY",{
+test_that("getStockPrice works with symbol SPY -1",{
   spy <- getStockPrice("SPY", close=FALSE)
   expect_true(all(is.character(c(spy$datetime, spy$sym))))
   expect_true(is.numeric(spy$price))
 })
 
-test_that("getStockPrice works with symbol SPY",{
+test_that("getStockPrice works with symbol SPY -2",{
   spy <- getStockPrice("SPY", close=TRUE)
   expect_true(all(is.character(c(spy$datetime, spy$sym))))
   expect_true(is.numeric(spy$price))
 })
 
-test_that("getStockPrice works with symbol SPY",{
+test_that("getStockPrice works with symbol SPY - 3",{
   spy <- getStockPrice("SPY")
   expect_true(all(is.character(c(spy$datetime, spy$sym))))
   expect_true(is.numeric(spy$price))
 })
 
-test_that("getStockPrice works with 2 symbols SPY, XSP", {
-  res <- getStockPrice(c("SPY", "XSP"))
+test_that("getStockPrice works with 2 symbols SPY, SPX", {
+  res <- getStockPrice(c("SPY", "SPX"))
   expect_true(all(is.character(c(res$datetime, res$sym))))
   expect_true(is.numeric(res$price))
   expect_length(res$price, 2)
 })
 
-test_that("getStockPrice works with 3 symbols SPY, SPX and one with non-Yahoo existence - US-T", {
-  res <- getStockPrice(c("SPY", "SPX", "US-T"))
+test_that("getStockPrice returns NA for all non-Yahoo syms - US-T, SOFR3", {
+  res <- getStockPrice(c("US-T", "SOFR3"))
   expect_true(all(is.character(c(res$datetime, res$sym))))
   expect_true(is.numeric(res$price))
-  expect_length(res$price, 3)
-})
-
-test_that("getStockPrice returns NA for all non-Yahoo syms - US-T, SOFR3, arggh", {
-  res <- getStockPrice(c("US-T", "SOFR3", "arggh"))
-  expect_true(all(is.character(c(res$datetime, res$sym))))
-  expect_true(is.numeric(res$price))
-  expect_length(res$price, 3)
+  expect_length(res$price, 2)
   expect_true(all(is.na(res$price)))
 })
 

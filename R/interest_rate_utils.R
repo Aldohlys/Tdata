@@ -70,7 +70,6 @@ getInterestRates <- function(update_db = TRUE) {
 }
 
 
-######################################################
 #' updateDBRates
 #'
 #' Update currency interest rates in the database
@@ -158,12 +157,12 @@ getAllTenors <- function(currency="All") {
       result <- DBI::dbGetQuery(myconn, sql)
 
       if(nrow(result) == 0) {
-        display_message(paste0("Currency ",currency, " does not exist in DB"))
+        Tbasics::display_message(paste0("Currency ",currency, " does not exist in DB"))
         return(data.frame())
       }
 
       if(as.character(result) == "No") {
-        display_message(paste0("Currency ",currency, " is inactive, no interest rates returned"))
+        Tbasics::display_message(paste0("Currency ",currency, " is inactive, no interest rates returned"))
         return(data.frame())
       }
     }
@@ -256,6 +255,7 @@ getLastRate <- function(currency, DTE=30) {
 #' Get USD interest rates from FRED
 #'
 #' @return A data frame with USD interest rates
+#' @noRd
 #' @keywords internal
 get_usd_rates <- function() {
   # Define symbols and tenors
@@ -303,6 +303,7 @@ get_usd_rates <- function() {
 #'
 #' @return A data frame with columns: Name, last_ir_update, ir1week, ir1month, ir3months,
 #'   ir6months, ir1year, ir2years
+#' @noRd
 #' @keywords internal
 get_eur_rates <- function() {
   # Get today's date in YYYYMMDD format for last_ir_update
@@ -396,11 +397,12 @@ get_eur_rates <- function() {
   return(rates)
 }
 
-####################################  CHF ###################
+####################################  CHF
 #' Get CHF interest rates from NASDAQ Data Link
 #'
 #' Fixed function for getting CHF rates with environment variable authentication
 #' @return A data frame with CHF interest rates
+#' @noRd
 #' @keywords internal
 get_chf_rates <- function(verbose = FALSE) {
 
@@ -411,7 +413,7 @@ get_chf_rates <- function(verbose = FALSE) {
   status <- c()
 
 
-  # ---- Try to get SARON data from SNB ----
+  # ---- Try to get SARON data from SNB
   tryCatch({
     if (verbose) cat("Retrieving SARON data from SNB...\n")
 
@@ -438,7 +440,7 @@ get_chf_rates <- function(verbose = FALSE) {
     if (verbose) status <- c(status, "saron_error")
   })
 
-  # ---- Try to get government yields from SNB ----
+  # ---- Try to get government yields from SNB
   tryCatch({
     if (verbose) cat("Retrieving government bond yields from SNB...\n")
 
@@ -467,7 +469,7 @@ get_chf_rates <- function(verbose = FALSE) {
     if (verbose) status <- c(status, "yields_error")
   })
 
-  # ---- Final steps to complete the data frame ----
+  # ---- Final steps to complete the data frame
 
   # Find most recent date - FIX HERE for the date conversion issue
   if (length(dates) > 0) {
@@ -515,13 +517,14 @@ get_chf_rates <- function(verbose = FALSE) {
 #' Not used because it does not get updated often enough - 2025-03-01, 2.746% although current rate is 1.688% on May 1st, 2025
 #'
 #' @return data frame with record date and 2 years EUR value
+#' @noRd
 #' @keywords internal
 get_de_yield <- function() {
   # FRED symbol for 2-year German government bond yield
   symbol <- "IRLTLT01DEM156N"  # Long-term government bond yield
 
   # Get data from FRED
-  data <- getSymbols(symbol, src = "FRED", auto.assign = FALSE)
+  data <- quantmod::getSymbols(symbol, src = "FRED", auto.assign = FALSE)
   record <- xts::last(data)
   names(record)="ir2years"
 
@@ -555,6 +558,7 @@ get_de_yield <- function() {
 #' @param use_static Logical. If TRUE, uses the static value without trying online sources
 #' @param debug Logical. If TRUE, outputs debugging information
 #' @return A list containing the rate, raw value, timestamp, and source
+#' @noRd
 #' @keywords internal
 get_saron_rate <- function(use_static = FALSE, debug = FALSE) {
   # Static value - update this manually when you have access to the correct rate
@@ -638,6 +642,7 @@ get_saron_rate <- function(use_static = FALSE, debug = FALSE) {
 #' @param use_static Logical. If TRUE, uses the static value without trying online sources
 #' @param debug Logical. If TRUE, outputs debugging information
 #' @return Numeric SARON rate
+#' @noRd
 #' @keywords internal
 get_saron_numeric <- function(use_static = FALSE, debug = FALSE) {
   result <- get_saron_rate(use_static, debug)
@@ -652,12 +657,13 @@ get_saron_numeric <- function(use_static = FALSE, debug = FALSE) {
 #' @param new_value Numeric. The new SARON rate to store
 #' @param script_path Character. Path to this script file
 #' @return Logical. TRUE if update was successful
+#' @noRd
 #' @keywords internal
 update_static_saron <- function(new_value, script_path = NULL) {
   # If script_path is NULL, try to find the current script
   if(is.null(script_path)) {
     # This will only work if this function is being sourced directly
-    script_path <- getSrcFilename(function(){})
+    script_path <- utils::getSrcFilename(function(){})
     if(is.null(script_path) || script_path == "") {
       stop("Please provide the path to the script file")
     }
@@ -713,6 +719,7 @@ update_static_saron <- function(new_value, script_path = NULL) {
 #' @param use_static Logical. If TRUE, uses static values without trying online sources
 #' @param debug Logical. If TRUE, outputs debugging information
 #' @return A data frame with maturities and their corresponding yields
+#' @noRd
 #' @keywords internal
 get_swiss_bond_yields <- function(maturities = c("1Y", "2Y"), use_static = FALSE, debug = FALSE) {
   # Static values in case online sources fail
@@ -726,8 +733,8 @@ get_swiss_bond_yields <- function(maturities = c("1Y", "2Y"), use_static = FALSE
   # If using static values only, return immediately
   if(use_static) {
     if(debug) cat("Using static bond yield values\n")
-    result <- static_values %>%
-      filter(maturity %in% maturities)
+    result <- static_values |>
+      dplyr::filter(maturity %in% maturities)
 
     result$source <- "static"
     result$timestamp <- Sys.time()
@@ -756,8 +763,8 @@ get_swiss_bond_yields <- function(maturities = c("1Y", "2Y"), use_static = FALSE
 
     if(length(maturities) == 0) {
       # If no valid maturities, return static values
-      result <- static_values %>%
-        filter(maturity %in% names(yahoo_tickers))
+      result <- static_values |>
+        dplyr::filter(maturity %in% names(yahoo_tickers))
 
       result$source <- "static"
       result$timestamp <- Sys.time()
@@ -906,16 +913,16 @@ get_swiss_bond_yields <- function(maturities = c("1Y", "2Y"), use_static = FALSE
   if(nrow(results) == 0) {
     warning("Failed to retrieve yields from any source, using all static values")
 
-    results <- static_values %>%
-      filter(maturity %in% maturities)
+    results <- static_values |>
+      dplyr::filter(maturity %in% maturities)
 
     results$source <- "static"
     results$timestamp <- Sys.time()
   }
 
   # Sort by maturity
-  results <- results %>%
-    arrange(match(maturity, maturities))
+  results <- results |>
+    dplyr::arrange(match(maturity, maturities))
 
   return(results)
 }
@@ -926,6 +933,7 @@ get_swiss_bond_yields <- function(maturities = c("1Y", "2Y"), use_static = FALSE
 #' @param use_static Logical. If TRUE, uses static values
 #' @param debug Logical. If TRUE, outputs debugging information
 #' @return A named numeric vector with yields
+#' @noRd
 #' @keywords internal
 get_swiss_bond_yields_numeric <- function(maturities = c("1Y", "2Y"),
                                           use_static = FALSE,
@@ -944,6 +952,7 @@ get_swiss_bond_yields_numeric <- function(maturities = c("1Y", "2Y"),
 #' @param new_values A data frame with columns 'maturity' and 'yield'
 #' @param script_path Path to this script file
 #' @return Logical indicating success
+#' @noRd
 #' @keywords internal
 update_static_yields <- function(new_values, script_path = NULL) {
   # Validate input
@@ -954,7 +963,7 @@ update_static_yields <- function(new_values, script_path = NULL) {
   # If script_path is NULL, try to find the current script
   if(is.null(script_path)) {
     # This will only work if this function is being sourced directly
-    script_path <- getSrcFilename(function(){})
+    script_path <- utils::getSrcFilename(function(){})
     if(is.null(script_path) || script_path == "") {
       stop("Please provide the path to the script file")
     }

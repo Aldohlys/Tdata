@@ -34,6 +34,6 @@ _Dans vos modules Python_
 
 _Dans vos fonctions R_
 
-* Utilisez les fonctions tdata_log: tdata_log_info("Message", list(contexte = valeur))
+* Utilisez les fonctions t_log: t_log_info("Message")
 * Capturez les exceptions: tryCatch({ ... }, error = function(e) { tdata_log_exception(e, "Message d'erreur") })
 * Mesurez le temps d'exécution: fonction_temporisée <- tdata_log_execution_time(fonction_originale)

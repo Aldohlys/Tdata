@@ -153,18 +153,27 @@ getClosedTrades = function(account, windowDate = Sys.Date()-200) {
 
 
 
-### This function is useful for test_that test functions as getToday will then be changed for mocking test
+### This function is meant as a wrapper to make test possible
+#'@noRd
 getToday = function() {
   Sys.Date()
 }
 
-### This function is useful for test purposes
+### This function is meant as a wrapper to make test possible
+#'@noRd
 getInstrumentQuery <- function(conn, tradenr, instr) {
   return(DBI::dbGetQuery(conn,
                           "SELECT Prix As startPrice,`Exp.Date` as expdate, Ssjacent as symbol, min(TradeDate) AS initial_trade_date
                          FROM Trades WHERE TradeNr = ? AND Instrument = ?",
                           params=list(tradenr, instr)))
 
+}
+
+### This function is meant as a wrapper to make test possible
+#'@noRd
+getInterestRate <- function(initial_trade_date, expdate) {
+  Tbasics::getInterestRate(initial_trade_date,
+                           difftime(expdate, initial_trade_date, units="weeks"))
 }
 
 ############################
@@ -213,8 +222,8 @@ getInstrument <- function(tradenr, instrument) {
 
       data = dplyr::mutate(data, expdate = as.Date(expdate,"%d.%m.%Y"),
                            initial_trade_date = as.Date(as.character(initial_trade_date),"%Y%m%d"))
-      data = dplyr::mutate(data, interest_rate = Tbasics::getInterestRate(initial_trade_date,
-                                                                          difftime(expdate, initial_trade_date, units="weeks")))
+      data = dplyr::mutate(data, interest_rate = getInterestRate(initial_trade_date, expdate))
+
       ### Compute DTE from InitialStartDate till Exp.Date
       data = dplyr::mutate(data, DTE = Tbasics::getDTE(initial_trade_date, expdate))
       data = dplyr::mutate(data, u_price = getSymPrice(symbol, report_date=initial_trade_date))

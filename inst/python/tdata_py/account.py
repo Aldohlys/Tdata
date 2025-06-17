@@ -8,7 +8,7 @@ from .core import util
 from fin_logger import get_logger
 
 # Get logger for this module
-logger = get_logger()
+logger = get_logger("tdata_py.account")
 
 def retrieveCurrencyPairs(currencies, currency_pairs, direct_conv):
     # Use safe_ib_connect instead of direct connection
