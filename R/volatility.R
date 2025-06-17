@@ -323,8 +323,11 @@ get180dIV <- function(tickers, LastIBKRPrice) {
 #' }
 #'
 #' @examples
+#' \dontrun{
+#' Requires IBKR TWS connection and Python environment
 #' getVolMetrics(c("ABT", "AMD"))
 #' getVolMetrics("SBSW")
+#' }
 #' @export
 getVolMetrics <- function(sym_list, lookback_days = 252) {
 

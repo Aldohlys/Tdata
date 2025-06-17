@@ -72,7 +72,7 @@ ticker <- NULL
 bid <- ask <- put_iv <- put_bid <- put_ask <- call_bid <- call_ask <- call_iv <- call_value <- put_value <- has_put <- has_call <- call_mid <- put_mid <- NULL
 
 ### getOptionPrices
-
+impliedvol <- NULL
 
 ### getIBKRMetrics
 IV <- Name <- current_iv <- iv_percentile <- current_hv <- hv_percentile <- NULL

@@ -56,7 +56,7 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
   IBKRPrice <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=reqType, close=close)
   t_log_info("Retrieved price data from IBKR: {IBKRPrice}")
 
-  ### Error case do not go further on###
+  ### Error case do not go further on
   if (length(IBKRPrice) == 1) {
     t_log_warn("IBKR data retrieval did not work - either no connection or contract does not exist")
     return (IBKRPrice)
@@ -148,6 +148,8 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
 #'       function handles the actual data retrieval.
 #'
 #' @examples
+#' \dontrun{
+#' # Requires IBKR TWS connection and Python environment
 #' # Process all tickers
 #' all_metrics <- getSliceAllIBKRMetrics()
 #'
@@ -156,7 +158,7 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
 #'
 #' # Process tickers from index 10 to 20
 #' subset_metrics <- getSliceAllIBKRMetrics(first=10, last=20)
-#'
+#' }
 #' @seealso
 #' \code{\link{getAllTickers}} for retrieving the complete list of available tickers
 #' \code{\link{getIBKRMetrics}} for retrieving metrics for a single ticker
@@ -173,7 +175,7 @@ getSliceAllIBKRMetrics <- function(first=1, last=0) {
   if (last == 0) last = max
 
   ### Process new prices for tickers - that should include also underlyings part of the portfolio
-  message(paste0("\n#####  Retrieving price data from ticker n°",first," to ticker n°",last," ..."))
+  message(paste0("\n#####  Retrieving price data from ticker nr.",first," to ticker nr.",last," ..."))
   tickers = tickers[first:last,]
 
   message(paste0("\nUnfiltered: ",paste(tickers$Name, collapse=" ")))

@@ -397,13 +397,11 @@ getStockPrice = function(sym = NULL, close = FALSE) {
   }
 
   if (nrow(line) != 0) t_log_info("Most recent price either Yahoo or stored in DB:", line)
-  else  t_log_info("No data retrieved for {paste(sym, collapse=', ')}")
+  else  t_log_info("No data retrieved for: ", paste(sym, collapse=', '))
 
 
   return(line)
 }
-
-
 
 #' Retrieve stored price and iv data for a ticker
 #'

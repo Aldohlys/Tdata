@@ -1,6 +1,5 @@
 
 ############  Test prices ###########
-
 test_that("It is possible to retrieve correctly list of prices for a ticker and an interval date", {
   expect_true({
     p=getSymIntervalDate("GOOG",as.Date("2023-11-01"),as.Date("2023-11-05"))

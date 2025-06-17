@@ -6,15 +6,15 @@ get_euribor_data <- function() {
     "6M" = "FM.M.U2.EUR.RT.MM.EURIBOR6MD_.HSTA",
     "12M" = "FM.M.U2.EUR.RT.MM.EURIBOR12MD_.HSTA"
   )
-  
+
   # Container for results
   results <- list()
-  
+
   # Fetch each EURIBOR rate
   for (name in names(euribor_codes)) {
     code <- euribor_codes[name]
     cat("Fetching", name, "EURIBOR data...\n")
-    
+
     # Get data from ECB
     data <- tryCatch({
       ecb::get_data(code)
@@ -22,13 +22,13 @@ get_euribor_data <- function() {
       cat("Error fetching", name, ":", e$message, "\n")
       return(NULL)
     })
-    
+
     if (!is.null(data)) {
       # Add to results
       results[[name]] <- data
-      cat("✓ Success!\n")
+      cat("Success!\n")
     }
   }
-  
+
   return(results)
 }
