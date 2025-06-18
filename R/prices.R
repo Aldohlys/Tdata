@@ -288,7 +288,7 @@ getLastPriceDate = function(ticker) {
 #'
 #'This function is not vectorized and accepts only one ticker at a time.
 #'It calls Yahoo service through \code{getSymFromDate} to obtains necessary value.
-#'@param ticker string - IBKR style of ticker, if equal to "STOCK" or "All" then returns a list of NA values
+#'@param ticker string - IBKR style of ticker, if equal to "STOCK" or "All" then returns a vector of NA values
 #'@returns a list of 2 fields: \code{last} which contains last value of the ticker,
 #'and \code{change} that contains a string giving the percentage of change since previous day.
 #'@examples getLastTickerData("SPY")

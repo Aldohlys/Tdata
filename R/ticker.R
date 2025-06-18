@@ -335,7 +335,11 @@ getYahooName <- function(sym) {
     }
 
     ### One ticker has been found - if type equals FUT or TBILL no Yahoo search
-    if (ticker$Type %in% c("STK", "CASH", "IND")) return(ticker$YahooName)
+    if (ticker$Type %in% c("STK", "CASH", "IND"))  {
+      ### Case where no Yahoo historical data available, e.g. U.UN
+      if (ticker$YahooName == "") return(NA)
+      else return(ticker$YahooName)
+    }
 
     ### Else no Yahoo search possible or does not make sense (i.e. T-Bill)
     else {
