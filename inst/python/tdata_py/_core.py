@@ -216,7 +216,6 @@ class TickerDatabase:
                 'Expiration': ''
             }
     
-    # Keep old functions as instance methods for backward compatibility
     def determine_sec(self, sym):
         """
         Determine security type based on symbol.
