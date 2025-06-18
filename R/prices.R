@@ -606,8 +606,10 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
                      row.names = NULL,
                      stringsAsFactors = FALSE)
 
-    # Extract the column name pattern - Yahoo Finance typically uses TICKER.OHLCV format
-    col_pattern <- paste0("^", ticker, "\\.")
+    # Yahoo Finance converts special characters to dots in column names
+    # Need to escape the ticker and handle character conversion
+    ticker_for_pattern <- gsub("[-^]", "\\.", ticker)  # Convert hyphens and carets to dots
+    col_pattern <- paste0("^", ticker_for_pattern, "\\.")
 
     # Rename columns to standard format: Open, High, Low, Close, Adjusted, Volume
     colnames(df) <- gsub(col_pattern, "", colnames(df))
