@@ -320,6 +320,7 @@ removeTicker = function(name) {
 #'@examples
 #'\dontrun{
 #'getYahooName(c("ABT", "ESTX50", "US-T", "SOFR3"))
+#'getYahooName(c("EUR.USD", "USD.CAD"))
 #'}
 getYahooName <- function(sym) {
 
@@ -328,7 +329,7 @@ getYahooName <- function(sym) {
 
     ticker <- getTicker(x)
 
-    ### If ticker does not exist in Ticker table then just return NA - ticker has to be defined
+    ### If ticker does not exist in Ticker table then return NA - nothing can be done
     if (nrow(ticker) == 0) {
       t_log_debug("Ticker {x} is not in Ticker DB")
       return(NA)

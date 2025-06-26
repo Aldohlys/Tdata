@@ -262,35 +262,32 @@ def getIBKRData():
     #### i index is necessary to iterate over df
     #### Consider only row that are of secType = OPT
     ###  Extract only 'contract' column in row 
-    
-    df = util.df(ib.portfolio())
-    c_def = pd.DataFrame()
-    #### Iterate over each line of portfolio
-    for i in range(len(df)):
-        line = df.iloc[i,0]
-        ## ib.qualifyContracts is not needed to retrieve underlying prices and will be called anyway during portfolio data processing
-        ## ib.qualifyContracts(line)
-        c_def = pd.concat([c_def, pd.DataFrame([df.iloc[i,0]])], ignore_index=True)
-    df = c_def.join(df)
-    
-    # print("\n#####  Retrieving underlying price data... \n")
-    # 
-    # #### Remove underlying symbol duplicates
-    # du = df.drop_duplicates(subset='symbol',keep="first")
-    # 
-    # ### Retrieve only prices for secType = OPT not other types (for STK, FUT, data is already present in retrieved portfolio data)
-    # du = du.loc[du["secType"] == "OPT"]
-    # 
-    # u_prices_data = retrievePricesData(ib, du)
-    # print(u_prices_data)
 
     print("\n#####  Retrieving portfolio data... \n")
-    portf_data = retrievePortfolioData(ib, df)
-    print(portf_data)
     
-    ### Wait until all data has been received
-    ib.sleep(1)
+    df = util.df(ib.portfolio())
     
+    ### Initialize portf data and contract definition variables
+    c_def = pd.DataFrame()
+    portf_data = pd.DataFrame()
+    
+    ### First check if data retrieved is not None
+    if df is not None:
+
+        #### Iterate over each line of portfolio, retrieve contract definition which is the first column value
+        ### If no line then this is skipped, df still is None
+        for row in df.itertuples():
+            line = row[1]  # First column value (row[0] is the DataFrame index)
+            c_def = pd.concat([c_def, pd.DataFrame([row[1]])], ignore_index=True)
+        df = c_def.join(df)
+
+        portf_data = retrievePortfolioData(ib, df)
+
+        ### Wait until all data has been received
+        ib.sleep(1)
+        
+        print(portf_data)
+
     #### IB connection no more needed
     ib.disconnect()
     

@@ -374,12 +374,18 @@ greeksNet = function(portf) {
 #'
 #' Account data will be stored in Account table, portfolio data in Uxxx or DUxxx table, depending upon account data.
 #'
-#'@returns No value
-#'@export
+#'@returns an integer, between 0 (no value returned) and 3 (account, portfolio and margin data retrieved and stored)
+#' \itemize{
+#' \item{0 =  could not access to IBKR or DB}
+#' \item{1 = account data retrieved from IBKR and stored in data}
+#' \item{2 = portfolio and account data retrieved from IBKR and stored in data}
+#' \item{3 = margin, portfolio and account data retrieved from IBKR and stored in data}
+#' }
 #'@examples
 #'\dontrun{
-#'getIBKR(silent=FALSE)
+#'getIBKR()
 #'}
+#'@export
 getIBKR <- function() {
 
   # replace_date  <- function(x) {
@@ -387,7 +393,7 @@ getIBKR <- function() {
   # }
 
   ### Test first if IB is available - no use to continue if not
-  if (!isIBAvailable()) return()
+  if (!isIBAvailable()) return(0)
 
   ### Retrieve account and portfolio data in a list
   l = tdata_py$getIBKRData()
@@ -399,13 +405,20 @@ getIBKR <- function() {
   #### 1. Process new account data
   account_data = l[[1]]
 
-  ### Open connection to user DB
+  ### No data retrieved
+  if (nrow(account_data) == 0) return(0)
+
+  ### Open connection to user DB and prepare for exit properly
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   DBI::dbAppendTable(conn,"Account", account_data)
 
   #### Process portfolio last position
   portf_data = l[[2]]
+
+  ### Test if no data then exit the function with code = 1
+  if (nrow(portf_data) == 0) return(1)
 
   ### Following Python extract, all fields are either double or character
   portf_data = dplyr::mutate(portf_data,
@@ -470,13 +483,33 @@ getIBKR <- function() {
                                                              .default = NA),
                                margin = 0)
 
-  ### Retrieve margin data from IBKR - for WHEEL/OFI strategies, margin for each contract listed (first contract in the trade)
-  if (!all(is.na(margin_ibkr_data$contracts))) {
-    margin_ibkr_data$margin[!is.na(margin_ibkr_data$contracts)] =  tdata_py$retrieveAccountMarginData(as.character(margin_ibkr_data$contracts[!is.na(margin_ibkr_data$contracts)]))
+  ### Retrieve margin data from IBKR -
+  ### for WHEEL/OFI strategies :
+  ###     margin for each contract listed (first contract in the trade)
+  margin_ibkr_contracts = margin_ibkr_data$contracts
+
+  if (!all(is.na(margin_ibkr_contracts))) {
+    non_na_margin_contracts_ind = !is.na(margin_ibkr_contracts)
+
+    ### Send to IBKR only contracts that do have margin
+    ibkr_contracts = as.character(margin_ibkr_contracts[non_na_margin_contracts_ind])
+    margin_data = tdata_py$retrieveAccountMarginData(ibkr_contracts)
+
+    ### If no data received then set exit code 2, otherwise set it to 3
+    if (length(margin_data) == 0) exit_code = 2
+    else  {
+      margin_ibkr_data$margin[non_na_margin_contracts_ind] =  margin_data
+      exit_code = 3
+    }
   }
+
+  ### All margin contracts are NA - no margin data retrieved
+  else exit_code = 2
+
+
   portf_data = dplyr::left_join(portf_data, margin_ibkr_data)
 
-  ## multiply margin data by position (WHEEL/OFI) or compute the spread data (CS case)
+  ## multiply margin data retrieved from IBKR by position (WHEEL/OFI) or compute the spread data (CS case)
   ## All other strategies have no margin
   portf_data = dplyr::mutate(portf_data,
                              margin = dplyr::if_else(dplyr::first(marginable) == "Yes",
@@ -498,57 +531,65 @@ getIBKR <- function() {
   ### If it is not the case then display a warning message to end-user
   if (any(is.na(portf_data$TradeNr))) {
     unmatched_instruments = portf_data[is.na(portf_data$TradeNr),"Instrument"]
-    Tbasics::display_message("One or several instrument could not be matched in DB Trades table !!")
-    print(unmatched_instruments)
+    t_log_info("One or several instruments could not be matched in DB Trades table : {unmatched_instruments}")
   }
 
-  ### Append to DB
+  ### Append to DB - with or without margin data retrieved from IBKR
   DBI::dbAppendTable(conn,account_data$account,portf_data)
 
-  DBI::dbDisconnect(conn)
+  ### Account data, portfolio data and potentially margin data retrieved and stored
+  return(exit_code)
 }
 
 
 #'   getIBKRActiveCurrencies
 #'
-#' This function retrieves active currencies pairs values from DB ActiveCurrencies table, and then requests value from IBKR.
-#' Once data retrieved, it is then stored into DB.
+#' This function retrieves active currencies pairs values from DB ActiveCurrencies table,
+#' and then :
+#' \itemize{
+#' \item{1. Queries Yahoo service, and update DB if more recent data is obtained from Yahoo service.}
+#' \item{2. Queries IBKR using Forex contracts, and update DB if more recent data is obtained from IBKR.}
+#' }
 #'
 #' This does not request any value from end-user yet, in case IBKR does not return any value.
 #'
-#'@returns No value
-#'@export
+#'@returns number of IBKR updates, integer - 0 if no update and n for n currencies updated through IBKR
 #'@examples
 #'\dontrun{
 #'getIBKRActiveCurrencyValues()
 #'}
+#'@export
 getIBKRActiveCurrencyValues <- function() {
-  #### Start retrieving currency pairs
-  # Tbasics::display_message("Retrieving EUR/USD !")
-  # EUR = try(tdata_py$$getCurrencyPairValue("EURUSD",reqType=2))
-  # if (is.null(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
-  # else if (is.na(EUR)) EUR=Tbasics::enter_numerical_data("EUR/USD")
-  #
-  # Tbasics::display_message("Retrieving CHF/USD !")
-  # CHF = try(tdata_py$$getCurrencyPairValue("CHFUSD",reqType=2))
-  # if (is.null(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
-  # else if (is.na(CHF)) CHF=Tbasics::enter_numerical_data("CHF/USD")
-  #
-  # Sys.sleep(1)
 
   ### Test first if IB is available - no use to continue if not
-  if (!isIBAvailable()) return()
+  if (!isIBAvailable()) return(0)
 
   ### Open connection to user DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   ### Skip USD and all inactive currencies
   Tbasics::display_message("Retrieve currencies from DB...")
-  currency_data <- DBI::dbGetQuery(conn, "SELECT Name, FXPair, DirectConversion FROM Currencies
+  currency_data <- DBI::dbGetQuery(conn, "SELECT Name, IBKRPair, DirectConversion FROM Currencies
                                           WHERE Active = 'Yes' AND Name <> 'USD' ")
-  ### Prepare to retrieve data from IBKR
+
+  ### First retrieve data from DB and update it if possible with Yahoo data
+  Tbasics::display_message("Yahoo service to retrieve data... stored in DB if more recent than data in DB")
   currencies <- currency_data$Name
-  currency_pairs <- currency_data$FXPair
+  stored_values <- getLastUSDValue(currencies)
+
+  # Create lookup vectors for efficient comparison
+  stored_dates <- setNames(stored_values$date, stored_values$currency)
+
+  ### If stored data are all from today - no use to update DB
+  if (all(stored_values$date == format(Sys.Date(), "%Y%m%d"))) {
+    Tbasics:: display_message("All currency data is already up to date - no need to query!")
+    return(0)
+  }
+
+  ### Prepare to retrieve data from IBKR
+  ### IBKRPair are like EURUSD,HKDUSD, etc...
+  currency_pairs <- currency_data$IBKRPair
   direct_conv <- currency_data$DirectConversion
 
   Tbasics::display_message("Call IBKR to retrieve data...")
@@ -558,22 +599,32 @@ getIBKRActiveCurrencyValues <- function() {
   currencies_list = currency_pairs_data[[1]]
   currencies_values = currency_pairs_data[[2]]
 
-  ### Retrieve last record date either from DB or from Yahoo - date is in character/integer format
-  #### last_date <- as.Date(as.character(getLastUSDValue()$date), "%Y%m%d")
-
   ### In case last record date is prior to today then look at the record
   ### Otherwise no reason to save it
-  ### It will be saved only if all are different from NaN
-  if (all(!is.na(currencies_values))) {
-    usd = data.frame(date = as.integer(format(Sys.Date(), "%Y%m%d")),
-                     currency = currencies_list,
-                     usd_value = currencies_values)
-    usd = usd[!is.na(usd$usd_value),]
 
-    DBI::dbAppendTable(conn, "ConvertToUSD", usd)
-    DBI::dbDisconnect(conn)
+  ### If any retrieved data is different from NA then build the ibkr_prices
+  if (any(!is.na(currencies_values))) {
+    ibkr_usd = data.frame(date = as.integer(format(Sys.Date(), "%Y%m%d")),
+                     currency = currencies_list,
+                     usd_value = round(currencies_values, 4))
+    ibkr_usd = ibkr_usd[!is.na(ibkr_usd$usd_value),]
   }
 
+  # Identify updates needed in ibkr_usd prices - either date is more recent or no data at all
+  updates_needed <- ibkr_usd |>
+    dplyr::filter(date > stored_dates[currency] | is.na(stored_dates[currency]))
+
+  # Insert/update records if any updates needed
+  if(nrow(updates_needed) > 0) {
+    DBI::dbWriteTable(conn, "ConvertToUSD", updates_needed, append = TRUE)
+    t_log_info("Updated {nrow(updates_needed)} currency rates")
+    return(nrow(updates_needed))
+  }
+
+  else {
+    t_log_info("No updates needed - stored data is current")
+    return(0)
+  }
 }
 
 #'   getGonet

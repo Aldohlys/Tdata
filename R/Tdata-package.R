@@ -7,5 +7,6 @@
 #' @importFrom glue glue_collapse
 #' @importFrom rlang sym
 #' @importFrom stats na.omit
+#' @importFrom stats setNames
 ## usethis namespace: end
 NULL

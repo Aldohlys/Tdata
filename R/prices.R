@@ -608,12 +608,17 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
 
     # Yahoo Finance converts special characters to dots in column names
     # Need to escape the ticker and handle character conversion
-    ticker_for_pattern <- gsub("[-^]", "\\.", ticker)  # Convert hyphens and carets to dots
-    col_pattern <- paste0("^", ticker_for_pattern, "\\.")
+    # Convert hyphens, carets, and equals to dots
+    ticker_for_pattern <- gsub("[-^=]", "\\.", ticker)
 
+    # Special case: Index symbols starting with ^ have the caret dropped in column names
+    if (startsWith(ticker, "^")) {
+      ticker_for_pattern <- substring(ticker, 2)  # Remove the leading caret for pattern matching
+    }
+
+    col_pattern <- paste0("^", ticker_for_pattern, "\\.")
     # Rename columns to standard format: Open, High, Low, Close, Adjusted, Volume
     colnames(df) <- gsub(col_pattern, "", colnames(df))
-
     # Add ticker column
     df$ticker <- ticker
 

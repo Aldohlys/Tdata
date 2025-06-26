@@ -76,3 +76,7 @@ impliedvol <- NULL
 
 ### getIBKRMetrics
 IV <- Name <- current_iv <- iv_percentile <- current_hv <- hv_percentile <- NULL
+
+### currency
+Adjusted <- date <- ticker <- currency <- usd_value <- NULL
+

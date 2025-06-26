@@ -1,4 +1,4 @@
-#### CURRENCY management ##################
+#### CURRENCY management
 
 
 ### This function work only for IBKR accounts not for Gonet account
@@ -9,12 +9,47 @@
 #                                                              grouping_mark="",encoding="UTF-8")))
 # }
 
+
+#' getCurrencyAttrib
+#'
+#' This function retrieves all attributes of a given currency from DB.
+#' This function can be vectorized.
+#'
+#' It looks into Currencies table and requests
+#' the corresponding record.
+#'@param currency string or vector of strings - possible values are EUR, CHF, USD...
+#'@returns a data frame with \code{
+#' "Name", "DirectConversion","IBKRPair","Active","Display","ir1week","ir1month","ir3months",
+#' "ir6months","ir1year","ir2years","last_ir_update"
+#'}
+#'@examples
+#'\dontrun{
+#'getCurrencyAttrib("USD")
+#'getCurrencyAttrib(c("EUR", "CHF"))
+#'getCurrencyAttrib("CAD")
+#'getCurrencyAttrib("CHF")
+#'}
+#'@export
+getCurrencyAttrib <- function(currency) {
+
+  ### Look at DB
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add=TRUE)
+
+  currency_detail <- DBI::dbGetQuery(conn, "SELECT * FROM Currencies WHERE Name = ?", params=list(currency))
+  return(currency_detail)
+
+}
+
+
+
 ### This assumes that mydb is declared
 getAllCurrenciesUSDValues = function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
   all_values <- DBI::dbReadTable(conn, "ConvertToUSD")
-  DBI::dbDisconnect(conn)
-  all_values
+  return(all_values)
 }
 
 #'  getStoredUSDValue
@@ -24,103 +59,145 @@ getAllCurrenciesUSDValues = function() {
 #' It looks into ConvertToUSD table and requests
 #' the last record. It does not try to retrieve more up to date value from IBKR or other sources.
 #' See \code{getIBKR()} to get more up to date data from IBKR
-#'@param currency string - possible values are EUR, CHF, USD...
-#'@returns a data frame with \code{date, usd_value} fields,
+#'@param currency string or character vector - possible values are EUR, CHF, USD...
+#'@returns a data frame with \code{date, currency, usd_value} fields,
 #'where \code{date} is an integer format of YYYYMMDD and \code{usd_value} a numeric.
 #'@examples
+#'\dontrun{
 #'getStoredUSDValue("USD")
-#'getStoredUSDValue("EUR")
+#'getStoredUSDValue(c("EUR", "CHF"))
 #'getStoredUSDValue("CAD")
 #'getStoredUSDValue("CHF")
+#'}
 #'@export
 getStoredUSDValue = function(currency) {
-  dplyr::if_else (currency == "USD",
-           data.frame(date = as.numeric(format(Sys.Date(),"%Y%m%d")), usd_value = 1.0),
-           {
-             conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-             usd <- DBI::dbGetQuery(conn, "SELECT max(date) as date, usd_value FROM ConvertToUSD WHERE currency = ?",
-                                    params=list(currency))
-             DBI::dbDisconnect(conn)
-             usd
-           })
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  placeholders <- paste(rep("?", length(currency)), collapse = ",")
+
+  # Add USD to union only if requested
+  usd_union <- if("USD" %in% currency) {
+    sprintf("SELECT 'USD' as currency, %s as date, 1.0 as usd_value UNION ALL",
+            as.numeric(format(Sys.Date(),"%Y%m%d")))
+  } else ""
+
+  query <- sprintf("
+    SELECT max(date) as date,  currency, usd_value
+    FROM (
+      %s
+      SELECT currency, date,  usd_value FROM ConvertToUSD WHERE currency IN (%s)
+    )
+    GROUP BY currency",
+    usd_union, placeholders
+  )
+
+  result <- DBI::dbGetQuery(conn, query, params = as.list(currency))
+  return(result)
 }
-
-
-  # usd = getAllCurrencyPairs()
-  # usd <- usd[usd$currency == currency,]
-  # usd_last = dplyr::filter(usd, date == max(date))
-  #
-  # ### This will remove duplicate for currency and date
-  # usd_last = usd_last[!duplicated(usd_last[, 1:2]),]
-  #
-  # ### This is an approximation - hopefully dates at which currencies were retrieved are not too different
-  # ### - ideally they should be all equal !!
-  # ### So looking at this date one knows worse case for currency value accuracy is this date
-  # usd_last$date = min(usd_last$date)
-  # usd_last = tidyr::pivot_wider(usd_last, names_from="currency", values_from="usd_value")
-  # return(usd_last)
-
 
 #'  getLastUSDValue
 #'
 #' This function returns converted value of a given currency to USD
 #' by trying to get from Yahoo the latest available value and by default
-#' returning last value available in DB. This function cannot be vectorized.
+#' returning last value available in DB.
 #'
 #'
-#' It looks into ConvertToUSD table and then retrieves last available value from Yahoo.
+#' It looks into ConvertToUSD table and retrieves also last available value from Yahoo.
 #' If Yahoo value is different from NA and if it is are more recent than stored value, then
 #' it will update ConvertToUSD table in DB. It returns the stored value anyhow.
 #'
 #' It does not try to retrieve more up to date value from IBKR.
-#' See \code{getIBKR()} to get more up to date data from IBKR
-#'@param currency string - possible values are EUR, CHF,...
+#'@param currency string or character vector - possible values are EUR, CHF,...
+#'Any USD value from input will trigger an error message
 #'@returns a data frame with \code{date, usd_value} fields,
 #'where \code{date} is an integer format of YYYYMMDD and \code{usd_value} a numeric.
 #'@examples
-#'getLastUSDValue("USD")
+#'\dontrun{
 #'getLastUSDValue("EUR")
-#'getLastUSDValue("CAD")
+#'getLastUSDValue(c("CAD", "EUR"))
 #'getLastUSDValue("CHF")
+#'}
 #'@export
 getLastUSDValue = function(currency) {
 
-  usd = data.frame(date=NA, usd_value=NA)
-
-  if (currency == "USD") {
-    usd = data.frame(date = as.numeric(format(Sys.Date(),"%Y%m%d")), usd_value = 1.0)
-    return(usd)
+  if (any(currency == "USD")) {
+    Tbasics::display_error_message("There cannot be USD value returned by getLastUSDValue if currency is already USD !!")
+    return(NA)
   }
 
   Tbasics::display_message("Retrieve currencies from DB...")
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-  currency_detail <- DBI::dbGetQuery(conn, "SELECT YahooPair, DirectConversion FROM Currencies WHERE Name = ?", params=list(currency))
-  DBI::dbDisconnect(conn)
+  on.exit(DBI::dbDisconnect(conn), add=TRUE)
+
+  # Create placeholders for IN clause based on vector length
+  placeholders <- paste(rep("?", length(currency)), collapse = ",")
+  query <- sprintf("
+    SELECT Name, YahooName, DirectConversion FROM Currencies
+    WHERE Name IN (%s)", placeholders)
+  currency_detail <- DBI::dbGetQuery(conn, query, params=as.list(currency))
 
   if (nrow(currency_detail) == 0){
     Tbasics::display_error_message(paste0(currency, " currency undefined, not able to retrieve in Yahoo !!"))
   }
 
-  last_price <- getLastSymPrice(currency_detail[,1])
+  ### Direct call to YahooData to get last value as there is no known ticker
+  ### 3 last days returned
+  price_list <- getYahooData(currency_detail$YahooName, from_date=Sys.Date()-3)
+  last_nr = nrow(price_list)
 
-   ### convert date to compare
+  if (last_nr == 0) {
+    t_log_info("No currency data for {currency} found !")
+    return(data.frame(date = as.Date(""), value = NA))
+  }
+
+  ### There is at least one value returned per currency
+  last_price <- price_list |>
+    dplyr::group_by(ticker) |>
+    dplyr::slice_max(date, n = 1) |>
+    dplyr::select(date, currency=ticker, Adjusted) |>
+    dplyr::ungroup()
+
+  ### COnvert Yahoo names back to currency names
+  last_price$currency <- currency_detail$Name[match(last_price$currency, currency_detail$YahooName)]
+
+  ### convert date to integer to compare more easily
   last_price$date <- as.integer(format(max(last_price$date),"%Y%m%d"))
 
   ### Get last record from CurrencyPairs table
-  usd <- getStoredUSDValue(currency)
+  stored_values <- getStoredUSDValue(last_price$currency)
 
-  if (last_price$date > usd$date) {
-      ### Only new prices are to be stored
-      new_price <- dplyr::left_join(last_price, currency_detail, by = c("sym" = "YahooPair"))
-      new_price <- dplyr::mutate(new_price, value=round(dplyr::if_else(DirectConversion == "Yes", value, 1/value), 4))
-      new_price <- dplyr::mutate(new_price, date=date, currency=currency, usd_value=value, .keep="none")
+  # Create lookup vectors for efficient comparison
+  stored_dates <- setNames(stored_values$date, stored_values$currency)
 
-      conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-      DBI::dbAppendTable(conn, "ConvertToUSD", new_price)
-      DBI::dbDisconnect(conn)
-      usd <- dplyr::select(new_price, date, usd_value)
+  # Identify updates needed without join
+  updates_needed <- last_price |>
+    dplyr::filter(date > stored_dates[currency] | is.na(stored_dates[currency])) |>
+    dplyr::mutate(usd_value = round(Adjusted, 4)) |>
+    dplyr::select(date, currency, usd_value)
+
+  # Insert/update records if any updates needed
+  if(nrow(updates_needed) > 0) {
+    DBI::dbWriteTable(conn, "ConvertToUSD", updates_needed, append = TRUE)
+    t_log_info("Updated {nrow(updates_needed)} currency rates")
   }
-  return(usd)
+
+  else {
+    t_log_info("No updates needed - stored data is current")
+  }
+
+  ### DB is now up to date using Yahoo data - retrieve last values
+  placeholders <- paste(rep("?", length(currency)), collapse = ", ")
+  query <- sprintf("
+    SELECT max(date) as date, currency, usd_value
+    FROM ConvertToUSD
+    WHERE currency IN (%s)
+    GROUP BY currency",
+  placeholders
+  )
+
+  result <- DBI::dbGetQuery(conn, query, params = as.list(currency))
+  return(result)
 }
 
 #'  currency_sign
@@ -137,11 +214,23 @@ getLastUSDValue = function(currency) {
 #'currency_sign(c("CHF", "USD"))
 #'@export
 currency_sign <- function(currency) {
+
+  ### Open connection to DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-  currencies <- DBI::dbReadTable(conn, "Currencies")
-  DBI::dbDisconnect(conn)
-  sub_currencies <- suppressMessages(dplyr::left_join(data.frame(Name=currency), currencies))
-  sub_currencies$Display
+  on.exit(DBI::dbDisconnect(conn), add=TRUE)
+
+  # Create temporary table with currency (preserving duplicates)
+  temp_df <- data.frame(requested_currency = currency)
+  DBI::dbWriteTable(conn, "temp_requests", temp_df, temporary = TRUE)
+
+  # JOIN to get duplicates preserved
+  currency_detail <- DBI::dbGetQuery(conn, "
+  SELECT c.*
+  FROM temp_requests t
+  INNER JOIN Currencies c ON t.requested_currency = c.Name
+")
+
+  return(currency_detail$Display)
 }
 
 
@@ -269,9 +358,9 @@ convert_to_usd_date = function(amount, currency, convert_date = Sys.Date()) {
   numeric_date = numeric(0)
 
   ### If convert_date is of Date type or character type then convert it
-  if (is.numeric(convert_date)) numeric_date = convert_date
-  if (inherits(convert_date,"Date")) numeric_date <- as.numeric(format(convert_date,"%Y%m%d"))
-  if (is.character(convert_date)) numeric_date <- as.numeric(convert_date)
+  if (is.numeric(convert_date)) numeric_date <- convert_date
+  else if (inherits(convert_date,"Date")) numeric_date <- as.numeric(format(convert_date,"%Y%m%d"))
+  else if (is.character(convert_date)) numeric_date <- as.numeric(convert_date)
 
   ### Retrieve all currency pairs since beginning
   ### It is assumed here that dates are stored in integer/character format in CurrencyPairs table
@@ -280,18 +369,21 @@ convert_to_usd_date = function(amount, currency, convert_date = Sys.Date()) {
   ### This works only if date is of length 1
   ### if date is not recorded yet, it will provide the values of yesterday or before
   ### If it falls on a closed day and day before and after are business days, then it provides the oldest day
-  usd = dplyr::group_by(usd, currency)
-  usd = dplyr::ungroup(dplyr::filter(usd, abs(date-numeric_date) == min(abs(date-numeric_date))))
-  usd$date = NULL
+  # Find nearest date for each currency using vectorized operations
+  usd <- usd |>
+    dplyr::group_by(currency) |>
+    dplyr::slice_min(abs(date - numeric_date), n = 1) |>  # Get row with minimum date difference
+    dplyr::slice_head(n = 1) |>  # Remove duplicates (take first/oldest if tie)
+    dplyr::ungroup() |>
+    dplyr::select(currency, usd_value)
 
-  ### Remove duplicated currencies (take first one i.e. oldest same date)
-  usd = usd[!duplicated(usd[,1]),]
+  # Create lookup vector with USD hardcoded
+  currency_rates <- setNames(usd$usd_value, usd$currency)
+  currency_rates["USD"] <- 1.0  # Add USD rate directly
 
-  ### If convert to USD - always equal to 1
-  usd = dplyr::add_row(usd, currency="USD", usd_value = 1)
-
-  result = dplyr::left_join(result, usd)
-  return(as.numeric(result$amount * result$usd_value))
+  # Vectorized lookup and calculation
+  rates <- currency_rates[currency]  # Direct vector indexing
+  return(as.numeric(amount * rates))
 }
 
 

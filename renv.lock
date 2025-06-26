@@ -134,7 +134,7 @@
     },
     "RSQLite": {
       "Package": "RSQLite",
-      "Version": "2.3.11",
+      "Version": "2.4.1",
       "Source": "Repository",
       "Repository": "CRAN",
       "Requirements": [
@@ -149,7 +149,7 @@
         "plogr",
         "rlang"
       ],
-      "Hash": "a204089d316c9b20c3e64ce690a87168"
+      "Hash": "5076ce961a150762b476acc0880a4391"
     },
     "Rcpp": {
       "Package": "Rcpp",
