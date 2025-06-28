@@ -57,7 +57,51 @@ test_that("Retrieve a tibble with all last prices from a vector of tickers",{
   expect_true(all(class(df$date) == "Date"))
 })
 
-test_that("getYahoo retrieves data for reliable tickers correctly", {
+
+test_that("getYahooData is able to work with tickers that have special names: ^XSP, 1810.HK, U-UN.TO", {
+ data <- getYahooData(c("^XSP", "1810.HK", "U-UN.TO", "XAU.TO"), as.Date("2025-06-25"))
+
+ # Test that data is returned (not NULL)
+ expect_false(is.null(data))
+
+ # Test that data is a data.frame
+ expect_true(is.data.frame(data))
+
+ # Test that we have data for all tickers
+ expect_equal(length(unique(data$ticker)), 4)
+ expect_true(all(c("^XSP", "1810.HK", "U-UN.TO", "XAU.TO") %in% data$ticker))
+
+ # Test expected columns exist
+ expected_cols <- c("date", "ticker", "Open", "High", "Low", "Close", "Adjusted", "Volume")
+ expect_true(all(expected_cols %in% colnames(data)))
+
+ # Test no NA values in essential columns (except Volume which can be 0/NA for some markets)
+ essential_cols <- c("Open", "High", "Low", "Close", "Adjusted")
+ for (col in essential_cols) {
+   expect_false(all(is.na(data[[col]])),
+                info = paste("Column", col, "should not be all NA"))
+ }
+
+ # Test that dates are proper Date objects
+ expect_true(inherits(data$date, "Date"))
+
+ # Test that all dates are >= the requested from_date
+ expect_true(all(data$date >= as.Date("2025-06-25")))
+
+ # Test that numeric columns are actually numeric
+ numeric_cols <- c("Open", "High", "Low", "Close", "Adjusted", "Volume")
+ for (col in numeric_cols) {
+   expect_true(is.numeric(data[[col]]),
+               info = paste("Column", col, "should be numeric"))
+ }
+
+ # Test that High >= Low for all rows (basic data validation)
+ valid_rows <- !is.na(data$High) & !is.na(data$Low)
+ expect_true(all(data$High[valid_rows] >= data$Low[valid_rows]),
+             info = "High prices should be >= Low prices")
+})
+
+test_that("getYahooData retrieves data for reliable tickers correctly", {
   skip_if_offline()  # Skip test if internet connection is unavailable
 
   # Explicitly use xts namespace without loading the whole package
@@ -126,7 +170,7 @@ test_that("getYahooData handles non-existent tickers gracefully", {
   expect_true("AAPL" %in% result$ticker)
 })
 
-test_that("getYahoo works with mock ticker data", {
+test_that("getYahooData works with mock ticker data", {
   skip_if_offline()  # Skip test if internet connection is unavailable
 
   # Create a mock getTickers output - just use one reliable ticker for speed

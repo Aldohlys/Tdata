@@ -609,16 +609,45 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
     # Yahoo Finance converts special characters to dots in column names
     # Need to escape the ticker and handle character conversion
     # Convert hyphens, carets, and equals to dots
-    ticker_for_pattern <- gsub("[-^=]", "\\.", ticker)
 
     # Special case: Index symbols starting with ^ have the caret dropped in column names
+    # Remove the leading caret for pattern matching
     if (startsWith(ticker, "^")) {
-      ticker_for_pattern <- substring(ticker, 2)  # Remove the leading caret for pattern matching
+      ticker_for_prefix <- substring(ticker, 2)  # Remove ^
+    } else {
+      ticker_for_prefix <- ticker
     }
 
-    col_pattern <- paste0("^", ticker_for_pattern, "\\.")
-    # Rename columns to standard format: Open, High, Low, Close, Adjusted, Volume
-    colnames(df) <- gsub(col_pattern, "", colnames(df))
+    ticker_for_prefix <- gsub("[-=]", ".", ticker_for_prefix)  # Convert - and = to .
+
+    # Convert to data frame while preserving dates
+    df <- data.frame(date = zoo::index(ticker_data),
+                     zoo::coredata(ticker_data),
+                     row.names = NULL,
+                     stringsAsFactors = FALSE)
+
+    # Determine expected ticker prefix for column matching
+    if (startsWith(ticker, "^")) {
+      ticker_for_prefix <- substring(ticker, 2)  # Remove ^
+    } else {
+      ticker_for_prefix <- ticker
+    }
+    ticker_for_prefix <- gsub("[-=]", ".", ticker_for_prefix)  # Convert - and = to .
+
+    # Check if we need to remove X prefix added by Yahoo
+    expected_prefix <- paste0(ticker_for_prefix, ".")
+    x_expected_prefix <- paste0("X", ticker_for_prefix, ".")
+
+    if (any(startsWith(colnames(df), x_expected_prefix)) &&
+        !any(startsWith(colnames(df), expected_prefix))) {
+      # Yahoo added X prefix - remove it
+      colnames(df) <- gsub("^X", "", colnames(df))
+    }
+
+    # Now proceed with normal column matching
+    ticker_prefix <- paste0(ticker_for_prefix, ".")
+    col_matches <- startsWith(colnames(df), ticker_prefix)
+    colnames(df)[col_matches] <- substring(colnames(df)[col_matches], nchar(ticker_prefix) + 1)
     # Add ticker column
     df$ticker <- ticker
 
