@@ -561,17 +561,6 @@ getIBKR <- function() {
 #'@export
 getIBKRActiveCurrencyValues <- function() {
 
-  ### First retrieve data from DB and update it if possible with Yahoo data
-  Tbasics::display_message("Yahoo service to retrieve data... stored in DB if more recent than data in DB")
-  currencies <- currency_data$Name
-  stored_values <- getLastUSDValue(currencies)
-
-  # Create lookup vectors for efficient comparison
-  stored_dates <- setNames(stored_values$date, stored_values$currency)
-
-  ### Test first if IB is available - no use to continue if not
-  if (!isIBAvailable()) return(0)
-
   ### Open connection to user DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
@@ -581,11 +570,22 @@ getIBKRActiveCurrencyValues <- function() {
   currency_data <- DBI::dbGetQuery(conn, "SELECT Name, IBKRPair, DirectConversion FROM Currencies
                                           WHERE Active = 'Yes' AND Name <> 'USD' ")
 
-  ### If stored data are all from today - no use to update DB
+  ### First retrieve data from DB and if stored data are all from today - no use to update DB
   if (all(stored_values$date == format(Sys.Date(), "%Y%m%d"))) {
     Tbasics:: display_message("All currency data is already up to date - no need to query!")
     return(0)
   }
+
+  ### Update it if possible with Yahoo data - DB update will be done during call to getLastUSDValue
+  Tbasics::display_message("Yahoo service to retrieve data... stored in DB if more recent than data in DB")
+  currencies <- currency_data$Name
+  stored_values <- getLastUSDValue(currencies)
+
+  # Create lookup vectors for efficient comparison
+  stored_dates <- setNames(stored_values$date, stored_values$currency)
+
+  ### Test first if IB is available - no use to continue if not
+  if (!isIBAvailable()) return(0)
 
   ### Prepare to retrieve data from IBKR
   ### IBKRPair are like EURUSD,HKDUSD, etc...
