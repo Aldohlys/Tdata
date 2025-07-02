@@ -94,7 +94,7 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
       tryCatch({
         myconn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
         on.exit(DBI::dbDisconnect(myconn), add=TRUE)
-        DBI::dbAppendTable(myconn, "Prices", LastIBKRPrice)
+        safe_db_append(myconn, "Prices", LastIBKRPrice)
       },
       error = function(cond) {
         t_log_error("Error while trying to write to DB", cond)

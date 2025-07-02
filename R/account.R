@@ -412,7 +412,7 @@ getIBKR <- function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
-  DBI::dbAppendTable(conn,"Account", account_data)
+  safe_db_append(conn,"Account", account_data)
 
   #### Process portfolio last position
   portf_data = l[[2]]
@@ -535,7 +535,7 @@ getIBKR <- function() {
   }
 
   ### Append to DB - with or without margin data retrieved from IBKR
-  DBI::dbAppendTable(conn,account_data$account,portf_data)
+  safe_db_append(conn,account_data$account,portf_data)
 
   ### Account data, portfolio data and potentially margin data retrieved and stored
   return(exit_code)
@@ -617,7 +617,7 @@ getIBKRActiveCurrencyValues <- function() {
 
   # Insert/update records if any updates needed
   if(nrow(updates_needed) > 0) {
-    DBI::dbWriteTable(conn, "ConvertToUSD", updates_needed, append = TRUE)
+    safe_db_write(conn, "ConvertToUSD", updates_needed, append = TRUE)
     t_log_info("Updated {nrow(updates_needed)} currency rates")
     return(nrow(updates_needed))
   }
@@ -707,9 +707,9 @@ getGonet <- function() {
   ## Make them available for other functions
   ### Open connection to user DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-  DBI::dbAppendTable(conn,"Gonet", portf)
+  safe_db_append(conn,"Gonet", portf)
   ### Non NaN prices already been stored in DB by getIBKRMetrics function - so only price_user need to be stored in DB
-  DBI::dbAppendTable(conn,"Prices", price_user)
+  safe_db_append(conn,"Prices", price_user)
   DBI::dbDisconnect(conn)
 }
 
@@ -780,7 +780,7 @@ getAccountGonet <- function() {
     ####  UnrealizedPnL;RealizedPnL;TotalCashBalance;CashFlow
     acc = dplyr::select(acc, dplyr::all_of(account.var))
     conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-    DBI::dbAppendTable(conn,"Account",acc)
+    safe_db_append(conn,"Account",acc)
     DBI::dbDisconnect(conn)
 }
 
@@ -844,7 +844,7 @@ getAccountLive <- function() {
   data= dplyr::select(data,dplyr::all_of(account.var))
 
   ### Stored in DB the Live account record
-  DBI::dbAppendTable(conn, "Account", data)
+  safe_db_append(conn, "Account", data)
   DBI::dbDisconnect(conn)
 }
 

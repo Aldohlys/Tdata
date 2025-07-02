@@ -24,7 +24,7 @@ saveTrades = function(trades) {
   #             col.names=TRUE,row.names=FALSE,sep=";",dec=".",quote=TRUE)
 
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-  DBI::dbWriteTable(conn, "Trades", trades, overwrite = TRUE,
+ safe_db_write(conn, "Trades", trades, overwrite = TRUE,
                     field.types=c("TradeNr"=	"INTEGER","TradeDate"	= "INTEGER",
                                   "Pos"	= "INTEGER",
                                   "Prix" =	"REAL",

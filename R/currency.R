@@ -178,7 +178,7 @@ getLastUSDValue = function(currency) {
 
   # Insert/update records if any updates needed
   if(nrow(updates_needed) > 0) {
-    DBI::dbWriteTable(conn, "ConvertToUSD", updates_needed, append = TRUE)
+    safe_db_write(conn, "ConvertToUSD", updates_needed, append = TRUE)
     t_log_info("Updated {nrow(updates_needed)} currency rates")
   }
 

@@ -45,7 +45,7 @@ readJournalMaxEntryId <- function() {
 #'@export
 writeJournalEntry <- function(entry) {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-  status <- DBI::dbAppendTable(conn, "Journal", entry)
+  status <- safe_db_append(conn, "Journal", entry)
   DBI::dbDisconnect(conn)
   status
 }

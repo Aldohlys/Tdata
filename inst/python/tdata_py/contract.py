@@ -54,8 +54,7 @@ def getValue(list_sym, reqType=2, ib=None, close=True):
         list_sym (str or list): Symbol(s)
         reqType (int): Market data type (1=Live, 2=Frozen, 3=Delayed, 4=Delayed Frozen)
         close (bool): If True, returns close price; otherwise returns current price
-        silent: If True, does not print comments otherwise it does
-        
+
     Returns:
         DataFrame or int: 
             - DataFrame with datetime, symbol and price if successful
@@ -146,6 +145,7 @@ def getValue(list_sym, reqType=2, ib=None, close=True):
             return df
         else:
             # Contracts couldn't be qualified
+            logger.error("contracts could not be qualified:", {"contracts":contracts})
             return -1
     except Exception as e:
         # Handle any unexpected errors
@@ -156,7 +156,7 @@ def getValue(list_sym, reqType=2, ib=None, close=True):
         if disconnect:
             ib.disconnect()
 
-def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, tradingClass=None, silent=True):
+def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, tradingClass=None):
     """
     Get option values, implied volatility and delta for one or multiple strikes.
     
@@ -218,14 +218,14 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
                         exchange=exchange, currency=currency, tradingClass=tradingClass) 
                 for strike_c in strikes] 
     
-    if (not silent): print("\nCONTRACTS:", contracts)
-    
+    logger.debug("CONTRACTS:", {"contracts":contracts})
+
     if(ib.qualifyContracts(*contracts)):
         # Use frozen market data (type 2) for consistent pricing
         ib.reqMarketDataType(2)
         
         tickers = ib.reqTickers(*contracts)
-        if (not silent): print("\nTICKERS:", tickers)
+        logger.debug("TICKERS:", {"tickers":tickers})
         
         # Handle potential None values in model Greeks
         result_dic = [{
@@ -307,7 +307,7 @@ def getStraddleValue(sym, expiration, strike, currency=None, exchange=None, trad
     ib.disconnect()
     return value
 
-def getChains(sym, secType=None, currency=None, exchangeSec=None, silent=True):
+def getChains(sym, secType=None, currency=None, exchangeSec=None):
     """
     Get options chains data for a symbol, using cached data if available.
     
@@ -336,7 +336,7 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, silent=True):
         exchangeSec = ticker_info.get('Exchange', 'SMART')
     
     chains_file = CONFIG.get("chains")
-    print(f"Get chains file: {chains_file}")
+    logger.debug(f"Get chains file: {chains_file}")
     try:
         with open(chains_file, "r") as fp:
             stored_chains = json.load(fp)
@@ -345,6 +345,10 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, silent=True):
         stored_chains = []
   
     # Check if symbol exists in stored chains
+
+    # Remove empty entries if any
+    stored_chains = [chain for chain in stored_chains if chain]
+
     chains = [chains for chains in stored_chains if (chains[0][1] == sym)]
     
     # Check if expiration dates are all greater than today
@@ -366,7 +370,7 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, silent=True):
     underlying = Contract(symbol=sym, secType=secType,
                        exchange=exchangeSec, currency=currency)
     
-    if (not silent): print("\nContract: ", underlying)
+    logger.debug("Contract: ", {"contract":underlying})
     
     if (ib.qualifyContracts(underlying)):
         chains = ib.reqSecDefOptParams(sym, '', underlying.secType, underlying.conId)
@@ -377,7 +381,7 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, silent=True):
         
         ib.sleep(1)
    
-        if (not silent): print("\nChains: ", sub_chains)
+        logger.debug("Chains: ", {"chains":sub_chains})
         
         # Update stored chains
         keep_records = [chains for chains in stored_chains if (chains[0][1] != sym)]
@@ -400,7 +404,7 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, silent=True):
         ib.disconnect()
         return float('NaN')
 
-def getChain(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=None, tradingClass=None, silent=True):
+def getChain(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=None, tradingClass=None):
     """
     Get a specific option chain for a symbol, exchange and trading class.
     
@@ -433,7 +437,7 @@ def getChain(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=Non
     if tradingClass is None:
         tradingClass = ticker_info.get('TradingClass', sym)
     
-    chains = getChains(sym, secType, currency, exchangeSec, silent)
+    chains = getChains(sym, secType, currency, exchangeSec)
     
     # No access to IBKR API
     if chains is None:
@@ -444,15 +448,15 @@ def getChain(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=Non
         # Find chain with requested exchange and trading class
         chain = [chain for chain in chains if chain[0] == exchangeOpt and chain[2] == tradingClass]
         if chain:
-            if (not silent): print("\nChain: ", chain)
+            logger.debug("Chain: ", {"chain":chain})
             return chain[0]
     
     # In all other cases return NaN
-    if (not silent): print("\nChain: NaN")
+    logger.debug("Chain: NaN")
     return float('NaN')
 
 def getStrikesfromExpDate(sym, secType=None, currency=None, 
-       exchangeSec=None, exchangeOpt=None, tradingClass=None, expdate=None, silent=True):
+       exchangeSec=None, exchangeOpt=None, tradingClass=None, expdate=None):
     """
     Get available strikes for a specific option expiration date.
     
@@ -483,8 +487,7 @@ def getStrikesfromExpDate(sym, secType=None, currency=None,
         for error in errors:
             print(f"- {error}")
     
-    if not silent:
-        print("getStrikesfromExpDate arguments validated", file=sys.stderr)
+    logger.debug("getStrikesfromExpDate arguments validated")
         
     # Get ticker information from database if not provided
     ticker_info = ticker_db.get_ticker_info(sym)
@@ -529,7 +532,7 @@ def getStrikesfromExpDate(sym, secType=None, currency=None,
         return None
 
     # Get the chain for symbol and trading class
-    chain = getChain(sym, secType, currency, exchangeSec, exchangeOpt, tradingClass, silent)
+    chain = getChain(sym, secType, currency, exchangeSec, exchangeOpt, tradingClass)
     
     # Extract list of strikes from chain
     all_strikes = chain[5]
@@ -550,7 +553,7 @@ def getStrikesfromExpDate(sym, secType=None, currency=None,
     batch_size = 20
     for i in range(0, len(contracts), batch_size):
         batch = contracts[i:i+batch_size]
-        if(not silent): print("\nContracts batch nr.",i,": ", batch)    
+        logger.debug(f"Contracts batch nr.{i} : {batch}")    
         for contract in batch:
             if(ib.qualifyContracts(contract)):
                 updated_strikes.append(contract.strike)
@@ -559,7 +562,7 @@ def getStrikesfromExpDate(sym, secType=None, currency=None,
             
     ib.disconnect()
     
-    if (not silent): print("Strikes:", updated_strikes)
+    logger.debug(f"Strikes: {updated_strikes}")
   
     # Store the list of strikes for expdate
     record = [sym, tradingClass, expdate, updated_strikes]
@@ -570,7 +573,7 @@ def getStrikesfromExpDate(sym, secType=None, currency=None,
         with open(strikes_file, "w") as fp:
             json.dump(stored_chains, fp, indent=4)
     except Exception as e:
-        print(f"Error saving strikes to file: {e}")
+        logger.error(f"Error saving strikes to file: {e}")
 
     return updated_strikes
 

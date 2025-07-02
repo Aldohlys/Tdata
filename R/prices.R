@@ -24,7 +24,11 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date(), sym_yahoo=NU
   if (length(to_date) != 1) stop("length to_date must be equal to 1!")
 
   ### Get sym_yahoo if not already provided
-  if (is.null(sym_yahoo)) sym_yahoo <- getYahooName(sym)
+  if (is.null(sym_yahoo)) {
+    sym_yahoo <- getYahooName(sym)
+    ### Replace all NA values by original sym value
+    if (any(is.na(sym_yahoo))) sym_yahoo[is.na(sym_yahoo)] <- sym[is.na(sym_yahoo)]
+  }
 
   if (length(sym) != length(sym_yahoo)) {
     t_log_error("sym_yahoo and sym must have the same length!!")
@@ -33,12 +37,12 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date(), sym_yahoo=NU
 
   ### Check first if there are some NA in Yahoo Names (e.g. futures)
   ### If yes then return NA and do not process further
-  if (any(is.na(sym_yahoo))) {
-    ### This assumes that sym order is the same as sym_yahoo order - i.e. sapply does not change order, should be Ok
-    sym_list = paste(sym[is.na(sym_yahoo)], collapse = ", ")
-    t_log_info("One or several tickers cannot be analyzed through Yahoo service: {sym_list}")
-    return(NA)
-  }
+  # if (any(is.na(sym_yahoo))) {
+  #   ### This assumes that sym order is the same as sym_yahoo order - i.e. sapply does not change order, should be Ok
+  #   sym_list = paste(sym[is.na(sym_yahoo)], collapse = ", ")
+  #   t_log_info("One or several tickers cannot be analyzed through Yahoo service: {sym_list}")
+  #   return(NA)
+  # }
 
   else {
     # Create a named vector for efficient lookup
@@ -70,23 +74,23 @@ getSymMetricIntervalDate = function(sym, from_date, to_date = Sys.Date(), metric
 
   if (length(from_date) != 1) stop("length from_date must be equal to 1!")
   if (length(to_date) != 1) stop("length to_date must be equal to 1!")
+  if (any(is.na(sym))) stop("sym vector cannot have any NA element")
 
   ### Get corresponding Yahoo results
   sym_yahoo <- getYahooName(sym)
 
-  ### Get only the non NA
-  sub_sym <- sym[!is.na(sym_yahoo)]
-  sub_sym_yahoo <- sym_yahoo[!is.na(sym_yahoo)]
+  ### Replace all NA values by original sym value
+  if (any(is.na(sym_yahoo))) sym_yahoo[is.na(sym_yahoo)] <- sym[is.na(sym_yahoo)]
 
   ### Retrieve first Yahoo data
-  sub_res = getSymIntervalDate(sub_sym, from_date, to_date, sub_sym_yahoo)
-  t_log_debug("getSymMetricIntervalDate: ", sub_res)
+  res = getSymIntervalDate(sym, from_date, to_date, sym_yahoo)
+  t_log_debug("getSymMetricIntervalDate: ", res)
 
-  ### Build NA data for non-Yahoo symbols - recycling NA and date
-  sub_na <- dplyr::tibble(date = Sys.Date(), ticker=sym[is.na(sym_yahoo)],
-                       Open=NA, High=NA, Low=NA, Close=NA, Adjusted=NA, Volume=NA)
+  # ### Build NA data for non-Yahoo symbols - recycling NA and date
+  # sub_na <- dplyr::tibble(date = Sys.Date(), ticker=sym[is.na(sym_yahoo)],
+  #                      Open=NA, High=NA, Low=NA, Close=NA, Adjusted=NA, Volume=NA)
 
-  res <- dplyr::bind_rows(sub_res, sub_na)
+  # res <- dplyr::bind_rows(sub_res, sub_na)
 
 
   ### Extract column equal to OHLCVA value (by default equal to "Adjusted")
@@ -193,13 +197,18 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, metric = "Adjusted"){
 #'
 #'@param sym symbol name or vector of symbols, as known by IBKR.
 #'If it belongs to Tickers table, it will be converted to Yahoo ticker name.
-#'Otherwise it is assumed to be good for Yahoo service.
+#'Otherwise it is assumed to be good for Yahoo service, i.e. taken "as is".
 #'@return a tibble with column names: \code{date, sym, value}, sym column contains the original sym list.
 #'Known also as long data frame format as opposed to wide format.
 #'@examples
 #'getLastSymPrice(c("SPY","SPX"))
 #'@export
 getLastSymPrice <- function(sym) {
+
+  if (any(duplicated(sym))) {
+    stop("Duplicate symbols not allowed: ", paste(sym[duplicated(sym)], collapse = ", "))
+  }
+
   data = getSymIntervalDate(sym, from_date=Sys.Date()-5)
 
   if (all(is.na(data))) {
@@ -219,7 +228,7 @@ getLastSymPrice <- function(sym) {
     names(df) <- c("date", "sym", "value")
 
     # Create a factor in the original sym order before processing
-    original_order <- unique(df$sym)
+    original_order <- sym
     df$sym <- factor(df$sym, levels = original_order)
 
     # Apply the slicing operation (default is 1, i.e. get max slice)
@@ -227,7 +236,8 @@ getLastSymPrice <- function(sym) {
     result <- df |>
       dplyr::group_by(sym) |>
       dplyr::slice_max(date) |>
-      dplyr::ungroup()
+      dplyr::ungroup() |>
+      dplyr::arrange(sym)  # This respects factor level ordering
 
     return(result)
   }
@@ -237,44 +247,46 @@ getLastSymPrice <- function(sym) {
 ###
 #' getLastAdjustedPrice
 #'
-#' This function takes one ticker (or a vector of tickers) as input and returns the last available adjusted value from Yahoo service.
+#' This function takes one symbol (or a vector of symbols) as input and returns the last available adjusted value from Yahoo service.
 #'
 #' It calls \code{getLastSymPrice} and returns value column from this data frame.
-#' If ticker is NA or NULL or equal to All or STOCK, it returns NA -
-#' Same behavior if any ticker belonging to tickers vector is unknown by Yahoo
+#' If symbol is NA or NULL or equal to All or STOCK, it returns NA -
+#' Same behavior if any symbol belonging to symbols vector is unknown by Yahoo
 #'
-#'@param ticker ticker name, as known by IBKR - can be one name or a vector of names
-#'@returns a list of values (rounded to 2 decimals) corresponding to last values of tickers
+#'@param symbol symbol name, as known in Ticker DB - can be one name or a vector of names.
+#'Works also if symbol is known by Yahoo.
+#'@returns a list of values (rounded to 2 decimals) corresponding to last values of \code{symbol}
 #'@examples getLastAdjustedPrice("SPY")
 #'@export
-getLastAdjustedPrice = function(ticker) {
-  if (length(ticker) == 0) return(NA)
-  if ( (length(ticker) == 1 && is.na(ticker)) || any(ticker %in% c("","All","STOCK")) ) return(NA)
+getLastAdjustedPrice = function(symbol) {
+  if (length(symbol) == 0) return(NA)
+  if ( (length(symbol) == 1 && is.na(symbol)) || any(symbol %in% c("","All","STOCK")) ) return(NA)
 
   ### This will return NA if any ticker is unknown by Yahoo
-  return(getLastSymPrice(ticker)$value)
+  return(getLastSymPrice(symbol)$value)
 }
 
 ###
 #' getLastPriceDate
 #'
-#' This function takes one ticker (or a vector of tickers) as input and returns from Yahoo service the last available
+#' This function takes one symbol (or a vector of symbols) as input
+#' and returns from Yahoo service the last available
 #' date with an available price - see also \code{getLastAdjustedPrice}.
 #'
 #' It calls \code{getLastSymPrice} and returns date column from this data frame.
-#' If ticker is NA or NULL or equal to All or STOCK, it returns NA also.
-#' Same if any of ticker does not have any Yahoo name.
+#' If symbol is NA or NULL or equal to All or STOCK, it returns NA also.
+#' Same if any of symbol does not have any Yahoo name.
 #'
-#'@param ticker ticker name, as known by IBKR - can be one name or a vector of names
-#'@returns a list of dates for each ticker. It calls \code{getSymFromDate} to get the dates.
+#'@param symbol symbol name, as known by IBKR - can be one name or a vector of names
+#'@returns a list of dates for each symbol It calls \code{getSymFromDate} to get the dates.
 #'@examples getLastPriceDate("SPY")
 #'@export
-getLastPriceDate = function(ticker) {
-  if (length(ticker) == 0) return(as.Date(NA))
-  if ( (length(ticker) == 1 && is.na(ticker)) || any(ticker %in% c("","All","STOCK")) ) return(as.Date(NA))
+getLastPriceDate = function(symbol) {
+  if (length(symbol) == 0) return(as.Date(NA))
+  if ( (length(symbol) == 1 && is.na(symbol)) || any(symbol %in% c("","All","STOCK")) ) return(as.Date(NA))
 
   ### This may return current date and time if ticker is unknown
-  return(getLastSymPrice(ticker)$date)
+  return(getLastSymPrice(symbol)$date)
 
 }
 
@@ -441,8 +453,9 @@ getStoredMetrics = function(name) {
       prices$OriginalOrder <- factor(prices$sym, levels = name)
       # Sort by this factor
       prices <- prices[order(prices$OriginalOrder), ]
-      # Remove the temporary column
+      # Remove the temporary columns
       prices$OriginalOrder <- NULL
+      prices$rn <- NULL
     }
   } else {
     # Original query for single name
@@ -465,8 +478,8 @@ getStoredMetrics = function(name) {
 #' @return Data frame with columns: date, ticker, Open, High, Low, Close, Adjusted, and Volume
 #' @export
 getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date(),
-                               max_retries = 5, retry_delay = 2,
-                               timeout = 10, chunk_size = 5) {
+                         max_retries = 5, retry_delay = 2,
+                         timeout = 10, chunk_size = 5) {
 
   # Process input to get ticker names
   if (is.data.frame(tickers) && "YahooName" %in% colnames(tickers)) {
@@ -478,7 +491,6 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
   } else {
     Tbasics::display_error_message("Tickers must be either a character vector or a data frame with YahooName column")
   }
-
 
   # If any duplicate then stop - there should be no duplicate in call
   if (any(duplicated(ticker_names))) stop("Tickers cannot be duplicated")
@@ -501,14 +513,19 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
   for (chunk_idx in seq_along(ticker_chunks)) {
     chunk <- ticker_chunks[[chunk_idx]]
     t_log_debug(sprintf("Processing chunk %d of %d (%d tickers)",
-                  chunk_idx, length(ticker_chunks), length(chunk)))
+                        chunk_idx, length(ticker_chunks), length(chunk)))
 
     # Process each ticker in the chunk
     for (ticker in chunk) {
       t_log_debug(sprintf("  Fetching %s... ", ticker))
 
-      success <- FALSE
-      last_error <- NULL
+      # Skip invalid ticker values immediately
+      if (is.na(ticker) || ticker == "All" || ticker == "STOCK") {
+        failed_tickers <- c(failed_tickers, ticker)
+        all_results[[ticker]] <- NA
+        warning(sprintf("Skipping invalid ticker: %s", ticker))
+        next
+      }
 
       # Special handling for known problematic ticker formats
       is_special_ticker <- grepl("^\\^|=$", ticker)
@@ -520,51 +537,72 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
           options(timeout = timeout * attempt)
         }
 
-        result <- tryCatch({
-          # Test special ticker values first
-          if (is.na(ticker) || ticker == "All" || ticker == "STOCK") ticker_data = NA
+        t_log_debug(sprintf("    Attempt %d for %s", attempt, ticker))
 
-          # Try to fetch this ticker
-          else {
-            ticker_data <- quantmod::getSymbols(ticker,
+        # Try to get data - if Yahoo raises an error/warning, exit immediately
+        attempt_result <- tryCatch({
+          ticker_data <- quantmod::getSymbols(ticker,
                                               from = from_date,
                                               to = to_date,
                                               auto.assign = FALSE,
-                                              warnings = FALSE)
+                                              warnings = TRUE)
 
-            # Verify we got actual data
-            if (is.null(ticker_data) || nrow(ticker_data) == 0) {
-              stop("Retrieved empty dataset")
-            }
+          # If we get here, Yahoo didn't raise an error - process the data
+          if (is.null(ticker_data) || nrow(ticker_data) == 0) {
+            all_results[[ticker]] <- NA
+            t_log_debug(sprintf("Empty dataset for %s - storing NA", ticker))
+          } else {
+            all_results[[ticker]] <- ticker_data
+            t_log_debug(sprintf("Success for %s", ticker))
           }
-          # Success!
-          all_results[[ticker]] <- ticker_data
-          success <- TRUE
-          t_log_debug("Success for {ticker}")
-          break  # Exit retry loop
+
+          # Data retrieved successfully (even if empty) - exit retry loop
+          "success"
+
+        },
+        warning = function(w) {
+          # Yahoo raised a warning - this means ticker is invalid/not found
+          warning_msg <- conditionMessage(w)
+          t_log_debug(sprintf("Yahoo warning for %s: %s", ticker, warning_msg))
+          all_results[[ticker]] <<- NA
+          "yahoo_error"  # Exit retry loop - don't retry on Yahoo warnings
         },
         error = function(e) {
-          last_error <- e
-          if (attempt < max_retries) {
-            t_log_debug(sprintf("attempt %d failed, retrying... ", attempt))
-            Sys.sleep(retry_delay * attempt)  # Exponential backoff
+          error_msg <- as.character(e)
+
+          # Check if this is a Yahoo error (invalid ticker) vs timeout/network error
+          yahoo_error_patterns <- c("404", "No data found", "Invalid symbol", "symbol may be delisted")
+          is_yahoo_error <- any(sapply(yahoo_error_patterns,
+                                       function(pattern) grepl(pattern, error_msg, ignore.case = TRUE)))
+
+          if (is_yahoo_error) {
+            # Yahoo says ticker is invalid - don't retry
+            t_log_debug(sprintf("Yahoo error for %s: %s", ticker, error_msg))
+            all_results[[ticker]] <<- NA
+            "yahoo_error"  # Exit retry loop
           } else {
-            t_log_debug("Fail for {ticker}")
+            # Network/timeout error - can retry
+            t_log_debug(sprintf("Network error attempt %d for %s: %s", attempt, ticker, error_msg))
+            if (attempt >= max_retries) {
+              # Max retries reached
+              failed_tickers <<- c(failed_tickers, ticker)
+              all_results[[ticker]] <<- NA
+              warning(sprintf("Failed to retrieve %s after %d attempts: %s", ticker, max_retries, error_msg))
+              "max_retries"
+            } else {
+              # Will retry - add delay
+              Sys.sleep(retry_delay * attempt)
+              "retry"
+            }
           }
-          return(NULL)
         })
 
-        if (success) break
+        # Check the result to decide whether to continue or break
+        if (attempt_result %in% c("success", "yahoo_error", "max_retries")) break
       }
 
-      # Reset timeout to original setting for this function
+      # Reset timeout to original setting
       options(timeout = timeout)
-
-      if (!success) {
-        failed_tickers <- c(failed_tickers, ticker)
-        warning(sprintf("Failed to retrieve %s after %d attempts: %s",
-                        ticker, max_retries, as.character(last_error)))
-      }
     }
 
     # Small pause between chunks to avoid overwhelming the API
@@ -573,97 +611,99 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
     }
   }
 
-  # Handle case where all tickers failed
-  if (length(all_results) == 0) {
-    warning("Failed to retrieve any data")
-    return(NULL)
+  # Ensure all requested tickers have entries
+  for (ticker in ticker_names) {
+    if (!ticker %in% names(all_results)) {
+      all_results[[ticker]] <- NA
+    }
   }
 
   # Report on overall success rate
-  success_rate <- (length(ticker_names) - length(failed_tickers)) / length(ticker_names)
+  valid_data_count <- sum(sapply(all_results, function(x) {
+    # Check if we have valid data (not NULL and not a single NA)
+    if (is.null(x)) return(FALSE)
+    if (length(x) == 1 && is.na(x)) return(FALSE)
+    return(TRUE)
+  }))
+  success_rate <- valid_data_count / length(ticker_names)
   t_log_debug(sprintf("Retrieved data for %.1f%% of tickers (%d/%d)",
-                success_rate * 100,
-                length(ticker_names) - length(failed_tickers),
-                length(ticker_names)))
+                      success_rate * 100,
+                      valid_data_count,
+                      length(ticker_names)))
   if (length(failed_tickers) > 0)
-    t_log_debug("Failed tickers: {paste(failed_tickers, collapse=', ')}")
-
-  # Process results into a consolidated XTS object with ticker as column
-  if (length(all_results) == 0) {
-    return(NULL)
-  }
+    t_log_debug(sprintf("Failed tickers: %s", paste(failed_tickers, collapse=', ')))
 
   # Create an empty list to store data frames
   all_ticker_data <- list()
 
   # Process each ticker's data
-  for (ticker in names(all_results)) {
+  for (ticker in ticker_names) {  # Use ticker_names to ensure order
     ticker_data <- all_results[[ticker]]
 
-    # Convert to data frame while preserving dates
-    df <- data.frame(date = zoo::index(ticker_data),
-                     zoo::coredata(ticker_data),
-                     row.names = NULL,
-                     stringsAsFactors = FALSE)
+    if (is.null(ticker_data) || (length(ticker_data) == 1 && is.na(ticker_data))) {
+      # Create empty data frame with NA values for failed/missing tickers
+      date_seq <- seq.Date(from = from_date, to = to_date, by = "day")
+      # Filter to approximate trading days (excludes weekends)
+      trading_days <- date_seq[!weekdays(date_seq) %in% c("Saturday", "Sunday")]
 
-    # Yahoo Finance converts special characters to dots in column names
-    # Need to escape the ticker and handle character conversion
-    # Convert hyphens, carets, and equals to dots
-
-    # Special case: Index symbols starting with ^ have the caret dropped in column names
-    # Remove the leading caret for pattern matching
-    if (startsWith(ticker, "^")) {
-      ticker_for_prefix <- substring(ticker, 2)  # Remove ^
+      df <- data.frame(
+        date = trading_days,
+        Open = NA_real_,
+        High = NA_real_,
+        Low = NA_real_,
+        Close = NA_real_,
+        Adjusted = NA_real_,
+        Volume = NA_real_,
+        ticker = ticker,
+        stringsAsFactors = FALSE
+      )
     } else {
-      ticker_for_prefix <- ticker
-    }
+      # Convert successful data to data frame while preserving dates
+      df <- data.frame(date = zoo::index(ticker_data),
+                       zoo::coredata(ticker_data),
+                       row.names = NULL,
+                       stringsAsFactors = FALSE)
 
-    ticker_for_prefix <- gsub("[-=]", ".", ticker_for_prefix)  # Convert - and = to .
+      # Special case: Index symbols starting with ^ have the caret dropped in column names
+      if (startsWith(ticker, "^")) {
+        ticker_for_prefix <- substring(ticker, 2)  # Remove ^
+      } else {
+        ticker_for_prefix <- ticker
+      }
+      ticker_for_prefix <- gsub("[-=]", ".", ticker_for_prefix)  # Convert - and = to .
 
-    # Convert to data frame while preserving dates
-    df <- data.frame(date = zoo::index(ticker_data),
-                     zoo::coredata(ticker_data),
-                     row.names = NULL,
-                     stringsAsFactors = FALSE)
+      # Check if we need to remove X prefix added by Yahoo
+      expected_prefix <- paste0(ticker_for_prefix, ".")
+      x_expected_prefix <- paste0("X", ticker_for_prefix, ".")
 
-    # Determine expected ticker prefix for column matching
-    if (startsWith(ticker, "^")) {
-      ticker_for_prefix <- substring(ticker, 2)  # Remove ^
-    } else {
-      ticker_for_prefix <- ticker
-    }
-    ticker_for_prefix <- gsub("[-=]", ".", ticker_for_prefix)  # Convert - and = to .
+      if (any(startsWith(colnames(df), x_expected_prefix)) &&
+          !any(startsWith(colnames(df), expected_prefix))) {
+        # Yahoo added X prefix - remove it
+        colnames(df) <- gsub("^X", "", colnames(df))
+      }
 
-    # Check if we need to remove X prefix added by Yahoo
-    expected_prefix <- paste0(ticker_for_prefix, ".")
-    x_expected_prefix <- paste0("X", ticker_for_prefix, ".")
+      # Now proceed with normal column matching
+      ticker_prefix <- paste0(ticker_for_prefix, ".")
+      col_matches <- startsWith(colnames(df), ticker_prefix)
+      colnames(df)[col_matches] <- substring(colnames(df)[col_matches], nchar(ticker_prefix) + 1)
 
-    if (any(startsWith(colnames(df), x_expected_prefix)) &&
-        !any(startsWith(colnames(df), expected_prefix))) {
-      # Yahoo added X prefix - remove it
-      colnames(df) <- gsub("^X", "", colnames(df))
-    }
+      # Add ticker column
+      df$ticker <- ticker
 
-    # Now proceed with normal column matching
-    ticker_prefix <- paste0(ticker_for_prefix, ".")
-    col_matches <- startsWith(colnames(df), ticker_prefix)
-    colnames(df)[col_matches] <- substring(colnames(df)[col_matches], nchar(ticker_prefix) + 1)
-    # Add ticker column
-    df$ticker <- ticker
-
-    # Ensure we have the expected columns
-    expected_cols <- c("date", "Open", "High", "Low", "Close", "Adjusted", "Volume", "ticker")
-    for (col in expected_cols) {
-      if (!col %in% colnames(df)) {
-        # Handle missing columns
-        if (col == "Adjusted" && "Adj.Close" %in% colnames(df)) {
-          # Sometimes Yahoo returns "Adj.Close" instead of "Adjusted"
-          df$Adjusted <- df$Adj.Close
-          df$Adj.Close <- NULL
-        } else if (col != "date" && col != "ticker") {
-          # Create empty columns for any missing data
-          df[[col]] <- NA
-          warning(sprintf("Missing %s column for ticker %s, filled with NA", col, ticker))
+      # Ensure we have the expected columns
+      expected_cols <- c("date", "Open", "High", "Low", "Close", "Adjusted", "Volume", "ticker")
+      for (col in expected_cols) {
+        if (!col %in% colnames(df)) {
+          # Handle missing columns
+          if (col == "Adjusted" && "Adj.Close" %in% colnames(df)) {
+            # Sometimes Yahoo returns "Adj.Close" instead of "Adjusted"
+            df$Adjusted <- df$Adj.Close
+            df$Adj.Close <- NULL
+          } else if (col != "date" && col != "ticker") {
+            # Create empty columns for any missing data
+            df[[col]] <- NA_real_
+            warning(sprintf("Missing %s column for ticker %s, filled with NA", col, ticker))
+          }
         }
       }
     }
@@ -682,12 +722,10 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
   # Ensure date is a proper date object
   final_df$date <- as.Date(final_df$date)
 
-  # Sort by date
-  final_df <- final_df[order(final_df$date), ]
+  # Sort by date then ticker for consistent ordering
+  final_df <- final_df[order(final_df$date, final_df$ticker), ]
 
   ### Remove fancy row names
   rownames(final_df) <- NULL
   return(final_df)
 }
-
-

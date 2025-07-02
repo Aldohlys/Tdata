@@ -86,7 +86,7 @@ addTicker <- function(name, yahoo_name, trading_class, multiplier = 100, type="S
                    IV = IV, Expiration = expiration,
                    LastUpdate = format(Sys.time(), "%Y%m%d %H:%M"))
 
-  result <- DBI::dbAppendTable(conn, "Tickers", df)
+  result <- safe_db_append(conn, "Tickers", df)
   # Check how many row were added
   print(paste("Rows added:", result))
 
@@ -327,6 +327,9 @@ getYahooName <- function(sym) {
   sym_yahoo = purrr::map_chr(sym, \(x){
     t_log_debug("ticker: {x}")
 
+    ## Case where x=NA
+    if (is.na(x)) return(NA)
+
     ticker <- getTicker(x)
 
     ### If ticker does not exist in Ticker table then return NA - nothing can be done
@@ -337,7 +340,7 @@ getYahooName <- function(sym) {
 
     ### One ticker has been found - if type equals FUT or TBILL no Yahoo search
     if (ticker$Type %in% c("STK", "CASH", "IND"))  {
-      ### Case where no Yahoo historical data available, e.g. U.UN
+      ### Case where no Yahoo historical data available
       if (ticker$YahooName == "") return(NA)
       else return(ticker$YahooName)
     }
@@ -349,6 +352,6 @@ getYahooName <- function(sym) {
     }
   })
 
-  t_log_debug("Yahoo retrieved/taken : {sym_yahoo}")
+  t_log_debug("(getYahooName) Yahoo retrieved/taken : {sym_yahoo}")
   return(sym_yahoo)
 }

@@ -298,7 +298,6 @@ get180dIV <- function(tickers, LastIBKRPrice) {
 #'
 #' If sym is not present in Ticker DB, it will make assumptions like currency=USD, exchange=SMART, etc...
 #' @param sym_list IBKR symbol or vector of symbols
-#' @param lookback_days number of days to analyze, by default 252 days, i.e.  1 year
 #' @return a data frame with for each row the following fields :
 #' \itemize{
 #' \item{\code{symbol} element of sym_list argument}
@@ -329,23 +328,50 @@ get180dIV <- function(tickers, LastIBKRPrice) {
 #' getVolMetrics("SBSW")
 #' }
 #' @export
-getVolMetrics <- function(sym_list, lookback_days = 252) {
+getVolMetrics <- function(sym_list) {
 
-  if (!is.character(sym_list)) return(NA)
+  if (!all(is.character(sym_list))) {
+    t_log_info("getVolMetrics: argument is not all character: {sym_list}")
+    return(NA)
+  }
 
-  purrr::list_rbind(purrr::map(sym_list, \(sym) {
-    as.data.frame(tdata_py$get_volatility_metrics(sym=sym, lookback_days=lookback_days, hist=TRUE))
-  }))
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add=TRUE)
+
+  purrr::walk(sym_list, \(sym) {
+
+    t_log_info("Retrieve vol and price data from IBKR for {sym}")
+
+    ibkr_data <- as.data.frame(tdata_py$get_volatility_metrics(sym=sym, lookback_days=252, hist=TRUE, price = TRUE))
+    ibkr_data = dplyr::mutate(ibkr_data, dplyr::across(c(current_iv, current_hv), \(x) {round(x, 4)}))
+    ibkr_data = dplyr::mutate(ibkr_data, dplyr::across(c(iv_percentile, hv_percentile, current_price), \(x) {round(x, 2)}))
+    ibkr_data = dplyr::mutate(ibkr_data, datetime = format(Sys.time(), format="%Y%m%d %H:%M"))
+
+    ### Subset data
+    metrics <- dplyr::select(ibkr_data, datetime, sym=symbol, iv30=current_iv, ivp=iv_percentile, rv30=current_hv, rvp=hv_percentile,
+                               price=current_price)
+
+
+    ### Retrieve currency from Ticker DB or use USD by default
+    ticker = getTicker(sym)
+    if (nrow(ticker) == 0) currency = "USD" else currency = ticker$Currency
+
+    iv180_data <- getIV_DTE(sym, currency, metrics$price, 180)
+    metrics$iv180 <- round(iv180_data$v, 4)
+    ### Append to DB - with or without margin data retrieved from IBKR
+    safe_db_append(conn, "Prices",metrics)
+  })
 }
 
 #' getIV_DTE
-#' Get IV for one ticker
+#' Get IV for a symbol
 #'
 #' Computes IV using option IVs for a defined target days.
 #' It will look for nearest expiration dates compared with DTE for the ticker and then retrieve option prices and IV from IBKR.
 #'
 #'
-#' @param ticker one ticker - data frame with one row, or list
+#' @param sym string
+#' @param currency string - either EUR, USD, CHF,...
 #' @param spot_price last price known for ticker - or a vector of prices, usually taken from IBKR API
 #' @param DTE numeric - should not be smaller than 10 days as model would not work correctly for target days smaller than 8 days,
 #' should be less than 2 years (730 days)
@@ -353,122 +379,109 @@ getVolMetrics <- function(sym_list, lookback_days = 252) {
 #' near_variance, next_variance, weights, variance_day, v - v is the implied volatility
 #' @examples
 #' \dontrun{
-#'   getIV_DTE(getTicker("AI"), 175.5, 30)
-#'   getIV_DTE(getTickers(c("AI", "SPX")), c(175.5, 5985), 30)
+#'   getIV_DTE("AI", "EUR", 175.5, 30)
 #' }
 #' @export
-getIV_DTE <- function(ticker, spot_price, DTE=30){
+getIV_DTE <- function(sym, currency, spot_price, DTE=30){
 
   #### Validate input arguments
   ### Should not be used for DTE smaller than 10 days or greater than 730 days
   if ((DTE <= 10)| (DTE >= 730)) return(NA)
 
-  ### ticker should be a single ticker
-  if (!is.data.frame(ticker) || (nrow(ticker) > 1)) {
+  ### Only one symbol
+  if (length(sym) > 1 || length(currency) > 1 || length(spot_price) > 1) {
     Tbasics::display_error_message(paste0("No proper format for ", ticker,"\n"))
     return(NA)
   }
 
-  #### Analyze ticker
-  ### Test if IV equals NO -> return -1 if this is the case
-  ### ticker should be enabled for IV retrieval
-  if (ticker$IV == "NO") return(-1)
+  ### Retrieve the expiration dates for sym
+  chain <- tdata_py$getChain(sym)
+  expdates_list <- chain[5][[1]]
 
-  ### Main case IV
+  ### It is assumed that expdates_list is sorted
+  if(is.unsorted(as.integer(expdates_list))) {
+    Tbasics::display_error_message("Unsorted chain expiration date!!")
+  }
+
+  ### Retrieve expiration dates that are just before and after DTE days
+  ### In case of IBKR near_expiry that are less than 8 days are not taken into account
+  target_date <- as.integer(format(Sys.Date() + DTE, "%Y%m%d"))
+  min_expiry_date <- as.integer(format(Sys.Date() + 7, "%Y%m%d"))
+
+  ## Only keep expiry dates greater than min expiry date
+  expdates_list <- expdates_list[which(as.integer(expdates_list) > min_expiry_date)]
+
+  ### Look at case where target date is smaller than the first
+  if (target_date < as.integer(expdates_list[1])) {
+    Tbasics::display_message(paste0("getIV_DTE: target date smaller than first date for ", sym))
+    near_expiry <- expdates_list[1]
+    next_expiry <- expdates_list[2]
+  }
+
+  ## Look at case where target date is greater than last date
+  else if (target_date > as.integer(expdates_list[length(expdates_list)])) {
+    Tbasics::display_message(paste0("getIV_DTE: target date greater than last date for ", sym))
+    near_expiry <- expdates_list[length(expdates_list)-1]
+    next_expiry <- expdates_list[length(expdates_list)]
+  }
+
+  ### Standard case where target date is within the expdates_list
   else {
-    ### Get ticker's name
-    sym <- ticker$Name
+    near_expiry <- expdates_list[max(which(as.integer(expdates_list) < target_date))]
+    next_expiry <- expdates_list[min(which(as.integer(expdates_list) > target_date))]
+  }
 
-    ### Retrieve the expiration dates for sym
-    chain <- tdata_py$getChain(sym)
-    expdates_list <- chain[5][[1]]
+  ### Compute near_DTE and next_DTE
+  near_DTE <- Tbasics::getDTE(Sys.time(), as.Date(near_expiry, "%Y%m%d"))
+  next_DTE <- Tbasics::getDTE(Sys.time(), as.Date(next_expiry, "%Y%m%d"))
 
-    ### It is assumed that expdates_list is sorted
-    if(is.unsorted(as.integer(expdates_list))) {
-      Tbasics::display_error_message("Unsorted chain expiration date!!")
-    }
+  ### Get interest rates and dividend yield
+  dividend_yield = getLastDivYield(sym)
+  near_interest_rate = getLastRate(currency, near_DTE)
+  next_interest_rate = getLastRate(currency, next_DTE)
 
-    ### Retrieve expiration dates that are just before and after DTE days
-    ### In case of IBKR near_expiry that are less than 8 days are not taken into account
-    target_date <- as.integer(format(Sys.Date() + DTE, "%Y%m%d"))
-    min_expiry_date <- as.integer(format(Sys.Date() + 7, "%Y%m%d"))
+  ### Get theoretical forward prices
+  near_forward_price <- getForwardPrice(spot_price, near_interest_rate, dividend_yield, near_DTE)
+  next_forward_price <- getForwardPrice(spot_price, next_interest_rate, dividend_yield, next_DTE)
 
-    ## Only keep expiry dates greater than min expiry date
-    expdates_list <- expdates_list[which(as.integer(expdates_list) > min_expiry_date)]
+  #### This will take 4 strikes above/below theoretical forward price - IBKR takes only 2 for this computation
+  #### Refinement: finding from forward price the strike where put is nearest to call - this is done in calculate_target_vol
+  near_strikes <- tdata_py$getStrikesfromExpDate(sym=sym, expdate=near_expiry)
+  near_strikes <- Tbasics::get_nearest_values(near_strikes, near_forward_price, n_below = 4, n_above = 4)
 
-    ### Look at case where target date is smaller than the first
-    if (target_date < as.integer(expdates_list[1])) {
-      Tbasics::display_message(paste0("getIV_DTE: target date smaller than first date for ", sym))
-      near_expiry <- expdates_list[1]
-      next_expiry <- expdates_list[2]
-    }
+  next_strikes <- tdata_py$getStrikesfromExpDate(sym=sym, expdate=next_expiry)
+  next_strikes <- Tbasics::get_nearest_values(next_strikes, next_forward_price, n_below = 4, n_above = 4)
 
-    ## Look at case where target date is greater than last date
-    else if (target_date > as.integer(expdates_list[length(expdates_list)])) {
-      Tbasics::display_message(paste0("getIV_DTE: target date greater than last date for ", sym))
-      near_expiry <- expdates_list[length(expdates_list)-1]
-      next_expiry <- expdates_list[length(expdates_list)]
-    }
+  t_log_info("Retrieve option prices for {near_expiry}...")
+  near_option_prices <- getOptionPrices(sym, near_strikes, near_expiry)
+  t_log_info("Retrieve option prices for {next_expiry}...")
+  next_option_prices <- getOptionPrices(sym, next_strikes, next_expiry)
 
-    ### Standard case where target date is within the expdates_list
-    else {
-      near_expiry <- expdates_list[max(which(as.integer(expdates_list) < target_date))]
-      next_expiry <- expdates_list[min(which(as.integer(expdates_list) > target_date))]
-    }
+  if( (nrow(near_option_prices$unmatched_calls) != 0) | (nrow(near_option_prices$unmatched_puts) != 0)) {
+    Tbasics::display_message(paste0("Issue with chain ", sym,"  for ", near_expiry," with strikes: ", near_strikes))
+  }
 
-    ### Compute near_DTE and next_DTE
-    near_DTE <- Tbasics::getDTE(Sys.time(), as.Date(near_expiry, "%Y%m%d"))
-    next_DTE <- Tbasics::getDTE(Sys.time(), as.Date(next_expiry, "%Y%m%d"))
+  if( (nrow(next_option_prices$unmatched_calls) != 0) | (nrow(next_option_prices$unmatched_puts) != 0)) {
+    Tbasics::display_message(paste0("Issue with chain ", sym,"  for ", next_expiry," with strikes: ", next_strikes))
+  }
 
-    ### Get interest rates and dividend yield
-    currency = ticker$Currency
-    dividend_yield = getLastDivYield(sym)
-    near_interest_rate = getLastRate(currency, near_DTE)
-    next_interest_rate = getLastRate(currency, next_DTE)
-
-    ### Get theoretical forward prices
-    near_forward_price <- getForwardPrice(spot_price, near_interest_rate, dividend_yield, near_DTE)
-    next_forward_price <- getForwardPrice(spot_price, next_interest_rate, dividend_yield, next_DTE)
-
-    #### This will take 4 strikes above/below theoretical forward price - IBKR takes only 2 for this computation
-    #### Refinement: finding from forward price the strike where put is nearest to call - this is done in calculate_target_vol
-    near_strikes <- tdata_py$getStrikesfromExpDate(sym=sym, expdate=near_expiry)
-    near_strikes <- Tbasics::get_nearest_values(near_strikes, near_forward_price, n_below = 4, n_above = 4)
-
-    next_strikes <- tdata_py$getStrikesfromExpDate(sym=sym, expdate=next_expiry)
-    next_strikes <- Tbasics::get_nearest_values(next_strikes, next_forward_price, n_below = 4, n_above = 4)
-
-    t_log_info("Retrieve option prices for {near_expiry}...")
-    near_option_prices <- getOptionPrices(sym, near_strikes, near_expiry)
-    t_log_info("Retrieve option prices for {next_expiry}...")
-    next_option_prices <- getOptionPrices(sym, next_strikes, next_expiry)
-
-    if( (nrow(near_option_prices$unmatched_calls) != 0) | (nrow(near_option_prices$unmatched_puts) != 0)) {
-      Tbasics::display_message(paste0("Issue with chain ", sym,"  for ", near_expiry," with strikes: ", near_strikes))
-    }
-
-    if( (nrow(next_option_prices$unmatched_calls) != 0) | (nrow(next_option_prices$unmatched_puts) != 0)) {
-      Tbasics::display_message(paste0("Issue with chain ", sym,"  for ", next_expiry," with strikes: ", next_strikes))
-    }
-
-    # Check all IVs four scenarios
-    if (check_na_ivs(near_option_prices, "call", sym, near_expiry) |
-        check_na_ivs(near_option_prices, "put", sym, near_expiry) |
-        check_na_ivs(next_option_prices, "put", sym, next_expiry) |
-        check_na_ivs(next_option_prices, "call", sym, next_expiry)) {
-      Tbasics::display_message(paste0("Could not retrieve IVs for ", sym,"  from IBKR! NA value will be used for IV."))
-      return(NA)
-    }
+  # Check all IVs four scenarios
+  if (check_na_ivs(near_option_prices, "call", sym, near_expiry) |
+      check_na_ivs(near_option_prices, "put", sym, near_expiry) |
+      check_na_ivs(next_option_prices, "put", sym, next_expiry) |
+      check_na_ivs(next_option_prices, "call", sym, next_expiry)) {
+    Tbasics::display_message(paste0("Could not retrieve IVs for ", sym,"  from IBKR! NA value will be used for IV."))
+  }
 
 
-    ### Prepare call to calculate_target_vol
-    near_term_options <- near_option_prices$matched_pairs
-    next_term_options <- next_option_prices$matched_pairs
-    near_term_options$days_to_expiry <- near_DTE
-    next_term_options$days_to_expiry <- next_DTE
+  ### Prepare call to calculate_target_vol
+  near_term_options <- near_option_prices$matched_pairs
+  next_term_options <- next_option_prices$matched_pairs
+  near_term_options$days_to_expiry <- near_DTE
+  next_term_options$days_to_expiry <- next_DTE
 
-    return(calculate_target_vol(near_term_options, next_term_options,
-                                dividend_yield, near_interest_rate, next_interest_rate, DTE))
+  return(calculate_target_vol(near_term_options, next_term_options,
+                              dividend_yield, near_interest_rate, next_interest_rate, DTE))
   }
 
 
@@ -484,7 +497,7 @@ getIV_DTE <- function(ticker, spot_price, DTE=30){
   #
   # return(list(implied_vol= iv_computations$VIX, iv_call_component = iv_computations$VIX_call_component,
   #             iv_put_component = iv_computations$VIX_put_component))
-}
+
 
 
 ###
