@@ -13,7 +13,8 @@
 #'}
 #'@export
 readJournal <- function(windowDate = NA) {
-  if (is.na(windowDate)) windowDate = as.numeric(format(Sys.Date() - 300,"%Y%m%d"))
+  ## Look at current date - 365 (1 year ago)
+  if (is.na(windowDate)) windowDate = suppressWarnings(as.integer(format(Sys.Date() - 365,"%Y%m%d")))
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   journal = DBI::dbGetQuery(conn, "SELECT * FROM Journal WHERE date >= ?", list(windowDate))
   DBI::dbDisconnect(conn)
@@ -33,7 +34,7 @@ readJournalMaxEntryId <- function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   maxId <- DBI::dbGetQuery(conn, "SELECT MAX(entryId) FROM Journal")
   DBI::dbDisconnect(conn)
-  as.numeric(maxId)
+  suppressWarnings(as.integer(maxId))
 }
 
 #'   writeJournalEntry
@@ -54,135 +55,76 @@ writeJournalEntry <- function(entry) {
 #'
 #' This function updates an entry into Journal table.
 #'
-#' It checks first that close is numeric and change is character. Otherwise it just sends the update request to DB.
-#'@returns number of lines modified, if no error it returns 1. It returns 0 if there is an error
+#' Using internal db_validation functions, it performs extensive checks on data to make sure it can be stored into Journal DB.
+#'@returns number of lines modified, i.e. if no error it returns 1. It returns 0 if there is an error
 #'@param entryId, integer - entry key to modify into the Journal
-#'@param theme, string
-#'@param date, string
-#'@param sym, string - symbol to be updated
-#'@param close, numeric, equal to last close value for the symbol
+#'@param theme, character
+#'@param date, integer, or Date or string
+#'@param sym, character - symbol to be updated
+#'@param close, numeric, equal to last close value for the symbol - maybe a string
 #'@param change, character - percentage change between last day and penultimate day
-#'@param mkt_price, double
+#'@param mkt_price, numeric - may be a string or number
 #'@param mkt_change, character - percentage change between last day and penultimate day
-#'@param text, string - comment, remark
+#'@param text, character - comment, remark
 #'@export
 modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=NULL, change=NULL, mkt_price=NULL, mkt_change=NULL, text=NULL) {
+
+  ### This code does not use safe_db_append/write
+  ### Checks must therefore be done before sending SQL update statement
+  # Build full list first
+  all_args <- list(
+    theme = theme, date = date, sym = sym, close = close,
+    change = change, mkt_price = mkt_price, mkt_change = mkt_change, text = text
+  )
+  # Filter out NULLs
+  data <- validate_db_types(data = Filter(Negate(is.null), all_args), "Journal")
 
   ### Initialize update string and params list
   sql <- ""
   params <- list()
   t_log_debug("entryId: {entryId}")
 
-  ### This verifies that it has the required type and it is not NULL (default value)
-  if (is.character(sym)) {
-    sql <- "UPDATE Journal SET sym = ?"
-    params = list(sym)
+  #### Local functions
+  validate_arg <- function(x) {
+    !is.null(x) && !is.na(x)
   }
 
-  ### This verifies that it has the required type and it is not NULL (default value)
-  if (is.numeric(close)) {
-    if (nchar(sql) == 0) {
-      sql <- "UPDATE Journal SET close = ?"
-      params <- list(close)
-    }
-    else {
-      sql <- paste(sql, ", close = ?")
-      t_log_debug(sql)
-      params <- append(params, close)
-      t_log_debug(paste(unlist(params), collapse=" "))
-    }
-  }
-
-  ### This verifies that it has the required type and it is not NULL (default value)
-  if (is.character(change)) {
-    if (nchar(sql) == 0) {
-      sql <- "UPDATE Journal SET change = ?"
-      params <- list(change)
-    }
-    else {
-      sql <- paste(sql, ", change = ?")
-      t_log_debug(sql)
-      params <- append(params, change)
-      t_log_debug(paste(unlist(params), collapse=" "))
+  build_sql <- function(sql, params, mod_param) {
+    if (validate_arg(data[[mod_param]])) {
+      if (nchar(sql) == 0) {
+        sql <- paste0("UPDATE Journal SET ", mod_param, " = ?")
+        t_log_debug("param: {mod_param} sql:{sql}")
+        params <- list(data[[mod_param]])
+        t_log_debug("param: {mod_param} params_list: {paste(unlist(params) , collapse=\" \")}")
       }
+      else {
+        sql <- paste(sql, ", ", mod_param ,"= ?")
+        t_log_debug("param: {mod_param} sql:{sql}")
+        params <- append(params, list(data[[mod_param]]))
+        t_log_debug("param: {mod_param} params_list: {paste(unlist(params) , collapse=\" \")}")
+      }
+    }
+    return(list(sql=sql, params=params))
   }
 
-  ### This verifies that it has the required type and it is not NULL (default value)
-  if (is.numeric(mkt_price)) {
-    if (nchar(sql) == 0) {
-      sql <- "UPDATE Journal SET mkt_price = ?"
-      params <- list(mkt_price)
-    }
-    else {
-      sql <- paste(sql, ", mkt_price = ?")
-      t_log_debug(sql)
-      params <- append(params, mkt_price)
-      t_log_debug(paste(unlist(params), collapse=" "))
-    }
-  }
+  ###########  Build SQL statement including all arguments
+  for (mod_param in names(data)) {
+    result <- build_sql(sql, params, mod_param)
 
-  ### This verifies that it has the required type and it is not NULL (default value)
-  if (is.character(mkt_change)) {
-    if (nchar(sql) == 0) {
-      sql <- "UPDATE Journal SET mkt_change = ?"
-      params <- list(mkt_change)
-    }
-    else {
-      sql <- paste(sql, ", mkt_change = ?")
-      t_log_debug(sql)
-      params <- append(params, mkt_change)
-      t_log_debug(paste(unlist(params), collapse=" "))
-    }
-  }
-
-  ### This verifies that it has the required type and it is not NULL (default value)
-  if (is.character(theme)) {
-    if (nchar(sql) == 0) {
-      sql <- "UPDATE Journal SET theme = ?"
-      params <- list(theme)
-    }
-    else {
-      sql <- paste(sql, ", theme = ?")
-      t_log_debug(sql)
-      params <- append(params, theme)
-      t_log_debug(paste(unlist(params), collapse=" "))
-    }
-  }
-
-  ### This verifies that it has the required type and it is not NULL (default value)
-  if (is.character(date)) {
-    if (nchar(sql) == 0) {
-      sql <- "UPDATE Journal SET date = ?"
-      params <- list(date)
-    }
-    else {
-      sql <- paste(sql, ", date = ?")
-      t_log_debug(sql)
-      params <- append(params, date)
-      t_log_debug(paste(unlist(params), collapse=" "))
-    }
-  }
-
-  ### This verifies that it has the required type and it is not NULL (default value)
-  if (is.character(text)) {
-    if (nchar(sql) == 0) {
-      sql <- "UPDATE Journal SET text = ?"
-      params <- list(text)
-    }
-    else {
-      sql <- paste(sql, ", text = ?")
-      t_log_debug(sql)
-      params <- append(params, text)
-      t_log_debug(paste(unlist(params), collapse=" "))
-    }
+    sql <- result$sql
+    params <- result$params
   }
 
   if (nchar(sql) != 0) {
-    sql <- paste(sql, "WHERE entryID =?;")
-    params <- append(params, entryId)
+
+    ## COmplete SQL statement
+    sql <- paste(sql, "WHERE entryID = ?;")
     t_log_debug(sql)
-    pasted_params=paste(unlist(params), collapse=" ")
-    t_log_debug("EntryId added: {pasted_params}")
+
+    ### Complete params as well
+    params <- append(params, list(entryId))
+    t_log_debug("EntryId added: {paste(unlist(params), collapse=\" \")}")
+
     conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
     on.exit(DBI::dbDisconnect(conn), add=TRUE)
 

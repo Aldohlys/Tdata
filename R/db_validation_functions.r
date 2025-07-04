@@ -46,7 +46,7 @@ validate_account_data <- function(data) {
 
   # Ensure date is integer YYYYMMDD
   if ("date" %in% names(data)) {
-      data$date <- sapply(data$date, standardize_date_integer)
+      data$date <- standardize_date_integer(data$date)
   }
 
   # Ensure numeric columns are properly typed
@@ -70,7 +70,7 @@ validate_tickers_data <- function(data) {
 
   # Ensure date is integer YYYYMMDD
   if ("Expiration" %in% names(data)) {
-       data$Expiration <- sapply(data$Expiration, standardize_date_integer)
+       data$Expiration <- standardize_date_integer(data$Expiration)
   }
 
   ### Multiplier must be an integer, not a real
@@ -95,7 +95,7 @@ validate_portfolio_data <- function(data) {
   date_cols <- c("expdate","date")
   for (col in date_cols)
     if (col %in% names(data))
-      data[[col]] <- sapply(data[[col]], standardize_date_integer)
+      data[[col]] <- standardize_date_integer(data[[col]])
 
   # Ensure integer columns
   integer_columns <- c("TradeNr",  "pos","multiplier" )
@@ -127,7 +127,7 @@ validate_trades_data <- function(data) {
 
   # Ensure date is integer
   if ("TradeDate" %in% names(data)) {
-    data$TradeDate <- sapply(data$TradeDate, standardize_date_integer)
+    data$TradeDate <-  standardize_date_integer(data$TradeDate)
   }
 
   # Other Integer columns
@@ -152,23 +152,19 @@ validate_trades_data <- function(data) {
 #' Validate currency conversion data
 #' @noRd
 validate_currency_data <- function(data) {
-
   # Ensure date is integer YYYYMMDD
   if ("date" %in% names(data)) {
-    data$date <- sapply(data$date, standardize_date_integer)
+    data$date <- standardize_date_integer(data$date)  # Remove sapply()
   }
-
   if ("usd_value" %in% names(data)) {
-    data$usd_value <- standardize_numeric(data$usd_value)
+    data$usd_value <- standardize_numeric(data$usd_value)  # Already correct
   }
-
   return(data)
 }
 
 #' Validate Journal table data
 #' @noRd
 validate_journal_data <- function(data) {
-
   # Ensure entryId is integer
   if ("entryId" %in% names(data)) {
     data$entryId <- suppressWarnings(as.integer(data$entryId))
@@ -176,14 +172,14 @@ validate_journal_data <- function(data) {
 
   # Ensure date is integer YYYYMMDD
   if ("date" %in% names(data)) {
-    data$date <- sapply(data$date, standardize_date_integer)
+    data$date <- standardize_date_integer(data$date)  # Direct application
   }
 
   # Ensure numeric columns
   numeric_cols <- c("close", "mkt_price")
   for (col in numeric_cols) {
     if (col %in% names(data)) {
-      data[[col]] <- sapply(data[[col]], standardize_numeric)
+      data[[col]] <- standardize_numeric(data[[col]])  # Direct application
     }
   }
 
@@ -272,7 +268,7 @@ safe_db_append <- function(conn, table_name, data, ...) {
 standardize_date_integer <- function(date_value) {
 
   # Convert various date formats to YYYYMMDD integer
-  if (is.na(date_value) || isTRUE(date_value == 0) || isTRUE(date_value == "")) {
+  if (is.null(date_value) || is.na(date_value) || isTRUE(date_value == 0) || isTRUE(date_value == "")) {
     return(NA_integer_)
   }
 
