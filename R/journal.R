@@ -71,6 +71,7 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
   ### Initialize update string and params list
   sql <- ""
   params <- list()
+  t_log_debug("entryId: {entryId}")
 
   ### This verifies that it has the required type and it is not NULL (default value)
   if (is.character(sym)) {
@@ -180,11 +181,12 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
     sql <- paste(sql, "WHERE entryID =?;")
     params <- append(params, entryId)
     t_log_debug(sql)
-    t_log_debug(paste(unlist(params), collapse=" "))
+    pasted_params=paste(unlist(params), collapse=" ")
+    t_log_debug("EntryId added: {pasted_params}")
     conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
     on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
-    ### In case DB cannot be accesssed - locked for instance
+    ### In case DB cannot be accessed - locked for instance
     tryCatch(DBI::dbExecute(conn, sql, params), error = function(e) {
       t_log_error("Error while trying to update Journal DB: ", e)
       return(0)}
@@ -203,6 +205,7 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
 #'@param entryId, integer - entry key for the entry to be removed
 #'@export
 deleteJournalEntry <- function(entryId) {
+  t_log_debug("deleteJournalentry: entryId {entryId}")
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   status <- DBI::dbExecute(conn, "DELETE FROM Journal WHERE entryId = ?;",
                            params=list(entryId))
