@@ -727,17 +727,6 @@
       ],
       "Hash": "24b224366f9c2e7534d2344d10d59211"
     },
-    "highr": {
-      "Package": "highr",
-      "Version": "0.11",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Requirements": [
-        "R",
-        "xfun"
-      ],
-      "Hash": "d65ba49117ca223614f71b60d85b8ab7"
-    },
     "hms": {
       "Package": "hms",
       "Version": "1.1.3",
@@ -817,22 +806,6 @@
         "methods"
       ],
       "Hash": "b0776f526d36d8bd4a3344a88fe165c4"
-    },
-    "knitr": {
-      "Package": "knitr",
-      "Version": "1.50",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Requirements": [
-        "R",
-        "evaluate",
-        "highr",
-        "methods",
-        "tools",
-        "xfun",
-        "yaml"
-      ],
-      "Hash": "5a07d8ec459d7b80bd4acca5f4a6e062"
     },
     "labeling": {
       "Package": "labeling",
@@ -1201,7 +1174,7 @@
     },
     "quantmod": {
       "Package": "quantmod",
-      "Version": "0.4.27",
+      "Version": "0.4.28",
       "Source": "Repository",
       "Repository": "CRAN",
       "Requirements": [
@@ -1213,7 +1186,7 @@
         "xts",
         "zoo"
       ],
-      "Hash": "3fcb1e496455ececc28d33394e3c1074"
+      "Hash": "998e62a5735c2fe6b4a36b0d00e68b70"
     },
     "rappdirs": {
       "Package": "rappdirs",
@@ -1312,29 +1285,6 @@
         "utils"
       ],
       "Hash": "892124978869b74935dc3934c42bfe5a"
-    },
-    "rmarkdown": {
-      "Package": "rmarkdown",
-      "Version": "2.29",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Requirements": [
-        "R",
-        "bslib",
-        "evaluate",
-        "fontawesome",
-        "htmltools",
-        "jquerylib",
-        "jsonlite",
-        "knitr",
-        "methods",
-        "tinytex",
-        "tools",
-        "utils",
-        "xfun",
-        "yaml"
-      ],
-      "Hash": "df99277f63d01c34e95e3d2f06a79736"
     },
     "rootSolve": {
       "Package": "rootSolve",
@@ -1625,16 +1575,6 @@
       ],
       "Hash": "c5f3c201b931cd6474d17d8700ccb1c8"
     },
-    "tinytex": {
-      "Package": "tinytex",
-      "Version": "0.57",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Requirements": [
-        "xfun"
-      ],
-      "Hash": "02d65e0c0415bf36a7ddc0d2ba50a840"
-    },
     "tzdb": {
       "Package": "tzdb",
       "Version": "0.5.0",
@@ -1732,19 +1672,6 @@
         "graphics"
       ],
       "Hash": "cc2d62c76458d425210d1eb1478b30b4"
-    },
-    "xfun": {
-      "Package": "xfun",
-      "Version": "0.52",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Requirements": [
-        "R",
-        "grDevices",
-        "stats",
-        "tools"
-      ],
-      "Hash": "652ce36fe7d57688e6786819b09d9190"
     },
     "xml2": {
       "Package": "xml2",

@@ -17,14 +17,16 @@ validate_db_types <- function(data, table_name) {
   switch(table_name,
          "Account" = validate_account_data(data),
          "Tickers" = validate_tickers_data(data),
+         "TestTrades" =,
          "Trades" = validate_trades_data(data),
          "ConvertToUSD" = validate_currency_data(data),
          "Journal" = validate_journal_data(data),
+         "TestPortf" =,
          "Gonet" = validate_portfolio_data(data),  # Gonet is portfolio-like
          "Prices" = validate_prices_data(data),
-         # For portfolio tables (pattern Uxxx)
+         # For portfolio tables (pattern Uxxx ou DUxxx)
          {
-           if (grepl("^U\\d+", table_name) || grepl("portfolio", table_name, ignore.case = TRUE)) {
+           if (grepl("^(U|DU)\\d+$", table_name)) {
              validate_portfolio_data(data)
            } else {
              # Default validation for unknown tables
@@ -37,14 +39,14 @@ validate_db_types <- function(data, table_name) {
 #' Validate Account table data
 #' @noRd
 validate_account_data <- function(data) {
-  if (!"CashFlow" %in% names(data)) return(data)
+   return(data)
 
   # Ensure CashFlow is numeric
-  data$CashFlow <- suppressWarnings(as.numeric(data$CashFlow))
+  if ("CashFlow" %in% names(data)) data$CashFlow <- standardize_numeric(data$CashFlow)
 
-  # Ensure date is integer
+  # Ensure date is integer YYYYMMDD
   if ("date" %in% names(data)) {
-    data$date <- as.integer(data$date)
+      data$date <- sapply(data$date, standardize_date_integer)
   }
 
   # Ensure numeric columns are properly typed
@@ -55,7 +57,7 @@ validate_account_data <- function(data) {
 
   for (col in numeric_cols) {
     if (col %in% names(data)) {
-      data[[col]] <- suppressWarnings(as.numeric(data[[col]]))
+      data[[col]] <- standardize_numeric(data[[col]])
     }
   }
 
@@ -65,30 +67,17 @@ validate_account_data <- function(data) {
 #' Validate Tickers table data
 #' @noRd
 validate_tickers_data <- function(data) {
-  if (!"Expiration" %in% names(data)) return(data)
 
-  # Handle Expiration field - convert 0 and empty strings to NA
-  data$Expiration <- sapply(data$Expiration, function(x) {
-    if (is.na(x) || x == 0 || x == "" || x == "0") {
-      return(NA_integer_)
-    }
+  # Ensure date is integer YYYYMMDD
+  if ("Expiration" %in% names(data)) {
+       data$Expiration <- sapply(data$Expiration, standardize_date_integer)
+  }
 
-    # Try to convert to integer
-    result <- suppressWarnings(as.integer(x))
-    if (is.na(result)) {
-      return(NA_integer_)
-    }
-
-    # Validate date range (YYYYMMDD format)
-    if (result < 19000101 || result > 99991231) {
-      return(NA_integer_)
-    }
-
-    return(result)
-  })
+  ### Multiplier must be an integer, not a real
+  if ("Multiplier" %in% names(data)) data$Multiplier <- as.integer(data$Multiplier)
 
   # Ensure other numeric columns
-  numeric_cols <- c("Multiplier", "Beta_3m", "Beta_6m", "Beta_1y", "Beta_3y", "Div_yield")
+  numeric_cols <- c("Beta_3m", "Beta_6m", "Beta_1y", "Beta_3y", "Div_yield")
   for (col in numeric_cols) {
     if (col %in% names(data)) {
       data[[col]] <- suppressWarnings(as.numeric(data[[col]]))
@@ -102,46 +91,30 @@ validate_tickers_data <- function(data) {
 #' @noRd
 validate_portfolio_data <- function(data) {
 
-  # Handle expdate - convert 0 to NA
-  if ("expdate" %in% names(data)) {
-    data$expdate <- sapply(data$expdate, function(x) {
-      if (is.na(x) || x == 0 || x == "" || x == "0") {
-        return(NA_integer_)
-      }
+  # Ensure date is integer YYYYMMDD
+  date_cols <- c("expdate","date")
+  for (col in date_cols)
+    if (col %in% names(data))
+      data[[col]] <- sapply(data[[col]], standardize_date_integer)
 
-      result <- suppressWarnings(as.integer(x))
-      if (is.na(result)) {
-        return(NA_integer_)
-      }
-
-      # Validate date range
-      if (result < 19000101 || result > 99991231) {
-        return(NA_integer_)
-      }
-
-      return(result)
-    })
+  # Ensure integer columns
+  integer_columns <- c("TradeNr",  "pos","multiplier" )
+  for (col in integer_columns) {
+    if (col %in% names(data)) {
+        # Integer columns
+        data[[col]] <- suppressWarnings(as.integer(data[[col]]))
+    }
   }
 
-  # Ensure date is integer
-  if ("date" %in% names(data)) {
-    data$date <- as.integer(data$date)
-  }
-
-  # Ensure numeric columns
-  numeric_cols <- c("TradeNr", "strike", "pos", "mktPrice", "optPrice", "mktValue",
+    # Ensure numeric columns
+  numeric_cols <- c("strike","mktPrice", "optPrice", "mktValue",
                     "avgCost", "unPnL", "IV", "pvDividend", "delta", "gamma",
-                    "vega", "theta", "uPrice", "multiplier", "margin")
+                    "vega", "theta", "uPrice",  "margin")
 
   for (col in numeric_cols) {
     if (col %in% names(data)) {
-      if (col %in% c("TradeNr", "pos", "multiplier")) {
-        # Integer columns
-        data[[col]] <- suppressWarnings(as.integer(data[[col]]))
-      } else {
         # Numeric columns
-        data[[col]] <- suppressWarnings(as.numeric(data[[col]]))
-      }
+        data[[col]] <- standardize_numeric(data[[col]])
     }
   }
 
@@ -152,8 +125,13 @@ validate_portfolio_data <- function(data) {
 #' @noRd
 validate_trades_data <- function(data) {
 
-  # Integer columns
-  int_cols <- c("TradeNr", "TradeDate", "Pos")
+  # Ensure date is integer
+  if ("TradeDate" %in% names(data)) {
+    data$TradeDate <- sapply(data$TradeDate, standardize_date_integer)
+  }
+
+  # Other Integer columns
+  int_cols <- c("TradeNr", "Pos")
   for (col in int_cols) {
     if (col %in% names(data)) {
       data[[col]] <- suppressWarnings(as.integer(data[[col]]))
@@ -164,7 +142,7 @@ validate_trades_data <- function(data) {
   num_cols <- c("Prix", "Comm.", "Total", "Risk", "Reward", "PnL")
   for (col in num_cols) {
     if (col %in% names(data)) {
-      data[[col]] <- suppressWarnings(as.numeric(data[[col]]))
+      data[[col]] <- standardize_numeric(data[[col]])
     }
   }
 
@@ -175,12 +153,13 @@ validate_trades_data <- function(data) {
 #' @noRd
 validate_currency_data <- function(data) {
 
+  # Ensure date is integer YYYYMMDD
   if ("date" %in% names(data)) {
-    data$date <- as.integer(data$date)
+    data$date <- sapply(data$date, standardize_date_integer)
   }
 
   if ("usd_value" %in% names(data)) {
-    data$usd_value <- as.numeric(data$usd_value)
+    data$usd_value <- standardize_numeric(data$usd_value)
   }
 
   return(data)
@@ -204,7 +183,7 @@ validate_journal_data <- function(data) {
   numeric_cols <- c("close", "mkt_price")
   for (col in numeric_cols) {
     if (col %in% names(data)) {
-      data[[col]] <- sapply(data[[col]], standardize_numeric_safe)
+      data[[col]] <- sapply(data[[col]], standardize_numeric)
     }
   }
 
@@ -221,7 +200,7 @@ validate_prices_data <- function(data) {
 
   for (col in numeric_cols) {
     if (col %in% names(data)) {
-      data[[col]] <- sapply(data[[col]], standardize_numeric_safe)
+      data[[col]] <- sapply(data[[col]], standardize_numeric)
     }
   }
 
@@ -291,37 +270,37 @@ safe_db_append <- function(conn, table_name, data, ...) {
 
 # Standardize date values to integer format
 standardize_date_integer <- function(date_value) {
+
   # Convert various date formats to YYYYMMDD integer
-  if (is.na(date_value) || date_value == 0 || date_value == "") {
+  if (is.na(date_value) || isTRUE(date_value == 0) || isTRUE(date_value == "")) {
     return(NA_integer_)
   }
 
-  if (is.numeric(date_value) && date_value >= 19000101 && date_value <= 99991231) {
-    return(as.integer(date_value))
+  ### Tries first to test if Date format
+  if (inherits(date_value, "Date")) date_value <- suppressWarnings(as.integer(format(date_value, "%Y%m%d")))
+
+  ## Test if is character type, but integer - if not the case will then be returned as NA_integer_
+  if (is.character(date_value)) date_value <- suppressWarnings(as.integer(date_value))
+
+  ### Finally look at value itself, excluding NA case
+  if (is.numeric(date_value) && !is.na(date_value)) {
+    if (date_value >= 19000101 && date_value <= 21001231)
+      return(suppressWarnings(as.integer(date_value)))
   }
 
-  # Try parsing as date string
-  if (is.character(date_value)) {
-    tryCatch({
-      parsed_date <- as.Date(date_value)
-      if (!is.na(parsed_date)) {
-        return(as.integer(format(parsed_date, "%Y%m%d")))
-      }
-    }, error = function(e) NULL)
-  }
-
+  ### Anything else is NA
   return(NA_integer_)
 }
 
 # Standardize numeric values safely
-standardize_numeric_safe <- function(numeric_value) {
+standardize_numeric <- function(numeric_value) {
   # Safe numeric conversion that handles edge cases
   if (is.na(numeric_value) || is.null(numeric_value)) {
     return(NA_real_)
   }
 
   if (is.numeric(numeric_value)) {
-    return(as.numeric(numeric_value))
+    return(suppressWarnings(as.numeric(numeric_value)))
   }
 
   if (is.character(numeric_value)) {
@@ -331,32 +310,19 @@ standardize_numeric_safe <- function(numeric_value) {
     }
 
     # Remove currency symbols and convert
-    cleaned <- gsub("[,$%]", "", trimws(numeric_value))
-    result <- suppressWarnings(as.numeric(cleaned))
-    return(ifelse(is.na(result), NA_real_, result))
-  }
+    # Enlever symboles d'abord
+    cleaned <- gsub("[€$%]", "", trimws(numeric_value))
 
-  return(NA_real_)
-}
-
-standardize_numeric_safe <- function(numeric_value) {
-  # Safe numeric conversion that handles edge cases
-  if (is.na(numeric_value) || is.null(numeric_value)) {
-    return(NA_real_)
-  }
-
-  if (is.numeric(numeric_value)) {
-    return(as.numeric(numeric_value))
-  }
-
-  if (is.character(numeric_value)) {
-    # Handle empty strings and special values
-    if (numeric_value == "" || tolower(numeric_value) %in% c("na", "null", "n/a")) {
-      return(NA_real_)
+    # Détecter format: si virgule suivie de 1-2 chiffres à la fin = décimales
+    if (grepl(",\\d{1,2}$", cleaned)) {
+      # Format européen: 100,50 ou 1.234,50
+      cleaned <- gsub("\\.", "", cleaned)  # Enlever points (milliers)
+      cleaned <- gsub(",", ".", cleaned)   # Virgule → point décimal
+    } else {
+      # Format anglo: enlever virgules (milliers)
+      cleaned <- gsub(",", "", cleaned)
     }
 
-    # Remove currency symbols and convert
-    cleaned <- gsub("[,$%]", "", trimws(numeric_value))
     result <- suppressWarnings(as.numeric(cleaned))
     return(ifelse(is.na(result), NA_real_, result))
   }
