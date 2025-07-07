@@ -196,7 +196,7 @@ validate_prices_data <- function(data) {
 
   for (col in numeric_cols) {
     if (col %in% names(data)) {
-      data[[col]] <- sapply(data[[col]], standardize_numeric)
+      data[[col]] <- standardize_numeric(data[[col]])
     }
   }
 
@@ -266,62 +266,85 @@ safe_db_append <- function(conn, table_name, data, ...) {
 
 # Standardize date values to integer format
 standardize_date_integer <- function(date_value) {
-
-  # Convert various date formats to YYYYMMDD integer
-  if (is.null(date_value) || is.na(date_value) || isTRUE(date_value == 0) || isTRUE(date_value == "")) {
+  # Handle empty/null inputs upfront
+  if (is.null(date_value) || length(date_value) == 0) {
     return(NA_integer_)
   }
 
-  ### Tries first to test if Date format
-  if (inherits(date_value, "Date")) date_value <- suppressWarnings(as.integer(format(date_value, "%Y%m%d")))
+  # Initialize result vector with NAs
+  result <- rep(NA_integer_, length(date_value))
 
-  ## Test if is character type, but integer - if not the case will then be returned as NA_integer_
-  if (is.character(date_value)) date_value <- suppressWarnings(as.integer(date_value))
-
-  ### Finally look at value itself, excluding NA case
-  if (is.numeric(date_value) && !is.na(date_value)) {
-    if (date_value >= 19000101 && date_value <= 21001231)
-      return(suppressWarnings(as.integer(date_value)))
+  # Handle Date objects first - vectorized format conversion
+  if (inherits(date_value, "Date")) {
+    return(suppressWarnings(as.integer(format(date_value, "%Y%m%d"))))
   }
 
-  ### Anything else is NA
-  return(NA_integer_)
+  # Convert character vectors to numeric - vectorized operation
+  if (is.character(date_value)) {
+    date_value <- suppressWarnings(as.integer(date_value))
+  }
+
+  # Check for valid numeric values in valid date range
+  if (is.numeric(date_value)) {
+    # Vectorized logical operations replace individual checks
+    valid_mask <- !is.na(date_value) &
+      date_value >= 19000101 &
+      date_value <= 21001231
+
+    # Apply conversion only to valid entries
+    result[valid_mask] <- suppressWarnings(as.integer(date_value[valid_mask]))
+  }
+
+  return(result)
 }
 
 # Standardize numeric values safely
 standardize_numeric <- function(numeric_value) {
-  # Safe numeric conversion that handles edge cases
-  if (is.na(numeric_value) || is.null(numeric_value)) {
+  # Handle empty/null inputs upfront
+  if (is.null(numeric_value) || length(numeric_value) == 0) {
     return(NA_real_)
   }
 
+  # Initialize result vector with NAs
+  result <- rep(NA_real_, length(numeric_value))
+
+  # Handle numeric vectors - direct conversion
   if (is.numeric(numeric_value)) {
     return(suppressWarnings(as.numeric(numeric_value)))
   }
 
+  # Handle character vectors with vectorized operations
   if (is.character(numeric_value)) {
-    # Handle empty strings and special values
-    if (numeric_value == "" || tolower(numeric_value) %in% c("na", "null", "n/a")) {
-      return(NA_real_)
+    # Vectorized empty/special value detection
+    empty_mask <- numeric_value == "" |
+      tolower(trimws(numeric_value)) %in% c("na", "null", "n/a")
+
+    # Process non-empty values
+    non_empty_mask <- !is.na(numeric_value) & !empty_mask
+
+    if (any(non_empty_mask)) {
+      # Vectorized cleaning operations
+      cleaned <- gsub("[€$%]", "", trimws(numeric_value[non_empty_mask]))
+
+      # Detect European format (comma followed by 1-2 digits at end)
+      european_format <- grepl(",\\d{1,2}$", cleaned)
+
+      # Handle European format - vectorized operations
+      if (any(european_format)) {
+        cleaned[european_format] <- gsub("\\.", "", cleaned[european_format])  # Remove thousand separators
+        cleaned[european_format] <- gsub(",", ".", cleaned[european_format])   # Comma becomes decimal point
+      }
+
+      # Handle Anglo format - vectorized comma removal
+      if (any(!european_format)) {
+        cleaned[!european_format] <- gsub(",", "", cleaned[!european_format])
+      }
+
+      # Convert to numeric and assign to result
+      converted <- suppressWarnings(as.numeric(cleaned))
+      result[non_empty_mask] <- ifelse(is.na(converted), NA_real_, converted)
     }
-
-    # Remove currency symbols and convert
-    # Enlever symboles d'abord
-    cleaned <- gsub("[€$%]", "", trimws(numeric_value))
-
-    # Détecter format: si virgule suivie de 1-2 chiffres à la fin = décimales
-    if (grepl(",\\d{1,2}$", cleaned)) {
-      # Format européen: 100,50 ou 1.234,50
-      cleaned <- gsub("\\.", "", cleaned)  # Enlever points (milliers)
-      cleaned <- gsub(",", ".", cleaned)   # Virgule → point décimal
-    } else {
-      # Format anglo: enlever virgules (milliers)
-      cleaned <- gsub(",", "", cleaned)
-    }
-
-    result <- suppressWarnings(as.numeric(cleaned))
-    return(ifelse(is.na(result), NA_real_, result))
   }
 
-  return(NA_real_)
+  return(result)
 }
