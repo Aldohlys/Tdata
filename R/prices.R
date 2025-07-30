@@ -152,7 +152,7 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, metric = "Adjusted"){
   }
 
   ### Recycling describes the concept of repeating elements of one vector to match the size of another.
-  ### There are two rules that underlie the “tidyverse” recycling rules:
+  ### There are two rules that underlie the tidyverse recycling rules:
   ### - Vectors of size 1 will be recycled to the size of any other vector
   ### - Otherwise, all vectors must have the same size
   l <- vctrs::vec_recycle_common(sym, report_date, metric)

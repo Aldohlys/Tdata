@@ -617,7 +617,7 @@ getIBKRActiveCurrencyValues <- function() {
 
   # Insert/update records if any updates needed
   if(nrow(updates_needed) > 0) {
-    safe_db_write(conn, "ConvertToUSD", updates_needed, append = TRUE)
+    safe_db_append(conn, "ConvertToUSD", updates_needed)
     t_log_info("Updated {nrow(updates_needed)} currency rates")
     return(nrow(updates_needed))
   }

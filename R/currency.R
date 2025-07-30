@@ -178,7 +178,7 @@ getLastUSDValue = function(currency) {
 
   # Insert/update records if any updates needed
   if(nrow(updates_needed) > 0) {
-    safe_db_write(conn, "ConvertToUSD", updates_needed, append = TRUE)
+    safe_db_append(conn, "ConvertToUSD", updates_needed)
     t_log_info("Updated {nrow(updates_needed)} currency rates")
   }
 
@@ -351,7 +351,7 @@ convert_to_usd_date = function(amount, currency, convert_date = Sys.Date()) {
   ### If amount is of length 1 - it will be recycled
   #### tidyverse rules should apply :
   ####  Recycling describes the concept of repeating elements of one vector to match the size of another.
-  #### There are two rules that underlie the “tidyverse” recycling rules:
+  #### There are two rules that underlie the tidyverse recycling rules:
   #### -  Vectors of size 1 will be recycled to the size of any other vector
   #### - Otherwise, all vectors must have the same size
   result = data.frame(amount = amount, currency = currency)

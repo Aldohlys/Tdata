@@ -24,7 +24,7 @@ saveTrades = function(trades) {
   #             col.names=TRUE,row.names=FALSE,sep=";",dec=".",quote=TRUE)
 
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
- safe_db_write(conn, "Trades", trades, overwrite = TRUE,
+  safe_db_write(conn, "Trades", trades, #### This will overwrite table in DB
                     field.types=c("TradeNr"=	"INTEGER","TradeDate"	= "INTEGER",
                                   "Pos"	= "INTEGER",
                                   "Prix" =	"REAL",
@@ -516,9 +516,8 @@ getRnR = function(trade_nr) {
   RnR <-  dplyr::summarize(trades,
                          risk = sum(as.double(Risk), na.rm=T),
                          reward = sum(as.double(Reward), na.rm=T))
-  #print(RnR)
 
-  ###├ If the same trade number is requested multiple times then RnR will be returned as many times
+  ### If the same trade number is requested multiple times then RnR will be returned as many times
   RnR <- suppressMessages(dplyr::left_join(data.frame(TradeNr = trade_nr), RnR))
 
   return(RnR)

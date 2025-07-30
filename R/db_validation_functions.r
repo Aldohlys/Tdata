@@ -39,7 +39,6 @@ validate_db_types <- function(data, table_name) {
 #' Validate Account table data
 #' @noRd
 validate_account_data <- function(data) {
-   return(data)
 
   # Ensure CashFlow is numeric
   if ("CashFlow" %in% names(data)) data$CashFlow <- standardize_numeric(data$CashFlow)
@@ -221,7 +220,7 @@ validate_prices_data <- function(data) {
 #' @param ... Additional arguments passed to dbWriteTable/dbAppendTable
 #' @return Result from database write operation
 #' @export
-safe_db_write <- function(conn, table_name, data, append = TRUE, temporary = FALSE, ...) {
+safe_db_write <- function(conn, table_name, data, append = FALSE, temporary = FALSE, ...) {
 
   # Skip validation for temporary tables
   if (temporary) {
@@ -324,7 +323,7 @@ standardize_numeric <- function(numeric_value) {
 
     if (any(non_empty_mask)) {
       # Vectorized cleaning operations
-      cleaned <- gsub("[€$%]", "", trimws(numeric_value[non_empty_mask]))
+      cleaned <- gsub("[\U20AC$%]", "", trimws(numeric_value[non_empty_mask]))
 
       # Detect European format (comma followed by 1-2 digits at end)
       european_format <- grepl(",\\d{1,2}$", cleaned)

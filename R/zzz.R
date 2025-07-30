@@ -143,15 +143,15 @@ for module in modules_to_reload:  ### This removes modules_to_reload from cache 
         return(TRUE)
 
   }, error = function(e) {
-    # Utiliser Tbasics directement avec module spécifié
+    # Then use directly Tbasics with specified module
     t_log_error(sprintf("Failed to initialize Python environment: %s",
                            e$message))
 
-    # Afficher l'erreur Python détaillée
+    # Display detailed Python error
     tryCatch({
       reticulate::py_last_error()
     }, error = function(e2) {
-      # Si même py_last_error échoue, ignorer
+      # If even py_last_error fails then ignore
     })
 
     return(FALSE)
