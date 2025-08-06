@@ -227,7 +227,8 @@ safe_db_write <- function(conn, table_name, data, append = FALSE, temporary = FA
     if (append) {
       result <- DBI::dbAppendTable(conn, table_name, data, ...)
     } else {
-      result <- DBI::dbWriteTable(conn, table_name, data, temporary = TRUE, ...)
+      # For temporary tables, always overwrite
+      result <- DBI::dbWriteTable(conn, table_name, data, temporary = TRUE, overwrite = TRUE, append = FALSE, ...)
     }
     return(result)
   }
@@ -239,7 +240,9 @@ safe_db_write <- function(conn, table_name, data, append = FALSE, temporary = FA
   if (append) {
     result <- DBI::dbAppendTable(conn, table_name, validated_data, ...)
   } else {
-    result <- DBI::dbWriteTable(conn, table_name, validated_data, ...)
+    # Explicitly set both overwrite and append to avoid ambiguity
+    result <- DBI::dbWriteTable(conn, table_name, validated_data,
+                                overwrite = TRUE, append = FALSE, ...)
   }
 
   return(result)

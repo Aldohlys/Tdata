@@ -42,7 +42,7 @@ readJournalMaxEntryId <- function() {
 #' This function appends its argument into Journal table. No checks are performed.
 #'@returns number of lines appended, if no error it returns 1. It returns 0 if there is an error
 #'@param entry a tibble, it should have the following fields: \code{ entryId	theme	date
-#' sym	close	change	mkt_price	mkt_change}
+#' sym	close	change	mkt_price	mkt_change text}
 #'@export
 writeJournalEntry <- function(entry) {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
