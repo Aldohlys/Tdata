@@ -169,12 +169,31 @@ def retrieveAccountMarginData(contracts):
     ib.sleep(1)
     ib.disconnect()
     
-    ### As we are buying back this contracts list is actually the margin cost of selling this contract list
-    res = [-float(order_s.maintMarginChange) for order_s in order_state]
+    ### Process results with error handling for failed whatIfOrder calls
+    res = []
+    valid_contracts = []
+    
+    for contract, order_s in zip(contracts, order_state):
+        # Check if whatIfOrder succeeded by verifying maintMarginChange attribute exists
+        if hasattr(order_s, 'maintMarginChange') and order_s.maintMarginChange is not None:
+            # Convert margin change to positive value (buying back short positions)
+            margin_value = -float(order_s.maintMarginChange)
+            res.append(margin_value)
+            valid_contracts.append(contract)
+        else:
+            # Log failed contract but continue processing others
+            logger.warning(f"Failed to get margin data for contract: {contract.localSymbol}")
+            # Optionally append 0 or skip this contract entirely
+            res.append(0)  # Using 0 as fallback - adjust based on your needs
+            valid_contracts.append(contract)
+    
+    ### Display results for valid contracts
     print("Contracts margin:\n")
-    res_dict = [{'contract name': contract.localSymbol, 'margin': res} for contract, res in zip(contracts, res)]
+    res_dict = [{'contract name': contract.localSymbol, 'margin': margin} 
+                for contract, margin in zip(valid_contracts, res)]
     print(util.df(res_dict))
-    return(res)
+    
+    return res
 
 def retrievePortfolioData(ib, df):
     options = []

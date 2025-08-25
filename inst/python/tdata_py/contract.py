@@ -39,6 +39,8 @@ from ib_insync import *
 # Import from other modules
 from .core import CONFIG, ticker_db, validate_contract_params, find_nearest_number
 from .IB_connection import safe_ib_connect
+from .chains_manager import getChains, getAllStrikes
+
 from fin_logger import get_logger, log_execution_time
 
 # Créez un logger pour ce module
@@ -307,156 +309,7 @@ def getStraddleValue(sym, expiration, strike, currency=None, exchange=None, trad
     ib.disconnect()
     return value
 
-def getChains(sym, secType=None, currency=None, exchangeSec=None):
-    """
-    Get options chains data for a symbol, using cached data if available.
-    
-    Args:
-        sym (str): Underlying symbol
-        secType (str, optional): Security type (STK, IND, etc.). If None, uses value from ticker database.
-        currency (str, optional): Currency code. If None, uses value from ticker database.
-        exchangeSec (str, optional): Exchange for the underlying security. If None, uses value from ticker database.
-        
-    Returns:
-        list or None or float: 
-            List of option chains if successful
-            None if connection error
-            NaN if contract doesn't exist
-    """
-    # Get ticker information from database if not provided
-    ticker_info = ticker_db.get_ticker_info(sym)
-    
-    if secType is None:
-        secType = ticker_info.get('Type', 'STK')
-    
-    if currency is None:
-        currency = ticker_info.get('Currency', 'USD')
-        
-    if exchangeSec is None:
-        exchangeSec = ticker_info.get('Exchange', 'SMART')
-    
-    chains_file = CONFIG.get("chains")
-    logger.debug(f"Get chains file: {chains_file}")
-    try:
-        with open(chains_file, "r") as fp:
-            stored_chains = json.load(fp)
-    except (FileNotFoundError, json.JSONDecodeError):
-        print(f"Error: Could not load chains from {chains_file}")
-        stored_chains = []
-  
-    # Check if symbol exists in stored chains
-
-    # Remove empty entries if any
-    stored_chains = [chain for chain in stored_chains if chain]
-
-    chains = [chains for chains in stored_chains if (chains[0][1] == sym)]
-    
-    # Check if expiration dates are all greater than today
-    if chains:
-        chains = chains[0]
-        today = int(datetime.date.today().strftime("%Y%m%d"))
-        dates = [int(chain[4][0]) for chain in chains]
-        if (min(dates) >= today): 
-            return chains
-  
-    # If not in cache or dates expired, fetch from IB
-    # Use safe_ib_connect instead of direct connection
-    ib = safe_ib_connect()
-
-    # If connection not available return None
-    if not ib.isConnected(): 
-        return None
-
-    underlying = Contract(symbol=sym, secType=secType,
-                       exchange=exchangeSec, currency=currency)
-    
-    logger.debug("Contract: ", {"contract":underlying})
-    
-    if (ib.qualifyContracts(underlying)):
-        chains = ib.reqSecDefOptParams(sym, '', underlying.secType, underlying.conId)
-        sub_chains = [chain for chain in chains if chain.exchange == "SMART"]
-        
-        if not sub_chains:
-            sub_chains = [chain for chain in chains if chain.exchange == "EUREX"]
-        
-        ib.sleep(1)
-   
-        logger.debug("Chains: ", {"chains":sub_chains})
-        
-        # Update stored chains
-        keep_records = [chains for chains in stored_chains if (chains[0][1] != sym)]
-        sub_chains = json.loads(json.dumps(sub_chains))
-        
-        for chain in sub_chains:
-            chain[1] = sym
-            
-        keep_records.append(sub_chains)
-        
-        try:
-            with open(chains_file, "w") as fp:
-                json.dump(keep_records, fp, indent=4)
-        except Exception as e:
-            print(f"Error saving chains to file: {e}")
-            
-        ib.disconnect()    
-        return sub_chains
-    else:
-        ib.disconnect()
-        return float('NaN')
-
-def getChain(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=None, tradingClass=None):
-    """
-    Get a specific option chain for a symbol, exchange and trading class.
-    
-    Args:
-        sym (str): Underlying symbol
-        secType (str, optional): Security type. If None, uses value from ticker database.
-        currency (str, optional): Currency code. If None, uses value from ticker database.
-        exchangeSec (str, optional): Exchange for underlying. If None, uses value from ticker database.
-        exchangeOpt (str, optional): Exchange for options. If None, uses value from ticker database.
-        tradingClass (str, optional): Trading class. If None, uses value from ticker database.
-        
-    Returns:
-        dict or float or None: Option chain if found, NaN if not found, None if connection error
-    """
-    # Get ticker information from database if not provided
-    ticker_info = ticker_db.get_ticker_info(sym)
-    
-    if secType is None:
-        secType = ticker_info.get('Type', 'STK')
-    
-    if currency is None:
-        currency = ticker_info.get('Currency', 'USD')
-        
-    if exchangeSec is None:
-        exchangeSec = ticker_info.get('Exchange', 'SMART')
-        
-    if exchangeOpt is None:
-        exchangeOpt = ticker_info.get('OptExchange', 'SMART')
-        
-    if tradingClass is None:
-        tradingClass = ticker_info.get('TradingClass', sym)
-    
-    chains = getChains(sym, secType, currency, exchangeSec)
-    
-    # No access to IBKR API
-    if chains is None:
-        return None
-    
-    # Test if getChains has returned a list of chains
-    if (isinstance(chains, list)):
-        # Find chain with requested exchange and trading class
-        chain = [chain for chain in chains if chain[0] == exchangeOpt and chain[2] == tradingClass]
-        if chain:
-            logger.debug("Chain: ", {"chain":chain})
-            return chain[0]
-    
-    # In all other cases return NaN
-    logger.debug("Chain: NaN")
-    return float('NaN')
-
-def getStrikesfromExpDate(sym, secType=None, currency=None, 
-       exchangeSec=None, exchangeOpt=None, tradingClass=None, expdate=None):
+def getStrikesfromExpDate(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=None, tradingClass=None, expdate=None):
     """
     Get available strikes for a specific option expiration date.
     
@@ -473,22 +326,8 @@ def getStrikesfromExpDate(sym, secType=None, currency=None,
         list or None: List of available strikes if successful, None if connection error
     """
     
-    is_valid, errors = validate_contract_params(
-        sym=sym, 
-        secType=secType,
-        currency=currency,
-        exchangeOpt=exchangeOpt, 
-        exchangeSec=exchangeSec, 
-        tradingClass=tradingClass, 
-        expdate=expdate
-    )    
+    logger.info("Starting getStrikesfromExpDate function...")
     
-    if not is_valid:
-        for error in errors:
-            print(f"- {error}")
-    
-    logger.debug("getStrikesfromExpDate arguments validated")
-        
     # Get ticker information from database if not provided
     ticker_info = ticker_db.get_ticker_info(sym)
     
@@ -507,75 +346,9 @@ def getStrikesfromExpDate(sym, secType=None, currency=None,
     if tradingClass is None:
         tradingClass = ticker_info.get('TradingClass', sym)
     
-    strikes_file = CONFIG.get("strikes")
-    
-    try:
-        with open(strikes_file, "r") as fp:
-            stored_chains = json.load(fp)
-    except (FileNotFoundError, json.JSONDecodeError):
-        print(f"Error: Could not load strikes from {strikes_file}")
-        stored_chains = []
-  
-    # Check if already stored for requested symbol, trading class and expdate
-    stored_strikes = [chain for chain in stored_chains if (
-        chain[0] == sym and chain[1] == tradingClass and chain[2] == expdate)]
-        
-    if stored_strikes:
-        return stored_strikes[0][3]
-  
-    # If not in cache, fetch from IB
-    # Use safe_ib_connect instead of direct connection
-    ib = safe_ib_connect()
-
-    # If connection not available return None
-    if not ib.isConnected():
-        return None
-
-    # Get the chain for symbol and trading class
-    chain = getChain(sym, secType, currency, exchangeSec, exchangeOpt, tradingClass)
-    
-    # Extract list of strikes from chain
-    all_strikes = chain[5]
-    
-    # Try all strikes for the expdate to see which are valid, using Put options (should be the same for Call)
-    if (secType == "STK") or (secType == "IND"):
-        contracts = [Contract(secType='OPT', symbol=sym, lastTradeDateOrContractMonth=expdate,
-                  strike=strike_c, right='Put', exchange=exchangeOpt, tradingClass=tradingClass) 
-                  for strike_c in all_strikes]
-    elif (secType == "FUT"):
-        contracts = [Contract(secType='FOP', symbol=sym, lastTradeDateOrContractMonth=expdate,
-                  strike=strike_c, right='Put', exchange=exchangeOpt, tradingClass=tradingClass) 
-                  for strike_c in all_strikes]
-      
-    updated_strikes = []
-    
-    # Process in batches of 20 contracts
-    batch_size = 20
-    for i in range(0, len(contracts), batch_size):
-        batch = contracts[i:i+batch_size]
-        logger.debug(f"Contracts batch nr.{i} : {batch}")    
-        for contract in batch:
-            if(ib.qualifyContracts(contract)):
-                updated_strikes.append(contract.strike)
-        # Add small delay between batches
-        ib.sleep(0.5)
-            
-    ib.disconnect()
-    
-    logger.debug(f"Strikes: {updated_strikes}")
-  
-    # Store the list of strikes for expdate
-    record = [sym, tradingClass, expdate, updated_strikes]
-    stored_chains.append(record)
-
-    # Save updated strikes to file
-    try:
-        with open(strikes_file, "w") as fp:
-            json.dump(stored_chains, fp, indent=4)
-    except Exception as e:
-        logger.error(f"Error saving strikes to file: {e}")
-
-    return updated_strikes
+    logger.info(f"Argts: sym:{sym}, trading class:{tradingClass}, expiration:{expdate}, exchange:{exchangeOpt}")
+       
+    return getAllStrikes(sym, trading_class=tradingClass, expiration=expdate, exchangeOpt=exchangeOpt, force_refresh=False)
 
 def getStrikesFromRange(sym, current_price, expdate, strikes, sigma, volatility):
     """
@@ -611,3 +384,4 @@ def getStrikesFromRange(sym, current_price, expdate, strikes, sigma, volatility)
     # Apply the dividend and interest rate adjustments
     lower_bound = S * math.exp((r - q - 0.5 * sigma**2) * T - adjusted_sigma_range)
     upper_bound = S * math.exp((r - q - 0.5 * sigma**2) * T + adjusted_sigma_range)
+    

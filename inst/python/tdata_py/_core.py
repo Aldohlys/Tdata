@@ -178,7 +178,7 @@ class TickerDatabase:
     
     def get_ticker_info(self, symbol):
         """
-        Get information for a specific ticker.
+        Get comprehensive information for a specific ticker with multi-trading-class support.
         
         Args:
             symbol (str): The ticker symbol
@@ -186,36 +186,46 @@ class TickerDatabase:
         Returns:
             dict: Ticker information or default values if not found
         """
-        if not self.initialized:
-            # Return default values if database is not initialized
-            return {
-                'Type': self.determine_sec(symbol),
-                'Exchange': self.determine_primary_exch(symbol),
-                'OptExchange': self.determine_exch(symbol),
-                'Currency': 'USD',
-                'TradingClass': symbol,
-                'YahooName': symbol,
-                'Expiration': ''
-            }
-            
+        
         # Clean symbol if needed (remove exchange suffix)
         clean_symbol = self.determine_sym(symbol)
         
-        # Return ticker info if found, otherwise return default values
+        ## Case DB could not be found or could not be opened successfully
+        if not self.initialized : return self._default_ticker_values(clean_symbol)
+        
+        # Standard case - copy symbol info first to avoid modifying DB
+        # Look in DB if ticker already exists
+        ticker_info = None
         if clean_symbol in self.tickers:
-            return self.tickers[clean_symbol]
+            ticker_info = self.tickers[clean_symbol].copy()
+
+        if ticker_info is not None:
+            # Parse alternate trading classes from comma-separated string
+            alt_classes_str = ticker_info.get('AlternateTradingClasses', '')
+            if alt_classes_str and isinstance(alt_classes_str, str):
+                # Split by comma and clean whitespace
+                ticker_info['AlternateTradingClasses'] = [tc.strip() for tc in alt_classes_str.split(',') if tc.strip()]
+            else:
+                ticker_info['AlternateTradingClasses'] = []
+
+            return ticker_info
         else:
-            # Return default values based on existing functions
-            return {
+            # Return enhanced default values based on symbol analysis
+            return self._default_ticker_values(clean_symbol)
+
+    def _default_ticker_values(self, symbol):
+        return {
+                'Name': symbol,
                 'Type': self.determine_sec(symbol),
                 'Exchange': self.determine_primary_exch(symbol),
                 'OptExchange': self.determine_exch(symbol),
                 'Currency': 'USD',
                 'TradingClass': symbol,
+                'AlternateTradingClasses': '',
                 'YahooName': symbol,
                 'Expiration': ''
-            }
-    
+        }
+        
     def determine_sec(self, sym):
         """
         Determine security type based on symbol.
@@ -278,15 +288,7 @@ class TickerDatabase:
 # Initialize the ticker database
 ticker_db = TickerDatabase()
 
-def validate_contract_params(
-    sym, 
-    secType=None, 
-    currency=None, 
-    exchangeSec=None, 
-    exchangeOpt=None, 
-    tradingClass=None, 
-    expdate=None
-):
+def validate_contract_params(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=None, tradingClass=None, expdate=None):
     """
     Simple validation of contract parameters types.
     
