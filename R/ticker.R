@@ -27,6 +27,7 @@ getAllTickers = function() {
 #'
 #'@param name IBKR security name
 #'@param yahoo_name Yahoo finances download security name.  If not provided, will be equal to \code{name}.
+#'@param sector GCIS (i.e. S&P) industry name for a given stock, e.g. Industrial, Financial,... Denominated as "US Stocks" or "US Bonds" or "Forex" for non-stock cases.
 #'@param trading_class chain trading class that will be used to retrieve option data from IBKR. If not provided, will be equal to \code{name}.
 #'@param multiplier chain multiplier, default is 100
 #'@param type IBKR security type, default is STK (stock). Could be also FUT (future), IND (Index),...
@@ -41,7 +42,7 @@ getAllTickers = function() {
 #'addTicker("SPY")
 #'}
 #'@export
-addTicker <- function(name, yahoo_name, trading_class, multiplier = 100, type="STK",
+addTicker <- function(name, yahoo_name, sector, trading_class, multiplier = 100, type="STK",
                       currency="USD", exchange="SMART", opt_exchange="SMART", IV="YES", expiration = "") {
 
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
@@ -77,7 +78,7 @@ addTicker <- function(name, yahoo_name, trading_class, multiplier = 100, type="S
   ### if (type %in% c("STK", "IND")) div_yield <- getSingleDivYield(type=type, name=name, yahoo_name=yahoo_name, currency=currency, exchange=exchange)
 
   ### Build df for storage in DB
-  df <- data.frame(Name = name, YahooName = yahoo_name, Type = type,
+  df <- data.frame(Name = name, YahooName = yahoo_name, Type = type, Sector = sector,
                    Currency = currency, TradingClass = trading_class, Multiplier = multiplier,
                    Exchange = exchange, OptExchange = opt_exchange,
                    Beta_3m = round(beta$beta_3m, 4), Beta_6m = round(beta$beta_6m, 4),
