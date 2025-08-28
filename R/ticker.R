@@ -27,7 +27,7 @@ getAllTickers = function() {
 #'
 #'@param name IBKR security name
 #'@param yahoo_name Yahoo finances download security name.  If not provided, will be equal to \code{name}.
-#'@param sector GCIS (i.e. S&P) industry name for a given stock, e.g. Industrial, Financial,... Denominated as "US Stocks" or "US Bonds" or "Forex" for non-stock cases.
+#'@param sector GCIS (i.e. S&P) industry name for a given stock, e.g. Industrial, Financial,... Denominated as "US Stocks" or "US Bonds" or "Forex" for non-stock cases. Default is "Unclassified"
 #'@param trading_class chain trading class that will be used to retrieve option data from IBKR. If not provided, will be equal to \code{name}.
 #'@param multiplier chain multiplier, default is 100
 #'@param type IBKR security type, default is STK (stock). Could be also FUT (future), IND (Index),...
@@ -36,7 +36,7 @@ getAllTickers = function() {
 #'@param opt_exchange exchange name where option price for the security can be retrieved, default is SMART
 #'@param IV String character - whether IV should be looked at or not , default is YES
 #'@param expiration String character - should be a date for YYYYMM for futures or YYYYMMDD for bills, bonds. Default is empty string
-#'@return record added and display number of records added, i.e. 1 (normal case) or 0 (no line deleted, error case)
+#'@return record added and display number of records added, i.e. 1 (normal case) or 0 (no line added, error case)
 #'@examples
 #'\dontrun{
 #'addTicker("SPY")
@@ -59,6 +59,7 @@ addTicker <- function(name, yahoo_name, sector, trading_class, multiplier = 100,
   #### Standard case for US stocks
   if (missing(trading_class)) trading_class=name
   if (missing(yahoo_name)) yahoo_name=name
+  if (missing(sector)) sector="Unclassified"
 
   ### Initialize beta and div_yield to NA
   beta = list(
