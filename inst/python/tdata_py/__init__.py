@@ -118,6 +118,36 @@ except ImportError as e:
     enhanced_functions_available = False
     package_logger.error(f"⚠️ Enhanced chain functions not available: {e}")
     print(f"Error importing enhanced parquet modules: {e}")
+
+
+# ============================================================================
+# HISTORICAL DATA FUNCTIONS
+# ============================================================================
+
+try:
+    from .historical_option import (
+        # Core classes
+        ContractConfig,
+        HistoricalDataConfig,
+        HistoricalStorage,
+        HistoricalDataManager,
+
+        # R-friendly functions
+        add_historical_tracking,
+        update_historical_settings,
+        list_historical_config,
+        update_historical_data,
+        get_option_historical_data,
+        manage_contracts
+    )
+    
+    package_logger.info("✅ Historical option data module loaded")
+    historical_data_available = True
+    
+except ImportError as e:
+    package_logger.warning(f"⚠️ Historical option data module not available: {e}")
+    historical_data_available = False
+
     
 # ============================================================================
 # CONTRACT FUNCTIONS
@@ -138,8 +168,6 @@ except ImportError as e:
     def getOptValue(*args, **kwargs):
         return None
     def getStraddleValue(*args, **kwargs):
-        return None
-    def getChains_old(*args, **kwargs):
         return None
     def getStrikesfromExpDate(*args, **kwargs):
         return None
@@ -215,6 +243,7 @@ except ImportError as e:
 __version__ = '0.2.0'  # Incremented for multi-trading-class support
 
 # Define what gets imported with "from tdata_py import *"
+# A subset of all available functions nevertheless
 __all__ = [
     # === CONNECTION FUNCTIONS ===
     'safe_ib_connect',
@@ -224,10 +253,8 @@ __all__ = [
     'getChains',
     'getChain', 
     'getOptionStrikes',
-    'getAllStrikes',
-    'getStrikesInRange',
-    
-    # === MULTI-TRADING-CLASS DISCOVERY (NEW) ===
+
+    # === MULTI-TRADING-CLASS DISCOVERY ===
     'getAvailableTradingClasses',
     'getAllChains',
     'findBestTradingClass',
@@ -235,48 +262,33 @@ __all__ = [
     'exploreSymbol',
     'printSymbolSummary',
     
-    # === BATCH OPERATIONS ===
-    'initialize_chains_for_symbols',
-    'initializeMultipleSymbols',
-    'exploreMultipleSymbols',
-    
-    # === STORAGE UTILITIES ===
+    # ==== HISTORICAL DATA CLASSES AND UTILITIES ====
+    'addp_historical_tracking',
+    'update_historical_settings',
+    'update_historical_data',
+    'get_option_historical_data',
+    'manage_contracts',
+    'list_historical_config',
+
+    # === STORAGE CLASSES AND UTILITIES ===
     'view_parquet',
     'list_parquet_files',
     'get_strikes_for_expiration',
     'get_strikes_summary',
-    'compare_trading_class_strikes',
-    
+
     # === MAINTENANCE FUNCTIONS ===
-    'cleanup_symbol',
-    'cleanup_trading_class',
-    'cleanup_all',
     'clearStrikesCache',
     'clearCache',
-    'validate_parquet_structure',
-    
-    # === STORAGE CLASSES ===
-    'ParquetChainsStorage',
-    'ParquetStrikesStorage',
-    'ParquetMaintenanceManager',
-    
+
     # === CONTRACT FUNCTIONS ===
     'getValue',
     'getOptValue',
-    'getStraddleValue',
-    'getStrikesfromExpDate',
-    
+
     # === ACCOUNT FUNCTIONS ===
     'retrieveCurrencyPairs',
-    'retrieveAccountHistory',
-    'retrieveAccountData',
-    'retrieveAccountMarginData',
-    'retrievePortfolioData',
     'getIBKRData',
     
     # === SPECIALIZED UTILITIES ===
-    'getInterestRate',
-    'getNTMDividend',
     'get_volatility_metrics',
     
     # === LOGGING FUNCTIONS ===
@@ -302,7 +314,8 @@ def package_info():
             'r_friendly_interface': True,
             'batch_operations': True,
             'enhanced_discovery': True,
-            'maintenance_tools': True
+            'maintenance_tools': True,
+            'historical_data_available' : True
         },
         'available_functions': len(__all__),
         'storage_architecture': 'hierarchical_parquet',

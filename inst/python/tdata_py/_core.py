@@ -63,8 +63,8 @@ def load_config(env="default"):
         # If config file not found, use default values
         print("WARNING: Config file not found. Using default values.")
         return {
-            "chains": "C:/Users/aldoh/Documents/NewTrading/Chains.json",
-            "strikes": "C:/Users/aldoh/Documents/NewTrading/Strikes.json",
+            "chains_dir": "C:/Users/aldoh/Documents/NewTrading/chains",
+            "strikes_dir": "C:/Users/aldoh/Documents/NewTrading/strikes",
             "DB": "data/mydb.db"
         }
     
@@ -76,8 +76,8 @@ def load_config(env="default"):
     except Exception as e:
         print(f"Error loading YAML config: {e}")
         return {
-            "chains": "C:/Users/aldoh/Documents/NewTrading/Chains.json",
-            "strikes": "C:/Users/aldoh/Documents/NewTrading/Strikes.json",
+            "chains_dir": "C:/Users/aldoh/Documents/NewTrading/chains",
+            "strikes_dir": "C:/Users/aldoh/Documents/NewTrading/strikes",
             "DB": "data/mydb.db"
         }
     

@@ -379,7 +379,7 @@ def _qualify_strikes_with_states(ib, sym, trading_class, expiration, strikes, op
     """
     qualified_strikes = []
     out_of_scope_strikes = []
-    batch_size = 10
+    batch_size = 10  # If necessary, to be reduced to 5 to avoid TWS batch truncation
     
     for i in range(0, len(strikes), batch_size):
         batch_strikes = strikes[i:i + batch_size]
@@ -402,7 +402,7 @@ def _qualify_strikes_with_states(ib, sym, trading_class, expiration, strikes, op
         qualified_strikes.extend(batch_results['qualified'])
         out_of_scope_strikes.extend(batch_results['out_of_scope'])
         
-        ib.sleep(0.1)  # Rate limiting
+        ib.sleep(0.1)  # To be modified if necessary (e.g 0.2)
     
     return {
         'qualified': qualified_strikes,
@@ -428,41 +428,48 @@ def _test_contract_batch_with_states(ib, batch_contracts):
     contracts_to_qualify = [contract for _, contract in batch_contracts]
     
     try:
+        # Try batch qualification first with error suppression
         with suppress_ib_errors():
             qualified_contracts = ib.qualifyContracts(*contracts_to_qualify)
         
-        # Check which contracts were successfully qualified
-        for i, (strike, original_contract) in enumerate(batch_contracts):
-            if i < len(qualified_contracts):
-                qualified_contract = qualified_contracts[i]
-                if hasattr(qualified_contract, 'conId') and qualified_contract.conId != 0:
-                    qualified_strikes.append(float(strike))
-                    logger.debug(f"Strike {strike}: QUALIFIED")
-                else:
-                    out_of_scope_strikes.append(float(strike))
-                    logger.debug(f"Strike {strike}: OUT_OF_SCOPE (no conId)")
+        # Create lookup by strike for accurate matching (not index-based)
+        qualified_by_strike = {}
+        for qc in qualified_contracts:
+            if hasattr(qc, 'strike') and hasattr(qc, 'conId') and qc.conId != 0:
+                qualified_by_strike[float(qc.strike)] = qc
+        
+        # Check each original contract against qualified results
+        for strike, original_contract in batch_contracts:
+            if float(strike) in qualified_by_strike:
+                qualified_strikes.append(float(strike))
+                logger.debug(f"Strike {strike}: QUALIFIED (batch)")
             else:
                 out_of_scope_strikes.append(float(strike))
-                logger.debug(f"Strike {strike}: OUT_OF_SCOPE (not in results)")
+                logger.debug(f"Strike {strike}: OUT_OF_SCOPE (batch)")
+        
+        # Only warn about truncation at debug level to avoid clutter
+        if len(qualified_contracts) < len(batch_contracts):
+            logger.debug(f"TWS returned {len(qualified_contracts)} results for {len(batch_contracts)} requests")
                 
     except Exception as e:
-        logger.debug(f"Batch qualification failed: {e}. Trying individual contracts...")
+        logger.debug(f"Batch qualification failed: {e}. Falling back to individual tests...")
         
-        # Fall back to individual contract qualification
+        # Fallback to individual contract qualification with error suppression
         for strike, contract in batch_contracts:
             try:
-                qualified = ib.qualifyContracts(contract)
+                with suppress_ib_errors():
+                    qualified = ib.qualifyContracts(contract)
                 if (qualified and len(qualified) > 0 and 
                     hasattr(qualified[0], 'conId') and qualified[0].conId != 0):
                     qualified_strikes.append(float(strike))
-                    logger.debug(f"Strike {strike}: QUALIFIED (individual)")
+                    logger.debug(f"Strike {strike}: QUALIFIED (individual fallback)")
                 else:
                     out_of_scope_strikes.append(float(strike))
-                    logger.debug(f"Strike {strike}: OUT_OF_SCOPE (individual)")
+                    logger.debug(f"Strike {strike}: OUT_OF_SCOPE (individual fallback)")
                     
             except Exception:
                 out_of_scope_strikes.append(float(strike))
-                logger.debug(f"Strike {strike}: OUT_OF_SCOPE (exception)")
+                logger.debug(f"Strike {strike}: OUT_OF_SCOPE (individual exception)")
                 continue
             
             ib.sleep(0.05)  # Rate limiting for individual calls
@@ -471,7 +478,6 @@ def _test_contract_batch_with_states(ib, batch_contracts):
         'qualified': qualified_strikes,
         'out_of_scope': out_of_scope_strikes
     }
-
 def _filter_strikes_by_range(all_strikes, strike_min, strike_max):
     """Filter strikes by range constraints with type-safe float operations."""
     if not all_strikes:

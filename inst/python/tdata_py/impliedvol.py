@@ -2,7 +2,6 @@ import math
 import datetime
 import locale
 import pandas as pd
-import json
 import logging
 from ib_insync import *
 

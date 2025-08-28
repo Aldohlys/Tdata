@@ -8,7 +8,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 
 from .core import CONFIG
-from .parquet_storage import ParquetMaintenanceManager, ParquetChainsStorage
+from .parquet_storage import ParquetMaintenanceManager, ParquetChainsStorage, ParquetStrikesStorage
 
 
 ## Raw viewer Parquet files
@@ -57,7 +57,7 @@ def view_parquet(filepath):
 
 def list_parquet_files(symbol=None, trading_class=None):
     """
-    List available parquet files in the chains directory with organized display.
+    List available parquet files in both chains and strikes directories with organized display.
     
     Args:
         symbol (str, optional): Filter by symbol
@@ -65,30 +65,74 @@ def list_parquet_files(symbol=None, trading_class=None):
     """
     try:
         chains_base_dir = Path(CONFIG.get("chains_dir", "chains"))
+        strikes_base_dir = Path(CONFIG.get("strikes_dir", "strikes"))
         
-        if not chains_base_dir.exists():
-            print(f"Chains directory not found: {chains_base_dir}")
-            return
-            
-        # Build search pattern
-        pattern = "**/*.parquet"
-        if symbol:
-            pattern = f"{symbol}/**/*.parquet"
-            
-        parquet_files = list(chains_base_dir.glob(pattern))
+        results = {
+            "chains": {"files": [], "directory": str(chains_base_dir)},
+            "strikes": {"files": [], "directory": str(strikes_base_dir)}
+        }
         
-        if trading_class:
-            parquet_files = [f for f in parquet_files if trading_class in str(f)]
+        # Check chains directory
+        if chains_base_dir.exists():
+            pattern = "**/*.parquet"
+            if symbol:
+                pattern = f"{symbol}/**/*.parquet"
+                
+            chain_files = list(chains_base_dir.glob(pattern))
             
-        if not parquet_files:
+            if trading_class:
+                # Filter chains files by trading class (in filename: tradingclass_chain.parquet)
+                chain_files = [f for f in chain_files if f.name.startswith(f"{trading_class}_chain.parquet")]
+            
+            results["chains"]["files"] = sorted(chain_files)
+        
+        # Check strikes directory  
+        if strikes_base_dir.exists():
+            pattern = "**/*.parquet"
+            if symbol:
+                pattern = f"{symbol}/**/*.parquet"
+                
+            strike_files = list(strikes_base_dir.glob(pattern))
+            
+            if trading_class:
+                # Filter strikes files by exact trading class match (in path: symbol/tradingclass/expiration.parquet)
+                filtered_strike_files = []
+                for f in strike_files:
+                    try:
+                        parts = f.relative_to(strikes_base_dir).parts
+                        if len(parts) >= 2 and parts[1] == trading_class:  # Exact match on trading class directory
+                            filtered_strike_files.append(f)
+                    except Exception:
+                        continue
+                strike_files = filtered_strike_files
+            
+            results["strikes"]["files"] = sorted(strike_files)
+        
+        total_files = len(results["chains"]["files"]) + len(results["strikes"]["files"])
+        
+        if total_files == 0:
             print("No parquet files found")
             return
-            
-        print(f"Found {len(parquet_files)} parquet files:")
         
-        # Group and display files
-        grouped = _group_files_by_structure(parquet_files, chains_base_dir)
-        _display_grouped_files(grouped)
+        print(f"Found {total_files} parquet files:")
+        
+        # Display chains files
+        if results["chains"]["files"]:
+            print(f"\n📗 CHAINS FILES ({len(results['chains']['files'])}):")
+            print(f"   Directory: {results['chains']['directory']}")
+            
+            # Group chains by symbol
+            chains_grouped = _group_chains_files(results["chains"]["files"], chains_base_dir)
+            _display_chains_grouped(chains_grouped)
+        
+        # Display strikes files
+        if results["strikes"]["files"]:
+            print(f"\n🎯 STRIKES FILES ({len(results['strikes']['files'])}):")
+            print(f"   Directory: {results['strikes']['directory']}")
+            
+            # Group strikes by symbol/trading_class
+            strikes_grouped = _group_strikes_files(results["strikes"]["files"], strikes_base_dir)
+            _display_strikes_grouped(strikes_grouped)
                 
     except Exception as e:
         print(f"Error listing parquet files: {e}")
@@ -798,4 +842,59 @@ def _display_grouped_files(grouped):
             print(f"   {tc}: {len(expirations)} files")
             print(f"     {', '.join(expirations)}")
 
+def _group_chains_files(chain_files, base_dir):
+    """Group chain files by symbol: symbol/tradingclass_chain.parquet"""
+    grouped = {}
+    for file_path in chain_files:
+        try:
+            parts = file_path.relative_to(base_dir).parts
+            if len(parts) == 2:  # symbol/tradingclass_chain.parquet
+                symbol = parts[0]
+                trading_class = parts[1].replace("_chain.parquet", "")
+                
+                if symbol not in grouped:
+                    grouped[symbol] = []
+                grouped[symbol].append(trading_class)
+        except Exception:
+            continue
+    return grouped
 
+def _display_chains_grouped(grouped):
+    """Display grouped chain files"""
+    for symbol in sorted(grouped.keys()):
+        trading_classes = sorted(grouped[symbol])
+        print(f"   {symbol}: {len(trading_classes)} chains")
+        print(f"     Trading classes: {', '.join(trading_classes)}")
+
+def _group_strikes_files(strike_files, base_dir):
+    """Group strike files by symbol/trading_class: symbol/tradingclass/expiration_strikes.parquet"""
+    grouped = {}
+    for file_path in strike_files:
+        try:
+            parts = file_path.relative_to(base_dir).parts
+            if len(parts) == 3:  # symbol/tradingclass/expiration_strikes.parquet
+                symbol = parts[0]
+                trading_class = parts[1]
+                expiration = parts[2].replace("_strikes.parquet", "")
+                
+                if symbol not in grouped:
+                    grouped[symbol] = {}
+                if trading_class not in grouped[symbol]:
+                    grouped[symbol][trading_class] = []
+                grouped[symbol][trading_class].append(expiration)
+        except Exception:
+            continue
+    return grouped
+
+def _display_strikes_grouped(grouped):
+    """Display grouped strike files"""
+    for symbol in sorted(grouped.keys()):
+        print(f"   {symbol}:")
+        for trading_class in sorted(grouped[symbol].keys()):
+            expirations = sorted(grouped[symbol][trading_class])
+            print(f"     {trading_class}: {len(expirations)} expirations")
+            # Show first few expirations to avoid clutter
+            if len(expirations) <= 5:
+                print(f"       {', '.join(expirations)}")
+            else:
+                print(f"       {', '.join(expirations[:3])} ... {expirations[-1]} (+{len(expirations)-4} more)")

@@ -32,7 +32,6 @@ import math
 import datetime
 import locale
 import pandas as pd
-import json
 import logging
 from ib_insync import *
 
@@ -40,7 +39,7 @@ from ib_insync import *
 from .core import CONFIG, ticker_db, validate_contract_params, find_nearest_number
 from .IB_connection import safe_ib_connect
 from .chains_manager import getChains, getAllStrikes
-
+from .dividend_utils import getNTMDividend
 from fin_logger import get_logger, log_execution_time
 
 # Créez un logger pour ce module
@@ -309,7 +308,7 @@ def getStraddleValue(sym, expiration, strike, currency=None, exchange=None, trad
     ib.disconnect()
     return value
 
-def getStrikesfromExpDate(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=None, tradingClass=None, expdate=None):
+def getStrikesfromExpDate(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=None, tradingClass=None, expdate=None, force_refresh=False):
     """
     Get available strikes for a specific option expiration date.
     
@@ -321,6 +320,7 @@ def getStrikesfromExpDate(sym, secType=None, currency=None, exchangeSec=None, ex
         exchangeOpt (str, optional): Exchange for options. If None, uses value from ticker database.
         tradingClass (str, optional): Trading class. If None, uses value from ticker database.
         expdate (str): Expiration date
+        force_refresh (bool): If False, will query cache
         
     Returns:
         list or None: List of available strikes if successful, None if connection error
@@ -350,32 +350,41 @@ def getStrikesfromExpDate(sym, secType=None, currency=None, exchangeSec=None, ex
        
     return getAllStrikes(sym, trading_class=tradingClass, expiration=expdate, exchangeOpt=exchangeOpt, force_refresh=False)
 
-def getStrikesFromRange(sym, current_price, expdate, strikes, sigma, volatility):
+def getStrikesFromRange(sym, current_price, expdate, implied_volatility, force_refresh=False):
     """
-    Get available strikes for a specific option expiration date.
+    Get available strikes for a specific option expiration date, within a one sigma (implied volatility) range.
     
     Args:
         sym (str): Underlying symbol
+        current_price (float): symbol current price
         expdate (str): Expiration date
+        implied_volatility (float): Implied volatility
+        force_refresh (bool): If False, will query cache
         
     Returns:
         list or None: List of available strikes if successful, None if connection error
     """
+    ### Compute the time between now and option expiration time
+    ### Assume 4:30pm as end time, and convert to years
+    exp_date = datetime.datetime.strptime(expdate, "%Y%m%d")
+    exp_datetime = exp_date.replace(hour=16, minute=30, second=0, microsecond=0)
+    time_diff = exp_datetime - datetime.now()
+    time_to_expiry = time_diff.total_seconds() / (365.25 * 24 * 3600)
     
-    
-    div_yield = get_dividend_yield(ib, underlying_contract)
-    
+    ## This assumes sym belongs to Ticker DB - next 12 months dividend
+    NTM_dividend = getNTMDividend(sym)
+
     # Calculate expected dividends during the option's life
-    expected_dividends = current_price * div_yield * time_to_expiry
+    expected_dividends = NTM_dividend * time_to_expiry
     
     # Adjust the current price for dividends
     adjusted_current_price = current_price - expected_dividends
     
     # Black-Scholes-Merton parameters
     S = adjusted_current_price  # Stock price adjusted for dividends
-    r = interest_rate           # Risk-free rate
-    q = div_yield               # Dividend yield
-    sigma = volatility          # Volatility
+    r = getInterestRate(time_to_expiry*12, "USD") # Risk-free rate - getInterestRate takes months as input
+    q = NTM_dividend/current_price           # Dividend yield
+    sigma = implied_volatility          # Volatility
     T = time_to_expiry          # Time to expiry in years
     
     # Calculate the range using the adjusted Black-Scholes formula
@@ -385,3 +394,12 @@ def getStrikesFromRange(sym, current_price, expdate, strikes, sigma, volatility)
     lower_bound = S * math.exp((r - q - 0.5 * sigma**2) * T - adjusted_sigma_range)
     upper_bound = S * math.exp((r - q - 0.5 * sigma**2) * T + adjusted_sigma_range)
     
+    return getAllStrikes(
+      sym,
+      trading_class=tradingClass, 
+      expiration=expdate, 
+      strike_min=lower_bound,
+      strike_max=upper_bound, 
+      exchangeOpt=exchangeOpt, 
+      force_refresh=False
+    )

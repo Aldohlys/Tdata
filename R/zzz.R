@@ -126,9 +126,9 @@ for module in modules_to_reload:  ### This removes modules_to_reload from cache 
 
     # Debug: Check available attributes (optionnel avec logging)
     available_attrs <- reticulate::py_list_attributes(tdata_py)
-    # Tbasics::t_log_debug("Available attributes in tdata_py",
-    #                        list(attributes = paste(available_attrs, collapse = ", ")),
-    #                        module = pkgname)
+    t_log_debug(sprintf("Available attributes %s in tdata_py for %s",
+                           paste(available_attrs, collapse = ", "),
+                           pkgname))
     # Add this debug line to your .onLoad to confirm assignment location
     t_log_debug(sprintf("Assigning tdata_py to %s %s",
                          class(parent.env(environment())),

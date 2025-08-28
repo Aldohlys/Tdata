@@ -1,9 +1,21 @@
 # Run this step-by-step diagnostic (save as quick_test.py):
 
 import time
-from tdata_py.parquet import getChains, getChain
+from tdata_py.chains_manager import getChains, getChain, getOptionStrikes
 
-print("=== QUICK DIAGNOSTIC TEST ===")
+# Helper function for status messages
+def status_print(message_type, message):
+    """Print status with appropriate symbols"""
+    symbols = {
+            'success': '✅',
+            'error': '❌', 
+            'warning': '⚠️'
+    }
+
+    symbol = symbols.get(message_type, '[INFO]')
+    print(f"   {symbol} {message}")
+
+print("=== QUICK DIAGNOSTIC TEST USING SPX symbol ===")
 
 # Test 1: Fast operations (should be instant)
 print("\n1. Testing getChains (should use cache)...")
@@ -29,8 +41,7 @@ if chain and not isinstance(chain, float):
     
     # Test 4: Try ONE contract qualification only
     print(f"\n4. Testing SINGLE contract qualification...")
-    from tdata_py.parquet import getOptionStrikes
-    
+
     if expirations:
         first_exp = expirations[0]
         # Test with just 1 strike
@@ -38,19 +49,20 @@ if chain and not isinstance(chain, float):
         start = time.time()
         
         try:
-            result = getOptionStrikes("SPX", "SPXW", first_exp, strike_min=5600, strike_max=5600)
+            result = getOptionStrikes("SPX", "SPXW", first_exp, strike_min=7000, strike_max=7000)
             elapsed = time.time() - start
             print(f"   Time: {elapsed:.2f}s, Result: {result}")
             
             if elapsed > 30:
-                print("   ❌ PROBLEM: Single contract took >30s - IBKR connection issue")
+                status_print("error", "Could not qualify contracts, it took >30s - IBKR connection issue")
             elif result:
-                print("   ✅ Single contract works - issue is batch size")
+                status_print("success", "It worked!")
+                print(result)
             else:
-                print("   ⚠️  Single contract failed - may be API/connection issue")
+                print("warning", "Likely wrong contract definition")
                 
         except Exception as e:
             elapsed = time.time() - start
-            print(f"   ❌ Error after {elapsed:.2f}s: {e}")
+            status_print("error", f"Error after {elapsed:.2f}s: {e}")
 
 print("\n=== DIAGNOSTIC COMPLETE ===")

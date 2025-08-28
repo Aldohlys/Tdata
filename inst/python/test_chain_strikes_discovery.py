@@ -14,7 +14,7 @@ from pathlib import Path
 # sys.path.append('path/to/your/tdata_py')
 
 try:
-    from tdata_py.parquet import getChains, getChain, getOptionStrikes
+    from tdata_py.chains_manager import getChains, getChain, getOptionStrikes
     from tdata_py.core import CONFIG
     print("✅ Successfully imported parquet functions")
 except ImportError as e:
@@ -26,7 +26,7 @@ def test_basic_functionality():
     print("\n=== BASIC FUNCTIONALITY TEST ===")
     
     # Test symbols - use the ones you're already testing
-    test_symbols = ["SPX", "SPY", "QQQ"]
+    test_symbols = ["SPX", "SPY", "QQQ", "ESTX50", "AI", "TTE"]
     
     for symbol in test_symbols:
         print(f"\nTesting {symbol}...")
@@ -76,8 +76,9 @@ def test_basic_functionality():
                                 
                                 # Use a limited strike range for testing
                                 current_price_estimate = {
-                                    "SPX": 6300,
-                                    "SPY": 630, 
+                                    "SPX": 6400,
+                                    "SPY": 640, 
+                                    "ESTX50": 5400,
                                     "QQQ": 560
                                 }.get(symbol, min(strikes) + (max(strikes) - min(strikes)) / 2)
                                 

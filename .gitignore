@@ -36,3 +36,9 @@ tests/test_diag.R
 R/convenience.R
 
 tests/test-results-1
+
+*.html
+
+*.md
+
+historical_config.json
