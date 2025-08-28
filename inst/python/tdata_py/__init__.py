@@ -70,6 +70,7 @@ try:
     from .chains_manager import (
         getChains,
         getChain,
+        getExpirationDates,
         getOptionStrikes,
         initialize_chains_for_symbols,
         getAvailableTradingClasses,
@@ -252,6 +253,7 @@ __all__ = [
     # === CORE CHAIN FUNCTIONS ===
     'getChains',
     'getChain', 
+    'getExpirationDates',
     'getOptionStrikes',
 
     # === MULTI-TRADING-CLASS DISCOVERY ===

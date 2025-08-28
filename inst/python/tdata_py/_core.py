@@ -184,20 +184,17 @@ class TickerDatabase:
             symbol (str): The ticker symbol
             
         Returns:
-            dict: Ticker information or default values if not found
+            dict: Ticker information or None if not found
         """
         
-        # Clean symbol if needed (remove exchange suffix)
-        clean_symbol = self.determine_sym(symbol)
-        
         ## Case DB could not be found or could not be opened successfully
-        if not self.initialized : return self._default_ticker_values(clean_symbol)
-        
+        if not self.initialized : return None
+
         # Standard case - copy symbol info first to avoid modifying DB
         # Look in DB if ticker already exists
         ticker_info = None
-        if clean_symbol in self.tickers:
-            ticker_info = self.tickers[clean_symbol].copy()
+        if symbol in self.tickers:
+            ticker_info = self.tickers[symbol].copy()
 
         if ticker_info is not None:
             # Parse alternate trading classes from comma-separated string
@@ -209,81 +206,8 @@ class TickerDatabase:
                 ticker_info['AlternateTradingClasses'] = []
 
             return ticker_info
-        else:
-            # Return enhanced default values based on symbol analysis
-            return self._default_ticker_values(clean_symbol)
+        else: return None
 
-    def _default_ticker_values(self, symbol):
-        return {
-                'Name': symbol,
-                'Type': self.determine_sec(symbol),
-                'Exchange': self.determine_primary_exch(symbol),
-                'OptExchange': self.determine_exch(symbol),
-                'Currency': 'USD',
-                'TradingClass': symbol,
-                'AlternateTradingClasses': '',
-                'YahooName': symbol,
-                'Expiration': ''
-        }
-        
-    def determine_sec(self, sym):
-        """
-        Determine security type based on symbol.
-        
-        Args:
-            sym (str): The security symbol
-            
-        Returns:
-            str: Security type - "IND" for index or "STK" for stock
-        """
-        if (any(sym==x for x in ["ESTX50","XSP","SPX", "VIX"])): return "IND"
-        else: return "STK"
-
-    def determine_exch(self, sym):
-        """
-        Determine exchange based on symbol.
-        
-        Args:
-            sym (str): The security symbol
-            
-        Returns:
-            str: Exchange name for the symbol
-        """
-        if (any(sym==x for x in ["XSP","SPX", "VIX"])): return "CBOE"
-        if (sym=="ESTX50"): return "EUREX"
-        else: return "SMART"
-
-    def determine_primary_exch(self, sym):
-        """
-        Determine primary exchange based on symbol.
-        
-        Args:
-            sym (str): The security symbol
-            
-        Returns:
-            str: Primary exchange name for the symbol
-        """
-        if (any(sym==x for x in ["AI","SU", "TTE", "OR", "SGO", "BN"])): return "SBF"
-        if (any(sym==x for x in ["SPX","XSP", "ESTX50", "VIX"])): return ""
-        if (any(sym==x for x in ["DTLA","TRE7","SXLV"])) : return "LSEETF"
-        if (any(sym==x for x in ["CSBGU0","ABBN", "HOLN", "ROG", "SLHN"])): return "EBS"
-        if (sym == "U.UN"): return "TSE"
-        return "SMART"
-
-    def determine_sym(self, sym):
-        """
-        Clean symbol by removing exchange suffix if present.
-        
-        Args:
-            sym (str): The security symbol with potential suffix
-            
-        Returns:
-            str: Clean symbol without exchange suffix
-        """
-        if (".SW" in sym): return sym[:-3]
-        if (".PA" in sym): return sym[:-3]
-        if (".L" in sym): return sym[:-2]
-        return sym
 
 # Initialize the ticker database
 ticker_db = TickerDatabase()

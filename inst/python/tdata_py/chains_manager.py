@@ -53,22 +53,10 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=No
   Returns:
     list or float or None: List of chains if found, NaN if not found, None if connection error
   """
-  # Get ticker information from database if not provided
-  ticker_info = ticker_db.get_ticker_info(sym)
-  
-  if secType is None:
-    secType = ticker_info.get('Type', 'STK')
-  if currency is None:
-    currency = ticker_info.get('Currency', 'USD')
-  if exchangeSec is None:
-    exchangeSec = ticker_info.get('Exchange', 'SMART')
-  if exchangeOpt is None:
-    exchangeOpt = ticker_info.get('OptExchange', 'SMART')
-  
-  storage = ParquetChainsStorage()
-  
+
   # Try cache first (unless forced refresh)
   if not force_refresh:
+    storage = ParquetChainsStorage()
     cached_chains = storage.load_chains(sym)
     
     # Check if cached data is still valid (non-expired)
@@ -77,6 +65,10 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=No
       valid_chains = []
       
       for chain in cached_chains:
+        ### Case where exchangeOpt does not correspond to what is stored in cache
+        ### But no way to test that exchangeSec is correct - as not been recorded (and no reason to store)
+        if (isinstance(exchangeOpt, str) and chain[0] != exchangeOpt): continue
+
         # Ensure expirations are strings and filter out expired ones
         valid_expirations = [str(exp) for exp in chain[4] if str(exp) >= today]
         if valid_expirations:
@@ -94,6 +86,21 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=No
       if valid_chains:
         logger.debug(f"Using cached chains for {sym}: {len(valid_chains)} chains")
         return valid_chains
+
+  ## Force refresh = True or no valid cached chains
+  ticker_info = ticker_db.get_ticker_info(sym)
+
+  ### If any secType,... parameter is None (no value provided) then give it a value either from DB or default value
+  if ticker_info is None:
+    if secType is None: secType = "STK"
+    if currency is None: currency = "USD"
+    if exchangeSec is None: exchangeSec = "SMART"
+    if exchangeOpt is None: exchangeOpt = "SMART"
+  else:
+    if secType is None: secType = ticker_info.get('Type')
+    if currency is None: currency = ticker_info.get('Currency')
+    if exchangeSec is None: exchangeSec = ticker_info.get('Exchange')
+    if exchangeOpt is None: exchangeOpt = ticker_info.get('OptExchange') 
 
   # Need to fetch from IB - this is where systematic caching happens
   logger.info(f"Fetching chains from IBKR for {sym} (will cache immediately)")
@@ -169,50 +176,53 @@ def getChain(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=Non
     Args:
         tradingClass: If None, returns the first available trading class for the exchange
     """
-    # Get ticker information from database if not provided
-    ticker_info = ticker_db.get_ticker_info(sym)
-    
-    if secType is None:
-        secType = ticker_info.get('Type', 'STK')
-    if currency is None:
-        currency = ticker_info.get('Currency', 'USD')
-    if exchangeSec is None:
-        exchangeSec = ticker_info.get('Exchange', 'SMART')
-    if exchangeOpt is None:
-        exchangeOpt = ticker_info.get('OptExchange', 'SMART')
-    
+
     # Get all chains - will use cache if available, fetch+cache if not
+    # Provide parameters "as received as arguments" - so may be value to None
     chains = getChains(sym, secType, currency, exchangeSec, exchangeOpt, 
                       force_refresh=force_refresh)
     
-    # Handle error cases
-    if chains is None:
-        return None
-    
+    # Handle error cases - already logged at getChains, could not connect to IBKR 
+    if chains is None: return None
+
+    # Handle error cases - already logged at getChains, could not qualify 
     if isinstance(chains, float) and math.isnan(chains):
+        logger.error("No chains found")
         return float('NaN')
     
     if not isinstance(chains, list):
         logger.error(f"Unexpected chains format for {sym}: {type(chains)}")
         return float('NaN')
     
+        # Get ticker information from database if not provided
+    ticker_info = ticker_db.get_ticker_info(sym)
+    
+    ### ticker does not exist in DB
+    if ticker_info is None:
+        if exchangeOpt is None: exchangeOpt = "SMART"
+        if tradingClass is None: tradingClass =''
+
+    else:
+        if exchangeOpt is None: exchangeOpt = ticker_info.get('OptExchange')
+        if tradingClass is None: tradingClass = ticker_info.get('TradingClass')
+    
     # Filter chains by exchange first (since trading classes can differ by exchange)
-    exchange_chains = [chain for chain in chains if str(chain[0]) == str(exchangeOpt)]
+    exchange_chains = [chain for chain in chains if chain[0] == exchangeOpt]
     
     if not exchange_chains:
         logger.debug(f"No chains found for {sym} on exchange {exchangeOpt}")
         return float('NaN')
     
-    # If no trading class specified, return first available for this exchange
-    if tradingClass is None:
+    # If no trading class specified in ticker DB, return first available for this exchange
+    if tradingClass == '':
         first_chain = exchange_chains[0]
-        discovered_trading_class = str(first_chain[2])
+        discovered_trading_class = first_chain[2]
         logger.debug(f"Auto-discovered trading class for {sym} on {exchangeOpt}: {discovered_trading_class}")
         return first_chain
     
     # Look for specific trading class on the exchange
     for chain in exchange_chains:
-        if str(chain[2]) == str(tradingClass):
+        if chain[2] == tradingClass:
             logger.debug(f"Found chain for {sym} {tradingClass} on {exchangeOpt}: {len(chain[4])} expirations, {len(chain[5])} strikes")
             return chain
     
@@ -221,6 +231,17 @@ def getChain(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=Non
     logger.debug(f"Trading class {tradingClass} not found for {sym} on {exchangeOpt}. Available: {available_classes}")
     return float('NaN')
 
+def getExpirationDates(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=None, tradingClass=None, min_date=None, max_date=None, force_refresh=False):
+  
+  ## Retrieve chain corresponding to sym, tradingClass and exchange
+  chain = getChain(sym, secType, currency, exchangeSec, exchangeOpt, tradingClass, force_refresh)
+  
+  if (isinstance(chain, list)):
+    available_expirations = [exp for exp in chain[4] if int(exp) >= int(min_date) and int(exp) <= int(max_date)]
+    return available_expirations
+  
+  return float('Nan')
+  
 def getOptionStrikes(sym, trading_class, expiration, strike_min=None, strike_max=None, secType=None, currency=None, exchangeSec=None, exchangeOpt=None, force_refresh=False):
     """
     Get qualified option strikes with smart three-state caching.
