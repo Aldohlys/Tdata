@@ -395,8 +395,8 @@ getIV_DTE <- function(sym, currency, spot_price, DTE=30){
   }
 
   ### Retrieve the expiration dates for sym
-  chain <- tdata_py$getChain(sym)
-  expdates_list <- chain[5][[1]]
+  min_expiry_date <- as.integer(format(Sys.Date() + 7, "%Y%m%d"))
+  expdates_list <- tdata_py$getExpirationDates(sym, min_date = min_expiry_date)
 
   ### It is assumed that expdates_list is sorted
   if(is.unsorted(as.integer(expdates_list))) {
@@ -406,10 +406,6 @@ getIV_DTE <- function(sym, currency, spot_price, DTE=30){
   ### Retrieve expiration dates that are just before and after DTE days
   ### In case of IBKR near_expiry that are less than 8 days are not taken into account
   target_date <- as.integer(format(Sys.Date() + DTE, "%Y%m%d"))
-  min_expiry_date <- as.integer(format(Sys.Date() + 7, "%Y%m%d"))
-
-  ## Only keep expiry dates greater than min expiry date
-  expdates_list <- expdates_list[which(as.integer(expdates_list) > min_expiry_date)]
 
   ### Look at case where target date is smaller than the first
   if (target_date < as.integer(expdates_list[1])) {
@@ -447,10 +443,10 @@ getIV_DTE <- function(sym, currency, spot_price, DTE=30){
   #### This will take 4 strikes above/below theoretical forward price - IBKR takes only 2 for this computation
   #### Refinement: finding from forward price the strike where put is nearest to call - this is done in calculate_target_vol
   near_strikes <- tdata_py$getStrikesfromExpDate(sym=sym, expdate=near_expiry)
-  near_strikes <- Tbasics::get_nearest_values(near_strikes, near_forward_price, n_below = 4, n_above = 4)
+  near_strikes <- Tbasics::get_nearest_values(near_strikes, near_forward_price, n_below = 2, n_above = 2)
 
   next_strikes <- tdata_py$getStrikesfromExpDate(sym=sym, expdate=next_expiry)
-  next_strikes <- Tbasics::get_nearest_values(next_strikes, next_forward_price, n_below = 4, n_above = 4)
+  next_strikes <- Tbasics::get_nearest_values(next_strikes, next_forward_price, n_below = 2, n_above = 2)
 
   t_log_info("Retrieve option prices for {near_expiry}...")
   near_option_prices <- getOptionPrices(sym, near_strikes, near_expiry)

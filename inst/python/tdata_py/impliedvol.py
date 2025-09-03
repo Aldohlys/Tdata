@@ -215,9 +215,24 @@ def get_volatility_metrics(sym, secType=None, currency=None, exchange=None,
     
     # Get ticker information from database if not provided
     ticker_info = ticker_db.get_ticker_info(sym)
-    secType = secType or ticker_info.get('Type', 'STK')
-    currency = currency or ticker_info.get('Currency', 'USD')
-    exchange = exchange or ticker_info.get('Exchange', 'SMART')
+    
+    if ticker_info is None:
+        logger.warning(f"No ticker info found for {sym}, using defaults")
+        if secType is None: secType = 'STK'
+        if currency is None: currency = 'USD'
+        if exchange is None: exchange = 'SMART'
+    else:
+        if secType is None: secType = ticker_info.get('Type')
+        if currency is None: currency = ticker_info.get('Currency')
+        if exchange is None: exchange = ticker_info.get('Exchange')
+    
+    # Log function call
+    logger.info("Getting dividend data", {
+        "symbol": symbol,
+        "secType": secType,
+        "currency": currency,
+        "exchange": exchange
+    })
     
     # Handle FUT expiration
     if secType == "FUT" and expiration_future is None:

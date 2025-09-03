@@ -46,7 +46,7 @@ from fin_logger import get_logger, log_execution_time
 logger = get_logger("tdata_py.contract")
 
 @log_execution_time
-def getValue(list_sym, reqType=2, ib=None, close=True):
+def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=None, reqType=2, ib=None, close=True):
     """
     Get current or close value for one or multiple securities from Interactive Brokers.
     Uses TickerDatabase to automatically determine security details.
@@ -73,28 +73,46 @@ def getValue(list_sym, reqType=2, ib=None, close=True):
     
     # Create contracts using ticker database for each symbol
     contracts = []
+
     for sym in symbols:
+      
+        ### Initialize values
         ticker_info = ticker_db.get_ticker_info(sym)
-        secType = ticker_info['Type']
-        currency = ticker_info['Currency']
-        exchange = ticker_info['Exchange']
-            # Log function call
+        sym_secType = secType
+        sym_expiration = expiration
+        sym_currency = currency
+        sym_exchange = exchange
+        
+        if ticker_info is None:
+            logger.warning(f"No ticker info found for {sym}, using defaults")
+            if sym_secType is None: sym_secType = 'STK'
+            if sym_currency is None: sym_currency = 'USD'
+            if sym_exchange is None: sym_exchange = 'SMART'
+        else:
+            if sym_secType is None: sym_secType = ticker_info.get('Type')
+            if sym_currency is None: sym_currency = ticker_info.get('Currency')
+            if sym_exchange is None: sym_exchange = ticker_info.get('Exchange')
+            if sym_expiration is None: sym_expiration = ticker_info.get('Expiration')
+
+        # Log function call
         logger.info("getValue data", {
             "symbol": sym,
-            "secType": secType,
-            "currency": currency,
-            "exchange": exchange
+            "secType": sym_secType,
+            "currency": sym_currency,
+            "exchange": sym_exchange,
+            "expiration": sym_expiration
         })
+        
         ## For futures only sym used as local symbol
-        if (secType == "FUT"):
-          contract = Contract(secType=secType, localSymbol = sym, currency = currency, exchange = exchange)
+        if (sym_secType == "FUT"):
+          contract = Future(localSymbol = sym, lastTradeDateOrContractMonth = sym_expiration, currency = sym_currency, exchange = sym_exchange)
         
         ### For T-Bill - conId is the symbol name (like in Reporting)
-        elif (secType == "BILL"):
-          contract = Contract(secType=secType, conId=sym, exchange=exchange)
+        elif (sym_secType == "BILL"):
+          contract = Contract(secType=sym_secType, conId=sym, exchange=sym_exchange)
 
         ### Other cases
-        else : contract = Contract(secType = secType, symbol = sym, currency = currency, exchange = exchange)
+        else : contract = Contract(secType = sym_secType, symbol = sym, currency = sym_currency, exchange = sym_exchange)
 
         contracts.append(contract)
     
@@ -140,7 +158,7 @@ def getValue(list_sym, reqType=2, ib=None, close=True):
             df = pd.DataFrame({
                 "datetime": [current_time] * len(values),
                 "sym": symbols,
-                "price": values
+                "price": [round(value, 4) for value in values]
             })
             
             return df
@@ -178,21 +196,42 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
     # Get ticker information from database if not provided
     ticker_info = ticker_db.get_ticker_info(sym)
     
-    ## Check taht it is possible to have options on sym
-    sym_type = ticker_info.get('Type', 'STK')
-    if not (sym_type in ["FUT", "STK", "IND"]):
-        return None
-    
-    YahooName =  ticker_info.get('YahooName', sym)
-    
-    if currency is None:
-        currency = ticker_info.get('Currency', 'USD')
-    
-    if exchange is None:
-        exchange = ticker_info.get('OptExchange', 'SMART')
+    if ticker_info is None:
+        logger.warning(f"No ticker info found for {sym}, using defaults")
+        secType = 'STK'
+        secOptType = "OPT"
+        if currency is None: currency = 'USD'
+        if exchange is None: exchange = 'SMART'
+        if tradingClass is None: tradingClass = sym
+    else:
+        secType = ticker_info.get('Type')
+        match secType:
+            case "FUT":
+              secOptType = "FOP"
+              sym = ticker_info.get('YahooName', sym)
+            case "STK" | "IND":
+              secOptType = "OPT"
+            case _:
+              secOptType = None
+        if currency is None: currency = ticker_info.get('Currency')
+        if exchange is None: exchange = ticker_info.get('OptExchange')
+        if tradingClass is None: tradingClass = ticker_info.get('TradingClass')
         
-    if tradingClass is None:
-        tradingClass = ticker_info.get('TradingClass', sym)
+    if (secOptType is None):
+        logger.error(f"Not possible to use derivative for {sym}, returning no value")
+        return None      
+      
+      # Log function call
+    logger.info("getOptValue data", {
+        "symbol": sym,
+        "secOptType": secOptType,
+        "exchangeOpt": exchange,
+        "tradingClass": tradingClass,
+        "expiration": expiration,
+        "strikes": strikes,
+        "right": right,
+        "currency": currency
+    })
     
     # Use safe_ib_connect instead of direct connection
     ib = safe_ib_connect()
@@ -207,17 +246,10 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
         
     # Create option contracts for each strike
     
-    if (sym_type == "FUT"):
-      contracts = [Contract(symbol=YahooName, secType="FOP", lastTradeDateOrContractMonth=expiration,
+    contracts = [Contract(symbol=sym, secType=secOptType, lastTradeDateOrContractMonth=expiration,
                         strike=strike_c, right=right,
                         exchange=exchange, currency=currency, tradingClass=tradingClass) 
                 for strike_c in strikes]
-    
-    else :
-      contracts = [Contract(symbol=sym, secType="OPT", lastTradeDateOrContractMonth=expiration,
-                        strike=strike_c, right=right,
-                        exchange=exchange, currency=currency, tradingClass=tradingClass) 
-                for strike_c in strikes] 
     
     logger.debug("CONTRACTS:", {"contracts":contracts})
 
@@ -226,21 +258,24 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
         ib.reqMarketDataType(2)
         
         tickers = ib.reqTickers(*contracts)
+        ib.sleep(0.25)
+        
         logger.debug("TICKERS:", {"tickers":tickers})
         
         # Handle potential None values in model Greeks
         result_dic = [{
                "strike": strike, 
-               "value": ticker.marketPrice() if not(math.isnan(ticker.marketPrice())) else ticker.close, 
-               "bid": ticker.bid,
-               "ask": ticker.ask,
-               "impliedvol": ticker.modelGreeks.impliedVol if ticker.modelGreeks is not None else None,
-               "delta": ticker.modelGreeks.delta if ticker.modelGreeks is not None else None} 
+               "value": round(ticker.marketPrice() if not(math.isnan(ticker.marketPrice())) else ticker.close, 2),
+               "bid": round(ticker.bid, 2),
+               "ask": round(ticker.ask, 2),
+               "spread" : round(2*(ticker.ask - ticker.bid)/(ticker.ask + ticker.bid), 2) if (ticker.bid != -1 and ticker.ask != -1) else float('Nan'),
+               "impliedvol": round(ticker.modelGreeks.impliedVol, 3) if ticker.modelGreeks is not None else float('Nan'),
+               "delta": round(ticker.modelGreeks.delta, 2) if ticker.modelGreeks is not None else float('Nan')} 
               for ticker, strike in zip(tickers, strikes)]  
         
         # Convert to pandas DataFrame
         result = pd.DataFrame(result_dic)
-        ib.sleep(1)
+        
     else:
         result = None 
     
@@ -264,15 +299,39 @@ def getStraddleValue(sym, expiration, strike, currency=None, exchange=None, trad
     """
     # Get ticker information from database if not provided
     ticker_info = ticker_db.get_ticker_info(sym)
+
+    if ticker_info is None:
+        logger.warning(f"No ticker info found for {sym}, using defaults")
+        secOptType = "OPT"
+        if currency is None: currency = 'USD'
+        if exchange is None: exchange = 'SMART'
+        if tradingClass is None: tradingClass = sym
+    else:
+        match ticker_info.get('Type'):
+            case "FUT":
+              secOptType = "FOP"
+              sym = ticker_info.get('YahooName', sym)
+            case "STK" | "IND":
+              secOptType = "OPT"
+            case _:
+              secOptType = None
+        if currency is None: currency = ticker_info.get('Currency')
+        if exchange is None: exchange = ticker_info.get('OptExchange')
+        if tradingClass is None: tradingClass = ticker_info.get('TradingClass')
     
-    if currency is None:
-        currency = ticker_info.get('Currency', 'USD')
-    
-    if exchange is None:
-        exchange = ticker_info.get('OptExchange', 'SMART')
-        
-    if tradingClass is None:
-        tradingClass = ticker_info.get('TradingClass', sym)
+    if (secOptType is None):
+        logger.error(f"Not possible to use derivative for {sym}, returning no value")
+        return None
+
+    # Log function call
+    logger.info("getStraddleValue data", {
+        "symbol": sym,
+        "secOptType": secOptType,
+        "expiration": expiration,
+        "strike": strike,
+        "currency": currency,
+        "exchange": exchange
+    })
     
     # Use safe_ib_connect instead of direct connection
     ib = safe_ib_connect()
@@ -282,9 +341,9 @@ def getStraddleValue(sym, expiration, strike, currency=None, exchange=None, trad
         return None
 
     # Create put and call contracts with same strike and expiration
-    contract1 = Contract(symbol=sym, secType="OPT", lastTradeDateOrContractMonth=expiration,
+    contract1 = Contract(symbol=sym, secType=secOptType, lastTradeDateOrContractMonth=expiration,
                       strike=strike, right="Put", exchange=exchange, currency=currency, tradingClass=tradingClass)
-    contract2 = Contract(symbol=sym, secType="OPT", lastTradeDateOrContractMonth=expiration,
+    contract2 = Contract(symbol=sym, secType=secOptType, lastTradeDateOrContractMonth=expiration,
                       strike=strike, right="Call", exchange=exchange, currency=currency, tradingClass=tradingClass)
     
     print("Contract:", contract1, contract2)
@@ -296,7 +355,7 @@ def getStraddleValue(sym, expiration, strike, currency=None, exchange=None, trad
         ticker = ib.reqTickers(*contract)
         
         # Sum put and call values
-        value = ticker[0].marketPrice() + ticker[1].marketPrice()
+        value = round(ticker[0].marketPrice() + ticker[1].marketPrice(), 2)
         ib.sleep(1)
         
         if(math.isnan(value)):
@@ -308,7 +367,7 @@ def getStraddleValue(sym, expiration, strike, currency=None, exchange=None, trad
     ib.disconnect()
     return value
 
-def getStrikesfromExpDate(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=None, tradingClass=None, expdate=None, force_refresh=False):
+def getStrikesfromExpDate(sym, secType=None, currency=None, exchangeOpt=None, tradingClass=None, expdate=None, force_refresh=False):
     """
     Get available strikes for a specific option expiration date.
     
@@ -316,7 +375,6 @@ def getStrikesfromExpDate(sym, secType=None, currency=None, exchangeSec=None, ex
         sym (str): Underlying symbol
         secType (str, optional): Security type. If None, uses value from ticker database.
         currency (str, optional): Currency code. If None, uses value from ticker database.
-        exchangeSec (str, optional): Exchange for underlying. If None, uses value from ticker database.
         exchangeOpt (str, optional): Exchange for options. If None, uses value from ticker database.
         tradingClass (str, optional): Trading class. If None, uses value from ticker database.
         expdate (str): Expiration date
@@ -331,22 +389,19 @@ def getStrikesfromExpDate(sym, secType=None, currency=None, exchangeSec=None, ex
     # Get ticker information from database if not provided
     ticker_info = ticker_db.get_ticker_info(sym)
     
-    if secType is None:
-        secType = ticker_info.get('Type', 'STK')
-    
-    if currency is None:
-        currency = ticker_info.get('Currency', 'USD')
-        
-    if exchangeSec is None:
-        exchangeSec = ticker_info.get('Exchange', 'SMART')
-        
-    if exchangeOpt is None:
-        exchangeOpt = ticker_info.get('OptExchange', 'SMART')
-        
-    if tradingClass is None:
-        tradingClass = ticker_info.get('TradingClass', sym)
-    
-    logger.info(f"Argts: sym:{sym}, trading class:{tradingClass}, expiration:{expdate}, exchange:{exchangeOpt}")
+    if ticker_info is None:
+        logger.warning(f"No ticker info found for {sym}, using defaults")
+        if secType is None: secType = 'STK'
+        if currency is None: currency = 'USD'
+        if exchangeOpt is None: exchangeOpt = 'SMART'
+        if tradingClass is None: tradingClass = sym
+    else:
+        if secType is None: secType = ticker_info.get('Type')
+        if currency is None: currency = ticker_info.get('Currency')
+        if exchangeOpt is None: exchangeOpt = ticker_info.get('OptExchange')
+        if tradingClass is None: tradingClass = ticker_info.get('tradingClass')
+
+    logger.info(f"Argts: sym:{sym}, tradingClass:{tradingClass}, expdate:{expdate}, exchangeOpt:{exchangeOpt}")
        
     return getAllStrikes(sym, trading_class=tradingClass, expiration=expdate, exchangeOpt=exchangeOpt, force_refresh=False)
 

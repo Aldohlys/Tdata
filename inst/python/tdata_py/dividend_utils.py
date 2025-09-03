@@ -27,6 +27,19 @@ def getNTMDividend(symbol, secType=None, currency=None, exchange = None):
     Returns:
         float: Dividend value or -1 if not available
     """
+
+    ticker_info = ticker_db.get_ticker_info(symbol)
+    
+    if ticker_info is None:
+        logger.warning(f"No ticker info found for {sym}, using defaults")
+        if secType is None: secType = 'STK'
+        if currency is None: currency = 'USD'
+        if exchange is None: exchange = 'SMART'
+    else:
+        if secType is None: secType = ticker_info.get('Type')
+        if currency is None: currency = ticker_info.get('Currency')
+        if exchange is None: exchange = ticker_info.get('Exchange')
+    
     # Log function call
     logger.info("Getting dividend data", {
         "symbol": symbol,
@@ -35,17 +48,6 @@ def getNTMDividend(symbol, secType=None, currency=None, exchange = None):
         "exchange": exchange
     })
     
-    ticker_info = ticker_db.get_ticker_info(symbol)
-    
-    if secType is None :
-      secType= ticker_info['Type']
-    
-    if currency is None :
-      currency= ticker_info['Currency']
-
-    if exchange is None :
-      exchange= ticker_info['Exchange']
-      
     contract = Contract(
         secType=secType,
         symbol=symbol,

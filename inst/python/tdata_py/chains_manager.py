@@ -259,14 +259,17 @@ def getOptionStrikes(sym, trading_class, expiration, strike_min=None, strike_max
     # Get ticker information from database if not provided
     ticker_info = ticker_db.get_ticker_info(sym)
     
-    if secType is None:
-        secType = ticker_info.get('Type', 'STK')
-    if currency is None:
-        currency = ticker_info.get('Currency', 'USD')
-    if exchangeSec is None:
-        exchangeSec = ticker_info.get('Exchange', 'SMART')
-    if exchangeOpt is None:
-        exchangeOpt = ticker_info.get('OptExchange', 'SMART')
+    if ticker_info is None:
+        logger.warning(f"No ticker info found for {sym}, using defaults")
+        if secType is None: secType = 'STK'
+        if currency is None: currency = 'USD'
+        if exchangeSec is None: exchangeSec = 'SMART'
+        if exchangeOpt is None: exchangeOpt = 'SMART'
+    else:
+        if secType is None: secType = ticker_info.get('Type')
+        if currency is None: currency = ticker_info.get('Currency')
+        if exchangeSec is None: exchangeSec = ticker_info.get('Exchange')
+        if exchangeOpt is None: exchangeOpt = ticker_info.get('OptExchange')
     
     # Get strike bounds as floats
     strike_min_float = float(strike_min) if strike_min is not None else None

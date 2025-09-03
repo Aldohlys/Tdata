@@ -10,12 +10,22 @@ def get_iv_percentile(sym, lookback_days=252):
     
    # Get ticker information from database if not provided
     ticker_info = ticker_db.get_ticker_info(sym)
+    
+    if ticker_info is None:
+        logger.warning(f"No ticker info found for {sym}, using defaults")
+        if secType is None: secType = 'STK'
+        if currency is None: currency = 'USD'
+        if exchangeSec is None: exchangeSec = "SMART"
+        if exchangeOpt is None: exchangeOpt = 'SMART'
+        if tradingClass is None: tradingClass = sym
+    else:
+        if secType is None: secType = ticker_info.get('Type')
+        if currency is None: currency = ticker_info.get('Currency')
+        if exchangeSec is None: exchangeSec = ticker_info.get('exchangeSec')
+        if exchangeOpt is None: exchangeOpt = ticker_info.get('OptExchange')
+        if tradingClass is None: tradingClass = ticker_info.get('tradingClass')
 
-    secType = ticker_info.get('Type', 'STK')
-    currency = ticker_info.get('Currency', 'USD')
-    exchangeSec = ticker_info.get('Exchange', 'SMART')
-    exchangeOpt = ticker_info.get('OptExchange', 'SMART')
-    tradingClass = ticker_info.get('TradingClass', sym)
+    logger.info(f"Argts: sym:{sym}, trading class:{tradingClass}, expiration:{expdate}, exchange_opt:{exchangeOpt}, exchange_sec:{exchangeSec}")
     
     # Define the underlying stock contract
     contract = Stock(sym, exchangeSec, currency)
