@@ -262,16 +262,44 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
         
         logger.debug("TICKERS:", {"tickers":tickers})
         
-        # Handle potential None values in model Greeks
-        result_dic = [{
-               "strike": strike, 
-               "value": round(ticker.marketPrice() if not(math.isnan(ticker.marketPrice())) else ticker.close, 2),
-               "bid": round(ticker.bid, 2),
-               "ask": round(ticker.ask, 2),
-               "spread" : round(2*(ticker.ask - ticker.bid)/(ticker.ask + ticker.bid), 2) if (ticker.bid != -1 and ticker.ask != -1) else float('Nan'),
-               "impliedvol": round(ticker.modelGreeks.impliedVol, 3) if ticker.modelGreeks is not None else float('Nan'),
-               "delta": round(ticker.modelGreeks.delta, 2) if ticker.modelGreeks is not None else float('Nan')} 
-              for ticker, strike in zip(tickers, strikes)]  
+        # Handle potential None values in model Greeks - ROBUST VERSION
+        result_dic = []
+        for ticker, strike in zip(tickers, strikes):
+            # Safe market price calculation
+            market_price = ticker.marketPrice() if not math.isnan(ticker.marketPrice()) else ticker.close
+            
+            # Safe bid/ask calculation  
+            bid_price = ticker.bid if ticker.bid != -1 and not math.isnan(ticker.bid) else None
+            ask_price = ticker.ask if ticker.ask != -1 and not math.isnan(ticker.ask) else None
+            
+            # Safe spread calculation
+            if bid_price is not None and ask_price is not None and (bid_price + ask_price) != 0:
+                spread = 2 * (ask_price - bid_price) / (ask_price + bid_price)
+            else:
+                spread = float('nan')
+            
+            # Safe Greeks calculation with nested None checks
+            implied_vol = float('nan')
+            delta = float('nan')
+            
+            if ticker.modelGreeks is not None:
+                if ticker.modelGreeks.impliedVol is not None and not math.isnan(ticker.modelGreeks.impliedVol):
+                    implied_vol = ticker.modelGreeks.impliedVol
+                if ticker.modelGreeks.delta is not None and not math.isnan(ticker.modelGreeks.delta):
+                    delta = ticker.modelGreeks.delta
+            
+            # Build result dictionary with safe rounding
+            row = {
+                "strike": strike,
+                "value": round(market_price, 2) if market_price is not None and not math.isnan(market_price) else float('nan'),
+                "bid": round(bid_price, 2) if bid_price is not None else float('nan'),
+                "ask": round(ask_price, 2) if ask_price is not None else float('nan'),
+                "spread": round(spread, 2) if not math.isnan(spread) else float('nan'),
+                "impliedvol": round(implied_vol, 3) if not math.isnan(implied_vol) else float('nan'),
+                "delta": round(delta, 2) if not math.isnan(delta) else float('nan')
+            }
+            
+            result_dic.append(row)
         
         # Convert to pandas DataFrame
         result = pd.DataFrame(result_dic)
