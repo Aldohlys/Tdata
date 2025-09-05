@@ -15,8 +15,9 @@
 #'@export
 getAllTickers = function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-  tickers = DBI::dbReadTable(conn, "Tickers")
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  tickers = DBI::dbReadTable(conn, "Tickers")
 
   return(dplyr::arrange(tickers, tickers$Name))
 }
@@ -218,6 +219,7 @@ updateTicker <- function(name) {
 #'@export
 getTickers <- function(name) {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   # Check if name is a vector with multiple elements
   if (length(name) > 1) {
@@ -242,7 +244,6 @@ getTickers <- function(name) {
                                params = list(name))
   }
 
-  DBI::dbDisconnect(conn)
   return(tickers)
 }
 
@@ -264,7 +265,10 @@ getTickers <- function(name) {
 #'}
 #'@export
 getTicker <- function(name) {
+
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
   # Check if name is a vector with multiple elements
   if (length(name) == 1) {
     # Original query for single name
@@ -275,7 +279,6 @@ getTicker <- function(name) {
 
   else Tbasics::display_error_message("getTicker must be used with only one ticker name")
 
-  DBI::dbDisconnect(conn)
   return(tickers)
 }
 
@@ -296,6 +299,8 @@ getTicker <- function(name) {
 #'@export
 removeTicker = function(name) {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
   # Delete the row where Name equals ticker
   # Delete using parameterized query
   result <- DBI::dbExecute(conn,
@@ -305,14 +310,13 @@ removeTicker = function(name) {
   # Check how many rows were affected
   # This shows how many rows were deleted
   print(paste("Rows deleted:", result))
-  DBI::dbDisconnect(conn)
   return(result)
 }
 
 #' Get name from Yahoo service
 #'
 #' This function is used by getStockPrice or getSymIntervalDate functions
-#' to get Yahoo symbol names before calling getYahooData function.
+#' to get Yahoo symbol names before calling getYahooData function. NOT EXPORTED.
 #'
 #' If no symbol name is found in Ticker DB then NA is returned.
 #' If only a given symbol is not found, then NA will be returned for this symbol.
@@ -356,4 +360,91 @@ getYahooName <- function(sym) {
 
   t_log_debug("(getYahooName) Yahoo retrieved/taken : {sym_yahoo}")
   return(sym_yahoo)
+}
+
+#' setTicker
+#'
+#' This function allows to set specific parameters for one given ticker in the DB.
+#'
+#' If ticker name does not exist then NA will be returned.
+#'
+#'
+#'@param Name IBKR security name
+#'@param ... Any of the following parameters: \code{YahooName Type  Sector
+#'Currency TradingClass Multiplier Exchange OptExchange Beta_3m Beta_6m Div_yield
+#'Beta_1y Beta_3y  IV Expiration}
+#'@return Update result: 1 is successful, 0 is failure
+#'@examples
+#'\dontrun{
+#'setTicker("ABT", Sector="Healthcare", TradingClass="ABT")
+#'}
+#'@export
+setTicker = function(Name, ...) {
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  params <- update_ticker_params(Name, ...)
+
+  if (length(params$updates) == 0) {
+    logger::log_info("No valid update parameters provided", namespace="Tdata")
+    return(0)
+  }
+
+  # Add LastUpdate timestamp - always updated
+  timestamp <- format(Sys.time(), "%Y%m%d %H:%M")
+  params$updates$LastUpdate <- timestamp
+
+  # Build SET clause with named placeholders
+  set_clauses <- paste0(names(params$updates), " = :", names(params$updates))
+  set_clause <- paste(set_clauses, collapse = ", ")
+
+  # Build SQL with named placeholders
+  sql <- paste0("UPDATE Tickers SET ", set_clause, " WHERE Name = :Name")
+
+  # Create named parameter list
+  param_list <- params$updates
+  param_list$Name <- params$Name  # Add the WHERE parameter
+
+  # Execute
+  result <- DBI::dbExecute(conn, sql, param_list)
+
+  # Check how many rows were affected
+  # This shows how many rows were deleted
+  print(paste("Row modified:", result))
+
+  return(list(
+    sql = sql,
+    params = param_list,
+    rows_affected = result
+  ))
+
+  return(result)
+}
+
+#' Update Ticker parameters
+#'
+#' This function is used by setTicker function only to validate and extract
+#'  the parameters from what end user has provided
+#' NOT EXPORTED.
+#' If only a given symbol is not found, then NA will be returned for this symbol.
+#'
+#'@param Name IBKR security name or a vector of names
+#'@return list with Name and updated arguments list
+update_ticker_params <- function(Name, ...) {
+  kwargs <- list(...)
+
+  # Define exact column names that can be updated
+  updatable_columns <- c(
+    "YahooName", "Type", "Sector", "Currency", "TradingClass",
+    "Multiplier", "Exchange", "OptExchange", "Beta_3m", "Beta_6m",
+    "Div_yield", "Beta_1y", "Beta_3y", "IV", "Expiration"
+  )
+
+  # Filter to only valid columns - exact match required
+  valid_updates <- kwargs[names(kwargs) %in% updatable_columns]
+
+  return(list(
+    Name = Name,
+    updates = valid_updates
+  ))
 }

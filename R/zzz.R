@@ -1,5 +1,11 @@
 #' @title Package startup functions for Tdata
 
+
+#' @title Python module for Tdata
+#' @description Access to tdata_py Python functionality
+#' @export
+tdata_py <- NULL  # Will be assigned in .onLoad()
+
 #' @title Setup Tdata package in .onLoad
 #' @param libname Library name
 #' @param pkgname Package name
@@ -77,8 +83,8 @@ if '%s' not in sys.path:
     # Initialize Python environment quietly
     python_initialized <- FALSE
     methods <- list(
-      function() reticulate::use_virtualenv("r-reticulate", required = FALSE),
       function() reticulate::use_condaenv("r-reticulate", required = FALSE),
+      function() reticulate::use_virtualenv("r-reticulate", required = FALSE),
       function() reticulate::use_python(reticulate::py_discover_config()$python, required = FALSE)
     )
 
@@ -122,23 +128,18 @@ for module in modules_to_reload:  ### This removes modules_to_reload from cache 
 ')
 
     # Import the package
-    tdata_py <- reticulate::import("tdata_py", delay_load = FALSE)
+    tdata_py <- reticulate::import("tdata_py", delay_load = TRUE)
 
-    # Debug: Check available attributes (optionnel avec logging)
-    available_attrs <- reticulate::py_list_attributes(tdata_py)
-    t_log_debug(sprintf("Available attributes %s in tdata_py for %s",
-                           paste(available_attrs, collapse = ", "),
-                           pkgname))
-    # Add this debug line to your .onLoad to confirm assignment location
-    t_log_debug(sprintf("Assigning tdata_py to %s %s",
-                         class(parent.env(environment())),
-                        environmentName(parent.env(environment()))))
+    # Assign to the actual package namespace
+    ## This is the way to go so it works with both library(Tdata) and box::use(Tdata[tdata_py])
+    assign("tdata_py", tdata_py, envir = asNamespace(pkgname))
 
-    # Assign to package environment
-    assign("tdata_py", tdata_py, envir = parent.env(environment()))
+    # Verify assignment
+    t_log_debug(sprintf("tdata_py assigned to namespace: %s",
+                        environmentName(asNamespace(pkgname))))
 
     # Log success
-    t_log_info("Python environment initialized successfully")
+    t_log_info("Python environment initialized successfully, not loaded yet")
 
         return(TRUE)
 

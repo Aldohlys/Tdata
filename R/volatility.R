@@ -294,7 +294,7 @@ get180dIV <- function(tickers, LastIBKRPrice) {
 
 #' Get volatility data from IBKR
 #'
-#' It will request historical data from IBKR TWS API for a number of days.
+#' It will request historical data from IBKR TWS API for a number of days, and then store vol metrics in Prices DB.
 #'
 #' If sym is not present in Ticker DB, it will make assumptions like currency=USD, exchange=SMART, etc...
 #' @param sym_list IBKR symbol or vector of symbols

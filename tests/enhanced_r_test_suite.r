@@ -4,14 +4,12 @@
 
 library(reticulate)
 library(testthat)
+library(Tdata)
 
 #' Setup enhanced test environment
 setup_enhanced_parquet_tests <- function() {
   cat("Setting up Enhanced Parquet chain discovery tests...\n")
   cat("Testing multiple exchanges and detailed strike analysis...\n")
-
-  # Import the enhanced parquet module
-  parquet <<- import("tdata_py")
 
   # Enhanced test symbols across different exchanges and asset classes
   test_symbols <<- list(
@@ -71,7 +69,7 @@ test_multi_exchange_discovery <- function() {
 
       tryCatch({
         # Get chains with specific exchange
-        chains <- parquet$getChains(symbol, exchangeOpt = category$exchange)
+        chains <- tdata_py$getChains(symbol, exchangeOpt = category$exchange)
 
         if (is.null(chains)) {
           cat(sprintf("  ❌ %s: getChains returned NULL (connection issue)\n", symbol))
@@ -110,7 +108,7 @@ test_multi_exchange_discovery <- function() {
 
           # Test enhanced discovery functions
           tryCatch({
-            discovery <- parquet$discoverSymbol(symbol, format = "summary")
+            discovery <- tdata_py$discoverSymbol(symbol, format = "summary")
             if (!is.null(discovery) && !is.null(discovery$recommended)) {
               recommended_tc <- discovery$recommended$trading_class
               cat(sprintf("    💡 Recommended TC: %s\n", recommended_tc))
@@ -206,7 +204,7 @@ test_expiration_strike_analysis <- function() {
             strike_range_pct <- 0.1  # 10% range
 
             # Test getOptionStrikes with range
-            qualified_strikes <- parquet$getOptionStrikes(
+            qualified_strikes <- tdata_py$getOptionStrikes(
               symbol,
               trading_class,
               expiration,
@@ -287,7 +285,7 @@ test_trading_class_comparison <- function() {
 
     tryCatch({
       # Use enhanced comparison function
-      comparison <- parquet$compareTradingClasses(symbol)
+      comparison <- tdata_py$compareTradingClasses(symbol)
 
       if (!is.null(comparison)) {
         if (is.data.frame(comparison)) {
@@ -308,7 +306,7 @@ test_trading_class_comparison <- function() {
       # Test auto-selecting functions
       cat("\nTesting auto-selection functions:\n")
 
-      best_tc <- parquet$findBestTradingClass(symbol, criteria = "most_strikes")
+      best_tc <- tdata_py$findBestTradingClass(symbol, criteria = "most_strikes")
       if (!is.null(best_tc)) {
         cat(sprintf("  💡 Best TC (most strikes): %s (%d strikes)\n",
                     best_tc$trading_class, best_tc$strike_count))
@@ -317,7 +315,7 @@ test_trading_class_comparison <- function() {
       # Test auto strikes function
       if (length(result$chains) > 0 && length(result$chains[[1]][[5]]) > 0) {
         first_expiration <- result$chains[[1]][[5]][[1]]
-        auto_strikes <- parquet$getStrikesAuto(symbol, first_expiration)
+        auto_strikes <- tdata_py$getStrikesAuto(symbol, first_expiration)
 
         if (!is.null(auto_strikes) && length(auto_strikes) > 0) {
           cat(sprintf("  🎯 Auto strikes for %s: %d strikes\n", first_expiration, length(auto_strikes)))
@@ -375,7 +373,7 @@ test_exchange_specific_features <- function() {
       cat(sprintf("\nDetailed analysis of %s:\n", first_symbol))
 
       tryCatch({
-        exploration <- parquet$exploreSymbol(first_symbol)
+        exploration <- tdata_py$exploreSymbol(first_symbol)
 
         if (!is.null(exploration) && exploration$status == "success") {
           summary <- exploration$summary
@@ -414,7 +412,7 @@ test_performance_caching <- function() {
     # First call (likely from cache or fresh fetch)
     cat("First call (cache check)...\n")
     start_time <- Sys.time()
-    chains1 <- parquet$getChains(symbol)
+    chains1 <- tdata_py$getChains(symbol)
     time1 <- as.numeric(Sys.time() - start_time)
 
     if (!is.null(chains1) && is.list(chains1)) {
@@ -423,7 +421,7 @@ test_performance_caching <- function() {
       # Second call (should be faster from cache)
       cat("Second call (cache test)...\n")
       start_time <- Sys.time()
-      chains2 <- parquet$getChains(symbol)
+      chains2 <- tdata_py$getChains(symbol)
       time2 <- as.numeric(Sys.time() - start_time)
 
       cat(sprintf("  ✅ Second call: %.2f seconds\n", time2))
@@ -447,7 +445,7 @@ test_performance_caching <- function() {
       # Test enhanced functions performance
       cat("Testing enhanced functions...\n")
       start_time <- Sys.time()
-      exploration <- parquet$exploreSymbol(symbol)
+      exploration <- tdata_py$exploreSymbol(symbol)
       explore_time <- as.numeric(Sys.time() - start_time)
 
       cat(sprintf("  📊 Exploration: %.2f seconds\n", explore_time))

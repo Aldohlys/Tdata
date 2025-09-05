@@ -3,7 +3,8 @@
 # Additional focused tests for production trading scenarios
 
 library(reticulate)
-tdata_py <- import("tdata_py")
+library(Tdata)
+
 estx50_current_price <- 5464
 
 # Test 1: Strike Interval Analysis

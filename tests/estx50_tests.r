@@ -4,7 +4,7 @@
 # Target expirations: Sep 2025, Dec 2025, Jan 2026
 
 library(reticulate)
-tdata_py <- import("tdata_py")
+library(Tdata)
 
 # Main comprehensive test function
 test_estx50_comprehensive <- function() {

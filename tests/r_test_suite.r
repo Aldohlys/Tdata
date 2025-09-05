@@ -4,6 +4,8 @@
 
 library(reticulate)
 library(testthat)
+library(Tdata)
+
 parquet_file <- tdata_py$view_parquet("C:/Users/aldoh/Documents/NewTrading/chains/SPX/SPXW_chain.parquet")
 
 
