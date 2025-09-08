@@ -20,6 +20,7 @@ validate_db_types <- function(data, table_name) {
          "TestTrades" =,
          "Trades" = validate_trades_data(data),
          "ConvertToUSD" = validate_currency_data(data),
+         "ConvertToCHF" = validate_currency_chf_data(data),  # Add CHF validation
          "Journal" = validate_journal_data(data),
          "TestPortf" =,
          "Gonet" = validate_portfolio_data(data),  # Gonet is portfolio-like
@@ -148,15 +149,30 @@ validate_trades_data <- function(data) {
   return(data)
 }
 
-#' Validate currency conversion data
+#' Validate currency conversion data (USD)
 #' @noRd
 validate_currency_data <- function(data) {
   # Ensure date is integer YYYYMMDD
   if ("date" %in% names(data)) {
-    data$date <- standardize_date_integer(data$date)  # Remove sapply()
+    data$date <- standardize_date_integer(data$date)
   }
+  # Ensure usd_value is numeric
   if ("usd_value" %in% names(data)) {
-    data$usd_value <- standardize_numeric(data$usd_value)  # Already correct
+    data$usd_value <- standardize_numeric(data$usd_value)
+  }
+  return(data)
+}
+
+#' Validate currency conversion data (CHF)
+#' @noRd
+validate_currency_chf_data <- function(data) {
+  # Ensure date is integer YYYYMMDD
+  if ("date" %in% names(data)) {
+    data$date <- standardize_date_integer(data$date)
+  }
+  # Ensure chf_value is numeric
+  if ("chf_value" %in% names(data)) {
+    data$chf_value <- standardize_numeric(data$chf_value)
   }
   return(data)
 }
@@ -171,14 +187,14 @@ validate_journal_data <- function(data) {
 
   # Ensure date is integer YYYYMMDD
   if ("date" %in% names(data)) {
-    data$date <- standardize_date_integer(data$date)  # Direct application
+    data$date <- standardize_date_integer(data$date)
   }
 
   # Ensure numeric columns
   numeric_cols <- c("close", "mkt_price")
   for (col in numeric_cols) {
     if (col %in% names(data)) {
-      data[[col]] <- standardize_numeric(data[[col]])  # Direct application
+      data[[col]] <- standardize_numeric(data[[col]])
     }
   }
 

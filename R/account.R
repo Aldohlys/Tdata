@@ -542,7 +542,9 @@ getIBKR <- function() {
 }
 
 
-#'   getIBKRActiveCurrencies
+#' getIBKRActiveCurrencyValues
+#'
+#' Retrieves current currency values from IBKR and updates both ConvertToUSD and ConvertToCHF tables
 #'
 #' This function retrieves active currencies pairs values from DB ActiveCurrencies table,
 #' and then :
@@ -553,78 +555,131 @@ getIBKR <- function() {
 #'
 #' This does not request any value from end-user yet, in case IBKR does not return any value.
 #'
-#'@returns number of IBKR updates, integer - 0 if no update and n for n currencies updated through IBKR
-#'@examples
-#'\dontrun{
-#'getIBKRActiveCurrencyValues()
-#'}
-#'@export
+#' @return List with USD and CHF update counts
+#' @export
 getIBKRActiveCurrencyValues <- function() {
-
   ### Open connection to user DB
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
-  ### Skip USD and all inactive currencies
+  ### Skip USD, CHF and all inactive currencies
   Tbasics::display_message("Retrieve currencies from DB...")
   currency_data <- DBI::dbGetQuery(conn, "SELECT Name, IBKRPair, DirectConversion FROM Currencies
-                                          WHERE Active = 'Yes' AND Name <> 'USD' ")
+                                          WHERE Active = 'Yes' AND Name NOT IN ('USD', 'CHF')")
 
-
-  ### Update it if possible with Yahoo data - DB update will be done during call to getLastUSDValue
+  ### Update with Yahoo data first - DB update will be done during calls
   Tbasics::display_message("Yahoo service to retrieve data... stored in DB if more recent than data in DB")
   currencies <- currency_data$Name
-  stored_values <- getLastUSDValue(currencies)
 
-  ### First retrieve data from DB and if stored data are all from today - no use to update DB
-  if (all(stored_values$date == format(Sys.Date(), "%Y%m%d"))) {
-    Tbasics:: display_message("All currency data is already up to date - no need to query!")
-    return(0)
+  # Get stored values for both USD and CHF
+  stored_usd_values <- getLastUSDValue(currencies)
+  stored_chf_values <- getLastCHFValue(currencies)
+
+  ### Check if data is already current for today
+  today_date <- as.integer(format(Sys.Date(), "%Y%m%d"))
+  usd_current <- all(stored_usd_values$date == today_date)
+  chf_current <- all(stored_chf_values$date == today_date)
+
+  if (usd_current && chf_current) {
+    Tbasics::display_message("All currency data is already up to date - no need to query!")
+    return(list(usd_updates = 0, chf_updates = 0))
   }
 
   # Create lookup vectors for efficient comparison
-  stored_dates <- setNames(stored_values$date, stored_values$currency)
+  stored_usd_dates <- setNames(stored_usd_values$date, stored_usd_values$currency)
+  stored_chf_dates <- setNames(stored_chf_values$date, stored_chf_values$currency)
 
   ### Test first if IB is available - no use to continue if not
-  if (!isIBAvailable()) return(0)
+  if (!isIBAvailable()) return(list(usd_updates = 0, chf_updates = 0))
 
   ### Prepare to retrieve data from IBKR
-  ### IBKRPair are like EURUSD,HKDUSD, etc...
   currency_pairs <- currency_data$IBKRPair
   direct_conv <- currency_data$DirectConversion
 
   Tbasics::display_message("Call IBKR to retrieve data...")
   currency_pairs_data <- tdata_py$retrieveCurrencyPairs(currencies, currency_pairs, direct_conv)
 
-  #### 3. Process new currency data
-  currencies_list = currency_pairs_data[[1]]
-  currencies_values = currency_pairs_data[[2]]
+  #### Process new currency data
+  currencies_list <- currency_pairs_data[[1]]
+  currencies_values <- currency_pairs_data[[2]]
 
-  ### In case last record date is prior to today then look at the record
-  ### Otherwise no reason to save it
-
-  ### If any retrieved data is different from NA then build the ibkr_prices
+  ### If any retrieved data is different from NA then build the prices
   if (any(!is.na(currencies_values))) {
-    ibkr_usd = data.frame(date = as.integer(format(Sys.Date(), "%Y%m%d")),
-                     currency = currencies_list,
-                     usd_value = round(currencies_values, 4))
-    ibkr_usd = ibkr_usd[!is.na(ibkr_usd$usd_value),]
-  }
 
-  # Identify updates needed in ibkr_usd prices - either date is more recent or no data at all
-  updates_needed <- ibkr_usd |>
-    dplyr::filter(date > stored_dates[currency] | is.na(stored_dates[currency]))
+    # Create USD data frame
+    ibkr_usd <- data.frame(
+      date = today_date,
+      currency = currencies_list,
+      usd_value = round(currencies_values, 4)
+    )
+    ibkr_usd <- ibkr_usd[!is.na(ibkr_usd$usd_value), ]
 
-  # Insert/update records if any updates needed
-  if(nrow(updates_needed) > 0) {
-    safe_db_append(conn, "ConvertToUSD", updates_needed)
-    t_log_info("Updated {nrow(updates_needed)} currency rates")
-    return(nrow(updates_needed))
-  }
+    # Get current CHF/USD rate for CHF conversion
+    chf_usd_rate <- getStoredCHFValue("USD")$chf_value
+    if (is.na(chf_usd_rate) || length(chf_usd_rate) == 0) {
+      # Fallback: get from USD table
+      usd_chf_rate <- getStoredUSDValue("CHF")$usd_value
+      chf_usd_rate <- 1 / usd_chf_rate
+    }
 
-  else {
-    t_log_info("No updates needed - stored data is current")
-    return(0)
+    # Create CHF data frame - convert USD values to CHF using DirectConversion logic
+    chf_values <- numeric(length(currencies_values))
+
+    for (i in seq_along(currencies_list)) {
+      currency <- currencies_list[i]
+      usd_value <- currencies_values[i]
+      direct_conv <- currency_data$DirectConversion[currency_data$Name == currency]
+
+      # Apply DirectConversion logic (same as Yahoo)
+      if (direct_conv == "No") {
+        # Need to invert: IBKR gives USD-base rate, invert to get foreign-currency-base
+        actual_usd_rate <- 1 / usd_value
+      } else {
+        # Direct foreign-currency-base rate
+        actual_usd_rate <- usd_value
+      }
+
+      chf_values[i] <- actual_usd_rate / chf_usd_rate
+    }
+
+    ibkr_chf <- data.frame(
+      date = today_date,
+      currency = currencies_list,
+      chf_value = round(chf_values, 4)
+    )
+    ibkr_chf <- ibkr_chf[!is.na(ibkr_chf$chf_value), ]
+
+    # Process USD updates
+    usd_updates_needed <- ibkr_usd |>
+      dplyr::filter(date > stored_usd_dates[currency] | is.na(stored_usd_dates[currency]))
+
+    usd_update_count <- 0
+    if (nrow(usd_updates_needed) > 0) {
+      safe_db_append(conn, "ConvertToUSD", usd_updates_needed)
+      logger::log_info("Updated {nrow(usd_updates_needed)} USD currency rates", namespace = "Tdata")
+      usd_update_count <- nrow(usd_updates_needed)
+    } else {
+      logger::log_info("No USD updates needed - stored data is current", namespace = "Tdata")
+    }
+
+    # Process CHF updates
+    chf_updates_needed <- ibkr_chf |>
+      dplyr::filter(date > stored_chf_dates[currency] | is.na(stored_chf_dates[currency]))
+
+    chf_update_count <- 0
+    if (nrow(chf_updates_needed) > 0) {
+      safe_db_append(conn, "ConvertToCHF", chf_updates_needed)
+      logger::log_info("Updated {nrow(chf_updates_needed)} CHF currency rates", namespace = "Tdata")
+      chf_update_count <- nrow(chf_updates_needed)
+    } else {
+      logger::log_info("No CHF updates needed - stored data is current", namespace = "Tdata")
+    }
+
+    return(list(usd_updates = usd_update_count, chf_updates = chf_update_count))
+
+  } else {
+    logger::log_info("No valid currency data retrieved from IBKR", namespace = "Tdata")
+    return(list(usd_updates = 0, chf_updates = 0))
   }
 }
 

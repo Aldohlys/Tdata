@@ -1,15 +1,5 @@
 #### CURRENCY management
 
-
-### This function work only for IBKR accounts not for Gonet account
-### This function is NOT exported
-# getAllCurrencyPairs = function() {
-#   suppressMessages(read_delim(file=config::get("CurrencyPairs"),
-#                                      delim=";",locale=locale(date_names="en",decimal_mark=".",
-#                                                              grouping_mark="",encoding="UTF-8")))
-# }
-
-
 #' getCurrencyAttrib
 #'
 #' This function retrieves all attributes of a given currency from DB.
@@ -43,13 +33,59 @@ getCurrencyAttrib <- function(currency) {
 
 
 
-### This assumes that mydb is declared
+#' getAllCurrenciesCHFValues
+#'
+#' Internal function to retrieve all currency values in CHF from DB
+getAllCurrenciesCHFValues <- function() {
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  all_values <- DBI::dbReadTable(conn, "ConvertToCHF")
+  return(all_values)
+}
+
+#' getAllCurrenciesUSDValues
+#'
+#' Internal function to retrieve all currency values in USD from DB
 getAllCurrenciesUSDValues = function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   all_values <- DBI::dbReadTable(conn, "ConvertToUSD")
   return(all_values)
+}
+
+#' getStoredCHFValue
+#'
+#' Retrieves last CHF value of given currency from DB (vectorized)
+#'
+#' @param currency string or character vector - EUR, USD, CAD...
+#' @returns data frame with date, currency, chf_value fields
+#' @export
+getStoredCHFValue <- function(currency) {
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  placeholders <- paste(rep("?", length(currency)), collapse = ",")
+
+  # Add CHF to union only if requested
+  chf_union <- if("CHF" %in% currency) {
+    sprintf("SELECT 'CHF' as currency, %s as date, 1.0 as chf_value UNION ALL",
+            as.numeric(format(Sys.Date(),"%Y%m%d")))
+  } else ""
+
+  query <- sprintf("
+    SELECT max(date) as date, currency, chf_value
+    FROM (
+      %s
+      SELECT currency, date, chf_value FROM ConvertToCHF WHERE currency IN (%s)
+    )
+    GROUP BY currency",
+                   chf_union, placeholders
+  )
+
+  result <- DBI::dbGetQuery(conn, query, params = as.list(currency))
+  return(result)
 }
 
 #'  getStoredUSDValue
@@ -93,6 +129,149 @@ getStoredUSDValue = function(currency) {
   )
 
   result <- DBI::dbGetQuery(conn, query, params = as.list(currency))
+  return(result)
+}
+
+#' getLastCHFValue
+#'
+#' Returns converted value of currency to CHF, updating from Yahoo if needed
+#'
+#' @param currency string or character vector - EUR, USD, CAD...
+#' @returns data frame with date, chf_value fields
+#' @export
+getLastCHFValue <- function(currency) {
+
+  # Handle CHF currency separately - don't fetch from Yahoo for CHF
+  chf_currencies <- currency[currency == "CHF"]
+  other_currencies <- currency[currency != "CHF"]
+
+  result <- data.frame()
+
+  # For CHF, return 1.0 directly
+  if (length(chf_currencies) > 0) {
+    chf_result <- data.frame(
+      date = as.integer(format(Sys.Date(), "%Y%m%d")),
+      currency = "CHF",
+      chf_value = 1.0
+    )
+    result <- rbind(result, chf_result)
+  }
+
+  # Process other currencies normally
+  if (length(other_currencies) > 0) {
+    Tbasics::display_message("Retrieve currencies from DB...")
+    conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+    on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+    # Get currency details including DirectConversion flag
+    placeholders <- paste(rep("?", length(other_currencies)), collapse = ",")
+    query <- sprintf("
+      SELECT Name, YahooName, DirectConversion FROM Currencies
+      WHERE Name IN (%s)", placeholders)
+    currency_detail <- DBI::dbGetQuery(conn, query, params = as.list(other_currencies))
+
+    if (nrow(currency_detail) == 0){
+      Tbasics::display_error_message(paste0(other_currencies, " currency undefined, not able to retrieve from Yahoo!"))
+      return(data.frame(date = as.Date(""), chf_value = NA))
+    }
+
+    # Create Yahoo tickers for CHF pairs - handle direct vs cross rates
+    yahoo_tickers <- purrr::map_chr(1:nrow(currency_detail), function(i) {
+      curr <- currency_detail$Name[i]
+
+      if (curr == "EUR") {
+        return("EURCHF=X")  # Direct EUR/CHF pair
+      } else if (curr == "USD") {
+        return("CHFUSD=X")  # CHF/USD pair (will invert)
+      } else {
+        return(currency_detail$YahooName[i])  # Use original ticker for cross-rate
+      }
+    })
+
+    # Get Yahoo data for CHF pairs and cross-rates
+    price_list <- getYahooData(yahoo_tickers, from_date = Sys.Date() - 3)
+
+    if (nrow(price_list) == 0) {
+      t_log_info("No currency data found!")
+      return(data.frame(date = as.Date(""), chf_value = NA))
+    }
+
+    # Get latest price per ticker
+    last_price <- price_list |>
+      dplyr::group_by(ticker) |>
+      dplyr::slice_max(date, n = 1) |>
+      dplyr::select(date, ticker, Adjusted) |>
+      dplyr::ungroup()
+
+    # Map back to currencies and calculate CHF values
+    result_prices <- data.frame()
+
+    for (i in 1:nrow(currency_detail)) {
+      curr <- currency_detail$Name[i]
+      expected_ticker <- yahoo_tickers[i]
+
+      ticker_data <- last_price |> dplyr::filter(ticker == expected_ticker)
+
+      if (nrow(ticker_data) == 0) {
+        t_log_warn("No data for {curr}")
+        next
+      }
+
+      chf_value <- if (curr == "EUR") {
+        ticker_data$Adjusted  # Direct EUR/CHF rate
+      } else if (curr == "USD") {
+        1 / ticker_data$Adjusted  # Invert CHF/USD to get USD/CHF
+      } else {
+        # For other currencies, need cross-rate via USD
+        # Get USD/CHF rate for cross-calculation
+        usd_chf_data <- last_price |> dplyr::filter(ticker == "CHFUSD=X")
+        if (nrow(usd_chf_data) > 0) {
+          ticker_data$Adjusted / usd_chf_data$Adjusted  # Currency/USD divided by CHF/USD
+        } else {
+          NA  # Cannot calculate without USD/CHF rate
+        }
+      }
+
+      if (!is.na(chf_value)) {
+        result_prices <- rbind(result_prices, data.frame(
+          date = as.integer(format(ticker_data$date, "%Y%m%d")),
+          currency = curr,
+          chf_value = round(chf_value, 4)
+        ))
+      }
+    }
+
+    # Check for updates needed
+    if (nrow(result_prices) > 0) {
+      stored_values <- getStoredCHFValue(result_prices$currency)
+      stored_dates <- setNames(stored_values$date, stored_values$currency)
+
+      updates_needed <- result_prices |>
+        dplyr::filter(date > stored_dates[currency] | is.na(stored_dates[currency]))
+
+      # Update DB if needed
+      if(nrow(updates_needed) > 0) {
+        safe_db_append(conn, "ConvertToCHF", updates_needed)
+        logger::log_info("Updated {nrow(updates_needed)} CHF currency rates", namespace = "Tdata")
+      } else {
+        logger::log_info("No CHF updates needed - stored data is current", namespace = "Tdata")
+      }
+    }
+
+    # Return latest values from DB for other currencies
+    placeholders <- paste(rep("?", length(other_currencies)), collapse = ", ")
+    query <- sprintf("
+      SELECT max(date) as date, currency, chf_value
+      FROM ConvertToCHF
+      WHERE currency IN (%s)
+      GROUP BY currency",
+                     placeholders
+    )
+
+    other_result <- DBI::dbGetQuery(conn, query, params = as.list(other_currencies))
+    result <- rbind(result, other_result)
+  }
+
   return(result)
 }
 
@@ -300,6 +479,19 @@ currency_format = function(amount, currency){
 
 }
 
+#' c_to_chf
+#'
+#' Converts amount of currency into CHF using stored DB values
+#'
+#' @param amount numeric or vector - amounts to convert
+#' @param currency string or vector - currency codes (EUR, USD, CAD...)
+#' @export
+c_to_chf <- function(amount, currency) {
+  data <- data.frame(am = amount, cur = currency)
+  data <- dplyr::mutate(data, res = am * getStoredCHFValue(cur)$chf_value)
+  return(data$res)
+}
+
 #'  c_to_usd
 #'
 #' This function converts the amount of currency into USD, using currency pairs values stored in DB
@@ -319,6 +511,49 @@ c_to_usd <- function(amount, currency) {
   data <- dplyr::mutate(data, res = am*getStoredUSDValue(cur)$usd_value)
   return(data$res)
 }
+
+
+#' convert_to_chf_date
+#'
+#' Converts currency amounts to CHF for specific date
+#'
+#' @param amount numeric or vector - amounts to convert
+#' @param currency string or vector - currency codes
+#' @param convert_date date, character, or numeric - conversion date
+#' @export
+convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
+
+  if (length(convert_date) != 1) stop("convert_date must be of length 1!")
+
+  result <- data.frame(amount = amount, currency = currency)
+  numeric_date <- numeric(0)
+
+  # Convert date to numeric format
+  if (is.numeric(convert_date)) numeric_date <- convert_date
+  else if (inherits(convert_date, "Date")) numeric_date <- as.numeric(format(convert_date, "%Y%m%d"))
+  else if (is.character(convert_date)) numeric_date <- as.numeric(convert_date)
+
+  # Get all CHF conversion rates
+  chf <- getAllCurrenciesCHFValues()
+
+  # Find nearest date for each currency
+  chf <- chf |>
+    dplyr::group_by(currency) |>
+    dplyr::slice_min(abs(date - numeric_date), n = 1) |>  # Minimum date difference
+    dplyr::slice_head(n = 1) |>  # Remove duplicates (oldest if tie)
+    dplyr::ungroup() |>
+    dplyr::select(currency, chf_value)
+
+  # Create lookup with CHF hardcoded
+  currency_rates <- setNames(chf$chf_value, chf$currency)
+  currency_rates["CHF"] <- 1.0  # CHF to CHF rate
+
+  # Vectorized conversion
+  rates <- currency_rates[currency]
+  return(as.numeric(amount * rates))
+}
+
+
 #'  convert_to_usd_date
 #'
 #' This function converts the amount of currency into USD, using CAD, EUR and CHF currency pairs values for a given date

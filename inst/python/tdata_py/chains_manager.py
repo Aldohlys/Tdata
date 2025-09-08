@@ -231,7 +231,7 @@ def getChain(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=Non
     logger.debug(f"Trading class {tradingClass} not found for {sym} on {exchangeOpt}. Available: {available_classes}")
     return float('NaN')
 
-def getExpirationDates(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=None, tradingClass=None, min_date=None, max_date=None, force_refresh=False):
+def getExpirationDates(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=None, tradingClass=None, min_date="19700131", max_date="20991231", force_refresh=False):
   
   ## Retrieve chain corresponding to sym, tradingClass and exchange
   chain = getChain(sym, secType, currency, exchangeSec, exchangeOpt, tradingClass, force_refresh)

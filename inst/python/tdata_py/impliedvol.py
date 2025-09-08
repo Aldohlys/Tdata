@@ -12,6 +12,9 @@ from ib_insync import *
 from .core import CONFIG, ticker_db, validate_contract_params
 from .IB_connection import safe_ib_connect
 
+from fin_logger import get_logger
+logger = get_logger("tdata_py.impliedvol")
+
 #from .contract import getOptValue
 
 def _determine_bar_size(lookback_days):
@@ -227,12 +230,7 @@ def get_volatility_metrics(sym, secType=None, currency=None, exchange=None,
         if exchange is None: exchange = ticker_info.get('Exchange')
     
     # Log function call
-    logger.info("Getting dividend data", {
-        "symbol": symbol,
-        "secType": secType,
-        "currency": currency,
-        "exchange": exchange
-    })
+    print(f"Getting volatility metrics for {sym}: secType={secType}, currency={currency}, exchange={exchange}")
     
     # Handle FUT expiration
     if secType == "FUT" and expiration_future is None:
@@ -294,3 +292,4 @@ def get_volatility_metrics(sym, secType=None, currency=None, exchange=None,
         result.update(price_metrics)
     
     return result
+

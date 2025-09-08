@@ -274,7 +274,9 @@ class HistoricalStorage:
 class HistoricalDataConfig:
     """Configuration manager for historical data collection"""
     
-    def __init__(self, config_file: str = "historical_config.json"):
+    def __init__(self, config_file: str = None):
+        if config_file is None:
+            config_file = CONFIG.get("historical_config", "historical_config.json")
         self.config_file = Path(config_file)
         self.contracts = []
         # Data collection settings
@@ -440,8 +442,10 @@ class HistoricalDataManager:
     - Automatic expiration handling and archiving
     """
     
-    def __init__(self, config_file: str = "historical_config.json"):
-        self.config_manager = HistoricalDataConfig(config_file)
+    def __init__(self, config_file: str = None):
+        if config_file is None:
+            config_file = CONFIG.get("historical_config", "historical_config.json")
+            self.config_manager = HistoricalDataConfig(config_file)
         self.storage = HistoricalStorage()
     
     def collect_data_for_active_contracts(self, data_type: str = "both", ib_connection=None) -> Dict:
@@ -673,7 +677,7 @@ class HistoricalDataManager:
 ##################################
 # R-friendly convenience functions
 
-def list_historical_config(config_file="historical_config.json", show_contracts=True, max_contracts=10, return_dict=False):
+def list_historical_config(config_file=None, show_contracts=True, max_contracts=10, return_dict=False):
     """
     Display historical data configuration settings in R-friendly format.
     
@@ -791,7 +795,7 @@ def list_historical_config(config_file="historical_config.json", show_contracts=
     
     print("=" * 60)
 
-def update_historical_settings(config_file="historical_config.json", **kwargs):
+def update_historical_settings(config_file=None, **kwargs):
     config = HistoricalDataConfig(config_file)
     config.update_settings(**kwargs)
         
