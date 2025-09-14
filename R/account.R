@@ -5,7 +5,7 @@
 #' It then filters data so that it matches \code{accountnr} number
 #' Finally it formats account data with right Date and HMS format
 #'@param account_name is the account name (IBKR)
-#'@returns a tibble with the following fields: \code{ account	date	heure
+#'@returns a tibble with the following fields: \code{ account	date	heure Currency
 #' NetLiquidation	EquityWithLoanValue	FullAvailableFunds	FullInitMarginReq	FullMaintMarginReq
 #' FullExcessLiquidity	OptionMarketValue	StockMarketValue	UnrealizedPnL	RealizedPnL	TotalCashBalance
 #'  CashFlow}

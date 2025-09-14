@@ -59,7 +59,7 @@ test_that("readLastPortfolio Gonet returns some data and columns are all authori
 test_that("readAccount Simu  returns some data and columns look good", {
   expect_true({
     acc=readAccount("DU5221795")
-    identical(colnames(acc),  c("date", "heure", "NetLiquidation",	"EquityWithLoanValue",	"FullAvailableFunds",
+    identical(colnames(acc),  c("date", "heure", "Currency", "NetLiquidation",	"EquityWithLoanValue",	"FullAvailableFunds",
                                 "FullInitMarginReq",	"FullMaintMarginReq", "FullExcessLiquidity",
                                 "OptionMarketValue",	"StockMarketValue",	"UnrealizedPnL",
                                 "RealizedPnL",	"TotalCashBalance", "CashFlow")) &&
@@ -71,7 +71,7 @@ test_that("readAccount Simu  returns some data and columns look good", {
 test_that("readAccount Gonet  returns some data and columns look good", {
   expect_true({
     acc=readAccount("Gonet")
-    identical(colnames(acc),  c("date","heure", "NetLiquidation",	"EquityWithLoanValue",	"FullAvailableFunds",
+    identical(colnames(acc),  c("date","heure", "Currency", "NetLiquidation",	"EquityWithLoanValue",	"FullAvailableFunds",
                                 "FullInitMarginReq",	"FullMaintMarginReq", "FullExcessLiquidity",
                                 "OptionMarketValue",	"StockMarketValue",	"UnrealizedPnL",
                                 "RealizedPnL",	"TotalCashBalance", "CashFlow")) &&

@@ -97,7 +97,7 @@ setParam <- function(name, value=NULL) {
 
 #' listParam
 #'
-#' This function lists selected parameters in table Param with their vales. If no argument provided, all params are listed
+#' This function lists selected parameters in table Param with their values.
 #'@returns a data frame including all names and values, sorted by name
 #'@export
 listParam <- function() {
