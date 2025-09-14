@@ -25,7 +25,7 @@ populate_chf_historical_data <- function() {
   logger::log_info("Starting CHF historical data population from {start_date} to {end_date}", namespace = "Tdata")
 
   # Helper function for chunked data fetching
-  get_chunked_data <- function(ticker, start_date, end_date, chunk_months = 6) {
+  get_chunked_data <- function(ticker, start_date, end_date, chunk_months = 1) {
     all_data <- data.frame()
     current_date <- start_date
 
@@ -40,8 +40,12 @@ populate_chf_historical_data <- function() {
                                  from_date = current_date,
                                  to_date = chunk_end)
 
+      #Chunk validation in get_chunked_data:
       if (nrow(chunk_data) > 0 && !all(is.na(chunk_data$Adjusted))) {
+        logger::log_info("Chunk success: {nrow(chunk_data)} rows", namespace = "Tdata")
         all_data <- rbind(all_data, chunk_data)
+      } else {
+        logger::log_warn("Chunk failed or empty: {current_date} to {chunk_end}", namespace = "Tdata")
       }
 
       current_date <- chunk_end + 1
@@ -217,3 +221,356 @@ populate_chf_historical_data <- function() {
 
 # Execute the population (uncomment to run)
 # populate_chf_historical_data()
+
+
+# After the main populate function, manually fetch the problem period:
+manual_fetch_problem_dates <- function() {
+  problem_start <- as.Date("2024-07-08")
+  problem_end <- as.Date("2025-01-08")
+
+  # Try smaller chunks (1 month each) for this problem period
+  current_date <- problem_start
+  while (current_date < problem_end) {
+    chunk_end <- seq(current_date, length = 2, by = "1 months")[2]
+    chunk_end <- min(chunk_end, problem_end)
+
+    logger::log_info("Retry problem chunk: {current_date} to {chunk_end}", namespace = "Tdata")
+
+    chunk_data <- getYahooData("USDHKD=X", from_date = current_date, to_date = chunk_end)
+    if (nrow(chunk_data) > 0) {
+      logger::log_info("Success: {nrow(chunk_data)} rows", namespace = "Tdata")
+    }
+
+    current_date <- chunk_end + 1
+    Sys.sleep(2)  # Longer delay
+  }
+}
+
+fill_missing_march_april_2025 <- function() {
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  problem_start <- as.Date("2025-03-19")
+  problem_end <- as.Date("2025-04-19")
+
+  # Get CHF/USD data for cross-rate calculations
+  chf_usd_ref <- DBI::dbGetQuery(conn, "
+    SELECT date, chf_value as usd_to_chf_rate
+    FROM ConvertToCHF
+    WHERE currency = 'USD'
+    AND date BETWEEN 20250318 AND 20250420
+  ")
+
+  currencies <- c("CHFUSD=X", "USDCAD=X", "USDHKD=X")
+
+  for (ticker in currencies) {
+    logger::log_info("Processing {ticker} for March-April 2025 gap", namespace = "Tdata")
+
+    # Fetch data day by day for this period
+    current_date <- problem_start
+    all_data <- data.frame()
+
+    while (current_date <= problem_end) {
+      daily_data <- getYahooData(ticker,
+                                 from_date = current_date,
+                                 to_date = current_date)
+
+      if (nrow(daily_data) > 0 && !is.na(daily_data$Adjusted[1])) {
+        all_data <- rbind(all_data, daily_data)
+        logger::log_info("Day {current_date}: success", namespace = "Tdata")
+      }
+
+      current_date <- current_date + 1
+      Sys.sleep(0.5)  # Small delay between daily requests
+    }
+
+    if (nrow(all_data) > 0) {
+      # Process the data based on ticker
+      if (ticker == "CHFUSD=X") {
+        # USD to CHF
+        processed_data <- all_data |>
+          dplyr::mutate(
+            currency = "USD",
+            chf_value = round(1 / Adjusted, 4),
+            date = as.integer(format(date, "%Y%m%d"))
+          ) |>
+          dplyr::select(date, currency, chf_value)
+
+      } else {
+        # CAD or HKD via cross-rate
+        curr_name <- if (ticker == "USDCAD=X") "CAD" else "HKD"
+        direct_conversion <- "No"  # Both need inversion
+
+        processed_data <- all_data |>
+          dplyr::mutate(date_int = as.integer(format(date, "%Y%m%d"))) |>
+          dplyr::left_join(chf_usd_ref, by = c("date_int" = "date")) |>
+          dplyr::filter(!is.na(usd_to_chf_rate)) |>
+          dplyr::mutate(
+            currency = curr_name,
+            usd_rate = 1 / Adjusted,  # Invert since DirectConversion = "No"
+            chf_value = round(usd_rate * usd_to_chf_rate, 4),
+            date = date_int
+          ) |>
+          dplyr::select(date, currency, chf_value)
+      }
+
+      # Insert the data
+      safe_db_append(conn, "ConvertToCHF", processed_data)
+      logger::log_info("Inserted {nrow(processed_data)} {ticker} records for March-April gap", namespace = "Tdata")
+    }
+  }
+}
+
+fill_usd_march_april_gap <- function() {
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  problem_start <- as.Date("2025-03-19")
+  problem_end <- as.Date("2025-04-19")
+
+  logger::log_info("Filling USD data for March-April 2025 gap", namespace = "Tdata")
+
+  current_date <- problem_start
+  all_usd_data <- data.frame()
+
+  while (current_date <= problem_end) {
+    # Skip weekends
+    if (weekdays(current_date) %in% c("Saturday", "Sunday")) {
+      current_date <- current_date + 1
+      next
+    }
+
+    daily_data <- tryCatch({
+      getYahooData("CHFUSD=X",
+                   from_date = current_date,
+                   to_date = current_date)
+    }, error = function(e) {
+      logger::log_warn("Failed to fetch {current_date}: {e$message}", namespace = "Tdata")
+      data.frame()
+    })
+
+    if (nrow(daily_data) > 0 && !is.na(daily_data$Adjusted[1])) {
+      all_usd_data <- rbind(all_usd_data, daily_data)
+      logger::log_info("USD {current_date}: success ({daily_data$Adjusted[1]})", namespace = "Tdata")
+    } else {
+      logger::log_warn("USD {current_date}: no data", namespace = "Tdata")
+    }
+
+    current_date <- current_date + 1
+    Sys.sleep(2)  # 2-second delay between requests
+  }
+
+  # Process USD data
+  if (nrow(all_usd_data) > 0) {
+    usd_processed <- all_usd_data |>
+      dplyr::filter(!is.na(Adjusted), Adjusted > 0) |>
+      dplyr::mutate(
+        currency = "USD",
+        chf_value = round(1 / Adjusted, 4),  # Invert CHF/USD to get USD/CHF
+        date = as.integer(format(date, "%Y%m%d"))
+      ) |>
+      dplyr::select(date, currency, chf_value)
+
+    safe_db_append(conn, "ConvertToCHF", usd_processed)
+    logger::log_info("Inserted {nrow(usd_processed)} USD records", namespace = "Tdata")
+  }
+
+  # Check coverage
+  coverage <- DBI::dbGetQuery(conn, "
+    SELECT COUNT(*) as usd_count
+    FROM ConvertToCHF
+    WHERE currency = 'USD'
+    AND date BETWEEN 20250319 AND 20250419
+  ")
+
+  logger::log_info("USD coverage for March-April: {coverage$usd_count} records", namespace = "Tdata")
+}
+
+fill_cad_march_april_gap <- function() {
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  # Get USD reference data for the period
+  usd_ref <- DBI::dbGetQuery(conn, "
+    SELECT date, chf_value as usd_chf_rate
+    FROM ConvertToCHF
+    WHERE currency = 'USD'
+    AND date BETWEEN 20250319 AND 20250419
+  ")
+
+  problem_start <- as.Date("2025-03-19")
+  problem_end <- as.Date("2025-04-19")
+
+  logger::log_info("Filling CAD data for March-April 2025 gap", namespace = "Tdata")
+
+  current_date <- problem_start
+  all_cad_data <- data.frame()
+
+  while (current_date <= problem_end) {
+    if (weekdays(current_date) %in% c("Saturday", "Sunday")) {
+      current_date <- current_date + 1
+      next
+    }
+
+    daily_data <- tryCatch({
+      getYahooData("USDCAD=X", from_date = current_date, to_date = current_date)
+    }, error = function(e) {
+      logger::log_warn("Failed to fetch CAD {current_date}: {e$message}", namespace = "Tdata")
+      data.frame()
+    })
+
+    if (nrow(daily_data) > 0 && !is.na(daily_data$Adjusted[1])) {
+      all_cad_data <- rbind(all_cad_data, daily_data)
+      logger::log_info("CAD {current_date}: success ({daily_data$Adjusted[1]})", namespace = "Tdata")
+    }
+
+    current_date <- current_date + 1
+    Sys.sleep(2)
+  }
+
+  # Process CAD data with USD cross-rates
+  if (nrow(all_cad_data) > 0) {
+    cad_processed <- all_cad_data |>
+      dplyr::mutate(date_int = as.integer(format(date, "%Y%m%d"))) |>
+      dplyr::inner_join(usd_ref, by = c("date_int" = "date")) |>
+      dplyr::mutate(
+        currency = "CAD",
+        usd_rate = 1 / Adjusted,  # Invert USDCAD since DirectConversion = "No"
+        chf_value = round(usd_rate * usd_chf_rate, 4),
+        date = date_int
+      ) |>
+      dplyr::select(date, currency, chf_value)
+
+    safe_db_append(conn, "ConvertToCHF", cad_processed)
+    logger::log_info("Inserted {nrow(cad_processed)} CAD records", namespace = "Tdata")
+  }
+}
+
+fill_hkd_march_april_gap <- function() {
+  # Similar structure for HKD using "USDHKD=X"
+  # Same logic but with currency = "HKD"
+
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  # Get USD reference data for the period
+  usd_ref <- DBI::dbGetQuery(conn, "
+    SELECT date, chf_value as usd_chf_rate
+    FROM ConvertToCHF
+    WHERE currency = 'USD'
+    AND date BETWEEN 20250319 AND 20250419
+  ")
+
+  problem_start <- as.Date("2025-03-19")
+  problem_end <- as.Date("2025-04-19")
+
+  logger::log_info("Filling HKD data for March-April 2025 gap", namespace = "Tdata")
+
+  current_date <- problem_start
+  all_hkd_data <- data.frame()
+
+  while (current_date <= problem_end) {
+    if (weekdays(current_date) %in% c("Saturday", "Sunday")) {
+      current_date <- current_date + 1
+      next
+    }
+
+    daily_data <- tryCatch({
+      getYahooData("USDHKD=X", from_date = current_date, to_date = current_date)
+    }, error = function(e) {
+      logger::log_warn("Failed to fetch HKD {current_date}: {e$message}", namespace = "Tdata")
+      data.frame()
+    })
+
+    if (nrow(daily_data) > 0 && !is.na(daily_data$Adjusted[1])) {
+      all_hkd_data <- rbind(all_hkd_data, daily_data)
+      logger::log_info("HKD {current_date}: success ({daily_data$Adjusted[1]})", namespace = "Tdata")
+    }
+
+    current_date <- current_date + 1
+    Sys.sleep(2)
+  }
+
+  # Process HKD data with USD cross-rates
+  if (nrow(all_hkd_data) > 0) {
+    hkd_processed <- all_hkd_data |>
+      dplyr::mutate(date_int = as.integer(format(date, "%Y%m%d"))) |>
+      dplyr::inner_join(usd_ref, by = c("date_int" = "date")) |>
+      dplyr::mutate(
+        currency = "HKD",
+        usd_rate = 1 / Adjusted,  # Invert USDHKD since DirectConversion = "No"
+        chf_value = round(usd_rate * usd_chf_rate, 4),
+        date = date_int
+      ) |>
+      dplyr::select(date, currency, chf_value)
+
+    safe_db_append(conn, "ConvertToCHF", hkd_processed)
+    logger::log_info("Inserted {nrow(hkd_processed)} HKD records", namespace = "Tdata")
+  }
+
+}
+
+fill_eur_march_april_gap <- function() {
+  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  problem_start <- as.Date("2024-07-05")
+  problem_end <- as.Date("2025-07-08")
+
+  logger::log_info("Filling EUR data for March-April 2025 gap with weekly chunks", namespace = "Tdata")
+
+  current_date <- problem_start
+  all_eur_data <- data.frame()
+
+  while (current_date <= problem_end) {
+    # Weekly chunks (7 days)
+    chunk_end <- min(current_date + 6, problem_end)
+
+    logger::log_info("Fetching EURCHF=X from {current_date} to {chunk_end}", namespace = "Tdata")
+
+    weekly_data <- tryCatch({
+      getYahooData("EURCHF=X",
+                   from_date = current_date,
+                   to_date = chunk_end)
+    }, error = function(e) {
+      logger::log_warn("Failed to fetch EUR week {current_date}-{chunk_end}: {e$message}", namespace = "Tdata")
+      data.frame()
+    })
+
+    if (nrow(weekly_data) > 0 && !all(is.na(weekly_data$Adjusted))) {
+      all_eur_data <- rbind(all_eur_data, weekly_data)
+      logger::log_info("EUR week success: {nrow(weekly_data)} rows", namespace = "Tdata")
+    } else {
+      logger::log_warn("EUR week failed: {current_date} to {chunk_end}", namespace = "Tdata")
+    }
+
+    current_date <- chunk_end + 1
+    Sys.sleep(3)  # 3-second delay between weekly chunks
+  }
+
+  # Process EUR data (direct EUR/CHF pair)
+  if (nrow(all_eur_data) > 0) {
+    eur_processed <- all_eur_data |>
+      dplyr::filter(!is.na(Adjusted), Adjusted > 0) |>
+      dplyr::mutate(
+        currency = "EUR",
+        chf_value = round(Adjusted, 4),  # Direct EUR/CHF rate
+        date = as.integer(format(date, "%Y%m%d"))
+      ) |>
+      dplyr::select(date, currency, chf_value)
+
+    safe_db_append(conn, "ConvertToCHF", eur_processed)
+    logger::log_info("Inserted {nrow(eur_processed)} EUR records", namespace = "Tdata")
+
+    # Check final coverage
+    coverage <- DBI::dbGetQuery(conn, "
+      SELECT COUNT(*) as eur_count
+      FROM ConvertToCHF
+      WHERE currency = 'EUR'
+      AND date BETWEEN 20250319 AND 20250419
+    ")
+
+    logger::log_info("EUR coverage for March-April: {coverage$eur_count} records", namespace = "Tdata")
+  }
+}
+

@@ -53,10 +53,11 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=No
   Returns:
     list or float or None: List of chains if found, NaN if not found, None if connection error
   """
-
+  
+  storage = ParquetChainsStorage()
+  
   # Try cache first (unless forced refresh)
   if not force_refresh:
-    storage = ParquetChainsStorage()
     cached_chains = storage.load_chains(sym)
     
     # Check if cached data is still valid (non-expired)
