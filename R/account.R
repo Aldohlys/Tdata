@@ -4,7 +4,7 @@
 #' This function reads the Account table.
 #' It then filters data so that it matches \code{accountnr} number
 #' Finally it formats account data with right Date and HMS format
-#'@param accountnr is the account number (IBKR)
+#'@param account_name is the account name (IBKR)
 #'@returns a tibble with the following fields: \code{ account	date	heure
 #' NetLiquidation	EquityWithLoanValue	FullAvailableFunds	FullInitMarginReq	FullMaintMarginReq
 #' FullExcessLiquidity	OptionMarketValue	StockMarketValue	UnrealizedPnL	RealizedPnL	TotalCashBalance
@@ -14,26 +14,49 @@
 #'readAccount("DU5555")
 #'}
 #'@export
-readAccount = function(accountnr) {
-  # file=paste0(config::get("DirNewTrading"),"Account",".csv")
-  # account_data = suppressWarnings(read_delim(file=file,delim=";",
-  #                                            locale=locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
+readAccount = function(account_name) {
+
+  #### Open database and prepare disconnection
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
-  account_data = DBI::dbReadTable(conn,"Account")
+  on.exit(DBI::dbDisconnect(conn), add= TRUE)
 
   ### account	date	heure
   ### NetLiquidation	EquityWithLoanValue	FullAvailableFunds	FullInitMarginReq	FullMaintMarginReq
   ### FullExcessLiquidity	OptionMarketValue	StockMarketValue	UnrealizedPnL	RealizedPnL	TotalCashBalance
   ### Starts on Oct 4th, 2022 for IBKR, on June 1st for Gonet
 
-  ### Filter based upon account number and remove account number from result
-  account_data = dplyr::filter(account_data,account==accountnr)
+  base_currency <- getParam("BaseCurrency")
 
-  #### Finalize SQL query to DB
-  account_data = dplyr::collect(dplyr::select(account_data,-account))
+  ### Should not be needd - just in case no access to DB was possible ###
+  if (!(base_currency %in% c("USD", "CHF"))) {
+    logger::log_error("Could not find base currency equal to CHF or USD")
+    Tbasics::display_message("Could not find base currency equal to CHF or USD!")
+    return(data.frame())
+  }
 
-  ### Close DB connection as no more necessary
-  DBI::dbDisconnect(conn)
+  ## Then determine which base currency is and corresponding conversion rate
+  conversion_column <- ifelse(base_currency == "CHF", "chf_conversion_rate", "usd_conversion_rate")
+
+  sql_query <- paste0("SELECT
+      date, heure, Currency,
+      NetLiquidation * ", conversion_column, " AS NetLiquidation,
+      EquityWithLoanValue * ", conversion_column, " AS EquityWithLoanValue,
+      FullAvailableFunds * ", conversion_column, " AS FullAvailableFunds,
+      FullInitMarginReq * ", conversion_column, " AS FullInitMarginReq,
+      FullMaintMarginReq * ", conversion_column, " AS FullMaintMarginReq,
+      FullExcessLiquidity * ", conversion_column, " AS FullExcessLiquidity,
+      OptionMarketValue * ", conversion_column, " AS OptionMarketValue,
+      StockMarketValue * ", conversion_column, " AS StockMarketValue,
+      UnrealizedPnL * ", conversion_column, " AS UnrealizedPnL,
+      RealizedPnL * ", conversion_column, " AS RealizedPnL,
+      TotalCashBalance * ", conversion_column, " AS TotalCashBalance,
+      CashFlow * ", conversion_column, " AS CashFlow
+  FROM AccountWithConversionRate
+  WHERE account = ?")
+
+  # Execute parameterized query
+  account_data <- DBI::dbGetQuery(conn, sql_query, params = list(account_name))
+
 
   ### If there is at least one line then do conversion date and heure
   if (nrow(account_data) != 0) {
@@ -392,8 +415,10 @@ getIBKR <- function() {
   #   sub("(\\d{2}).(\\d{2}).(\\d{4})","\\3\\2\\1",x)
   # }
 
+  exit_code = 0
+
   ### Test first if IB is available - no use to continue if not
-  if (!isIBAvailable()) return(0)
+  if (!isIBAvailable()) return(exit_code)
 
   ### Retrieve account and portfolio data in a list
   l = tdata_py$getIBKRData()
@@ -406,19 +431,24 @@ getIBKR <- function() {
   account_data = l[[1]]
 
   ### No data retrieved
-  if (nrow(account_data) == 0) return(0)
+  if (nrow(account_data) == 0) return(exit_code)
 
   ### Open connection to user DB and prepare for exit properly
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
+  ### Add Base Currency to the date
+  account_data <- dplyr::mutate(account_data, Currency = getParam("BaseCurrency"))
   safe_db_append(conn,"Account", account_data)
+
+  ### New account data retrieved properly, update exit code
+  exit_code = 1
 
   #### Process portfolio last position
   portf_data = l[[2]]
 
-  ### Test if no data then exit the function with code = 1
-  if (nrow(portf_data) == 0) return(1)
+  ### Test if no data then exit the function
+  if (nrow(portf_data) == 0) return(exit_code)
 
   ### Following Python extract, all fields are either double or character
   portf_data = dplyr::mutate(portf_data,
@@ -465,6 +495,12 @@ getIBKR <- function() {
 
   portf_data = dplyr::left_join(portf_data, open_trades_instrument, multiple="first")
 
+  ### No portfolio data to process further - this may happen if opened trades and portfolio are not in sync
+  if (nrow(portf_data) == 0) return(exit_code)
+
+  ### Now we got account + portfolio data
+  exit_code = 2
+
   portf_data = dplyr::mutate(portf_data,
                              currency = dplyr::if_else(type=="TreasuryBill", Currency, currency),
                              expdate = dplyr::if_else(type=="TreasuryBill", format(as.Date(Exp.Date,format="%d.%m.%Y"),"%Y%m%d"),
@@ -475,50 +511,16 @@ getIBKR <- function() {
 
   portf_data = dplyr::arrange(dplyr::group_by(portf_data, TradeNr), TradeNr, pos)
 
-  ### This assumes that negative position is always first as grouped by position
-  margin_ibkr_data = dplyr::summarize(portf_data,
-                               contracts = dplyr::case_match(dplyr::first(Strategy),
-                                                             "WHEEL" ~ dplyr::first(conId),
-                                                             "OFI" ~  dplyr::first(conId),
-                                                             .default = NA),
-                               margin = 0)
-
-  ### Retrieve margin data from IBKR -
-  ### for WHEEL/OFI strategies :
-  ###     margin for each contract listed (first contract in the trade)
-  margin_ibkr_contracts = margin_ibkr_data$contracts
-
-  if (!all(is.na(margin_ibkr_contracts))) {
-    non_na_margin_contracts_ind = !is.na(margin_ibkr_contracts)
-
-    ### Send to IBKR only contracts that do have margin
-    ibkr_contracts = as.character(margin_ibkr_contracts[non_na_margin_contracts_ind])
-    margin_data = tdata_py$retrieveAccountMarginData(ibkr_contracts)
-
-    ### If no data received then set exit code 2, otherwise set it to 3
-    if (length(margin_data) == 0) exit_code = 2
-    else  {
-      margin_ibkr_data$margin[non_na_margin_contracts_ind] =  margin_data
-      exit_code = 3
-    }
+  ### Add margin data
+  do_compute_margin = getParam("ComputeMargin")
+  if (!is.null(do_compute_margin) &&  do_compute_margin == "Yes") {
+    result = compute_margin_data(portf_data, exit_code)
+    exit_code = result$exit_code
+    portf_data = result$portf_data
   }
 
-  ### All margin contracts are NA - no margin data retrieved
-  else exit_code = 2
-
-
-  portf_data = dplyr::left_join(portf_data, margin_ibkr_data)
-
-  ## multiply margin data retrieved from IBKR by position (WHEEL/OFI) or compute the spread data (CS case)
-  ## All other strategies have no margin
+  ## Remove all data that cannot be stored in Portfolio table, used by compute_margin_data function
   portf_data = dplyr::mutate(portf_data,
-                             margin = dplyr::if_else(dplyr::first(marginable) == "Yes",
-                                                     dplyr::case_match(dplyr::first(Strategy),
-                                                                "CS" ~ abs(sum(multiplier*pos*strike)),
-                                                                c("WHEEL", "OFI") ~ abs(dplyr::first(pos))*dplyr::first(margin),
-                                                                .default = 0
-                                                                ),
-                                       0),
                              Strategy = NULL,
                              conId = NULL,
                              marginable = NULL,
@@ -903,3 +905,46 @@ getAccountLive <- function() {
   DBI::dbDisconnect(conn)
 }
 
+#'@keywords internal
+compute_margin_data <- function(portf_data, exit_code) {
+
+  ### This assumes that negative position is always first as grouped by position
+  margin_ibkr_data = dplyr::summarize(portf_data,
+                                      contracts = dplyr::case_match(dplyr::first(Strategy),
+                                                                    "WHEEL" ~ dplyr::first(conId),
+                                                                    "OFI" ~  dplyr::first(conId),
+                                                                    .default = NA),
+                                      margin = 0)
+
+  ### Retrieve margin data from IBKR -
+  ### for WHEEL/OFI strategies :
+  ###     margin for each contract listed (first contract in the trade)
+  margin_ibkr_contracts = margin_ibkr_data$contracts
+
+  if (!all(is.na(margin_ibkr_contracts))) {
+    non_na_margin_contracts_ind = !is.na(margin_ibkr_contracts)
+
+    ### Send to IBKR only contracts that do have margin
+    ibkr_contracts = as.character(margin_ibkr_contracts[non_na_margin_contracts_ind])
+    margin_data = tdata_py$retrieveAccountMarginData(ibkr_contracts)
+
+    ### If data received then process and set exit code to 3
+    if (length(margin_data) != 0) {
+      margin_ibkr_data$margin[non_na_margin_contracts_ind] =  margin_data
+
+      portf_data = dplyr::left_join(portf_data, margin_ibkr_data)
+      portf_data = dplyr::mutate(portf_data,
+                                 margin = dplyr::if_else(dplyr::first(marginable) == "Yes",
+                                                         dplyr::case_match(dplyr::first(Strategy),
+                                                                           "CS" ~ abs(sum(multiplier*pos*strike)),
+                                                                           c("WHEEL", "OFI") ~ abs(dplyr::first(pos))*dplyr::first(margin),
+                                                                           .default = 0
+                                                         ),
+                                                         0))
+      exit_code = 3
+    }
+  }
+
+  ### exit_code may be left unchanged if no margin data retrieved
+  return(list(exit_code = exit_code, portf_data = portf_data))
+}
