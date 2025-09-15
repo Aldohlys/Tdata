@@ -94,16 +94,18 @@ test_that("Convert to CHF a vector of USD and EUR using historical data", {
   expect_true(all(result > 0))
 })
 
-test_that("Convert to USD works with only one date", {
-  expect_error(
-    convert_to_usd_date(c(1000, 2000), c("EUR", "EUR"), c(as.Date("2023-12-03"),as.Date("2023-12-04")))
-  )
+test_that("Convert to USD works with multiple dates", {
+  result = convert_to_usd_date(c(1000, 2000), c("EUR", "EUR"), c(as.Date("2023-12-03"),as.Date("2023-12-04")))
+  expect_equal(length(result), 2)
+  expect_true(all(is.numeric(result)))
+  expect_true(all(result > 0))
 })
 
-test_that("Convert to CHF works with only one date", {
-  expect_error(
-    convert_to_chf_date(c(1000, 2000), c("EUR", "EUR"), c(as.Date("2023-12-03"), as.Date("2023-12-04")))
-  )
+test_that("Convert to CHF works with multiple dates", {
+  result = convert_to_chf_date(c(1000, 2000), c("EUR", "EUR"), c(as.Date("2023-12-03"), as.Date("2023-12-04")))
+  expect_equal(length(result), 2)
+  expect_true(all(is.numeric(result)))
+  expect_true(all(result > 0))
 })
 
 #### Test c_to_usd and c_to_chf functions ####
@@ -264,4 +266,75 @@ test_that("convert_to_base_date converts to base currency for specific date", {
   # Test vectorized currencies
   result_vector <- convert_to_base_date(c(100, 200), c("EUR", "USD"), as.Date("2023-11-20"))
   expect_equal(length(result_vector), 2)
+})
+
+# Additional test cases for convert_to_chf_date
+test_that("convert_to_chf_date handles edge cases and complex scenarios", {
+  # Test 1: Mixed recycling with single amount, multiple currencies and dates
+  result1 <- convert_to_chf_date(
+    amount = 1500,
+    currency = c("EUR", "USD"),
+    convert_date = c(as.Date("2023-06-15"), as.Date("2023-07-20"))
+  )
+  expect_equal(length(result1), 2)
+  expect_true(all(is.numeric(result1)))
+  expect_true(all(result1 > 0))
+
+  # Test 2: Multi-currency stress test with known currencies
+  result2 <- convert_to_chf_date(
+    amount = c(100, 200, 300, 400, 500),
+    currency = c("EUR", "USD", "CAD", "HKD", "CHF"),
+    convert_date = as.Date("2023-01-15")
+  )
+  expect_equal(length(result2), 5)
+  expect_true(all(is.numeric(result2)))
+  expect_true(all(result2 > 0))
+  expect_equal(result2[5], 500)  # CHF to CHF should be unchanged
+})
+
+# Additional test cases for convert_to_usd_date
+test_that("convert_to_usd_date handles edge cases and complex scenarios", {
+  # Test 1: Zero and small amounts with known currencies
+  result1 <- convert_to_usd_date(
+    amount = c(0, 50.25, 250.75),
+    currency = c("CHF", "EUR", "CAD"),
+    convert_date = as.Date("2023-05-15")
+  )
+  expect_equal(length(result1), 3)
+  expect_true(is.numeric(result1[1]) && result1[1] == 0)  # Zero amount stays zero
+  expect_true(is.numeric(result1[2]) && result1[2] > 0)   # EUR amount converts
+  expect_true(is.numeric(result1[3]) && result1[3] > 0)   # CAD amount converts
+
+  # Test 2: All available currencies with mixed date formats
+  result2 <- convert_to_usd_date(
+    amount = c(1000, 2000, 3000, 4000),
+    currency = c("CHF", "EUR", "CAD", "HKD"),
+    convert_date = c("20200315", 20200316, as.Date("2020-03-17"), "20200318")
+  )
+  expect_equal(length(result2), 4)
+  expect_true(all(is.numeric(result2)))
+  expect_true(all(result2 > 0))
+})
+
+# Additional test case for convert_to_base_date
+test_that("convert_to_base_date handles base currency switching and complex scenarios", {
+  # Test 1: Verify base currency delegation with HKD and CAD
+  result_base <- convert_to_base_date(
+    amount = c(1000, 2000),
+    currency = c("HKD", "CAD"),
+    convert_date = as.Date("2023-03-15")  # Single date recycled to match vectors
+  )
+  expect_equal(length(result_base), 2)
+  expect_true(all(is.numeric(result_base)))
+  expect_true(all(result_base > 0))
+
+  # Test 2: Test all available currencies with single date
+  result_all_currencies <- convert_to_base_date(
+    amount = c(500, 750, 1000, 1250, 1500),
+    currency = c("CHF", "EUR", "USD", "CAD", "HKD"),
+    convert_date = as.Date("2023-02-15")
+  )
+  expect_equal(length(result_all_currencies), 5)
+  expect_true(all(is.numeric(result_all_currencies)))
+  expect_true(all(!is.na(result_all_currencies)))
 })

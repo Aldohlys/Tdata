@@ -616,7 +616,7 @@ convert_to_base_date <- function(amount, currency, convert_date = Sys.Date()) {
 
 #' convert_to_chf_date
 #'
-#' Converts currency amounts to CHF for specific date
+#' Converts currency amounts to CHF for specific date(s). Can be vectorized using \link{vctrs}, i.e. tidyverse rules.
 #'
 #' @param amount numeric or vector - amounts to convert
 #' @param currency string or vector - currency codes
@@ -624,37 +624,86 @@ convert_to_base_date <- function(amount, currency, convert_date = Sys.Date()) {
 #' @export
 convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
 
-  if (length(convert_date) != 1) stop("convert_date must be of length 1!")
+  # Apply vctrs recycling rules to inputs
+  recycled <- vctrs::vec_recycle_common(amount = amount,
+                                        currency = currency,
+                                        convert_date = convert_date)
 
-  result <- data.frame(amount = amount, currency = currency)
-  numeric_date <- numeric(0)
+  amount <- recycled$amount
+  currency <- recycled$currency
+  convert_date <- recycled$convert_date
 
-  # Convert date to numeric format
-  if (is.numeric(convert_date)) numeric_date <- convert_date
-  else if (inherits(convert_date, "Date")) numeric_date <- as.numeric(format(convert_date, "%Y%m%d"))
-  else if (is.character(convert_date)) numeric_date <- as.numeric(convert_date)
+  # Convert dates to numeric format - handle each element individually
+  numeric_date <- vapply(convert_date, function(x) {
+    if (is.numeric(x)) {
+      as.numeric(x)  # Already numeric, use as-is
+    } else if (inherits(x, "Date")) {
+      as.numeric(format(x, "%Y%m%d"))  # Convert Date to YYYYMMDD
+    } else if (is.character(x)) {
+      as.numeric(x)  # Convert character to numeric
+    } else {
+      NA_real_
+    }
+  }, FUN.VALUE = numeric(1))
 
-  # Get all CHF conversion rates
-  chf <- getAllCurrenciesCHFValues()
+  # Get unique currency/date combinations for efficient querying
+  unique_lookups <- unique(data.frame(currency = currency, date = numeric_date))
 
-  # Find nearest date for each currency
-  chf <- chf |>
-    dplyr::group_by(currency) |>
-    dplyr::slice_min(abs(date - numeric_date), n = 1) |>  # Minimum date difference
-    dplyr::slice_head(n = 1) |>  # Remove duplicates (oldest if tie)
-    dplyr::ungroup() |>
-    dplyr::select(currency, chf_value)
+  # Handle empty case
+  if (nrow(unique_lookups) == 0) {
+    return(numeric(0))
+  }
 
-  # Create lookup with CHF hardcoded
-  currency_rates <- setNames(chf$chf_value, chf$currency)
-  currency_rates["CHF"] <- 1.0  # CHF to CHF rate
+  logger::log_debug("Unique lookups: {nrow(unique_lookups)} rows", namespace = "Tdata")
 
-  # Vectorized conversion
-  rates <- currency_rates[currency]
-  return(as.numeric(amount * rates))
+  # Connect to database and execute optimized SQL query
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn))  # Ensure connection cleanup
+
+  # Alternative approach: Use temp table which is more reliable
+  temp_table_name <- paste0("temp_lookup_", as.integer(Sys.time()), "_", sample(1000:9999, 1))
+  DBI::dbWriteTable(conn, temp_table_name, unique_lookups, temporary = TRUE)
+
+  logger::log_debug("Created temp table: {temp_table_name}", namespace = "Tdata")
+
+  # Use simple query with temp table
+  query <- sprintf("
+    WITH ranked_rates AS (
+      SELECT
+        l.currency,
+        l.date as lookup_date,
+        c.chf_value,
+        ROW_NUMBER() OVER (
+          PARTITION BY l.currency, l.date
+          ORDER BY ABS(c.date - l.date), c.date
+        ) as rn
+      FROM %s l
+      JOIN ConvertToCHF c ON c.currency = l.currency
+    )
+    SELECT currency, lookup_date, chf_value
+    FROM ranked_rates
+    WHERE rn = 1",
+                   temp_table_name)
+
+  logger::log_debug("Generated query: {query}", namespace = "Tdata")
+
+  chf_rates <- DBI::dbGetQuery(conn, query)
+
+  # Create lookup table with CHF hardcoded
+  lookup_table <- chf_rates |>
+    dplyr::bind_rows(
+      data.frame(currency = "CHF",
+                 lookup_date = unique(numeric_date),
+                 chf_value = 1.0)  # CHF to CHF rate
+    )
+
+  # Join rates back to original vectors
+  result_df <- data.frame(currency = currency, date = numeric_date, amount = amount) |>
+    dplyr::left_join(lookup_table, by = c("currency", "date" = "lookup_date"))
+
+  # Return vectorized conversion maintaining input order
+  return(as.numeric(result_df$amount * result_df$chf_value))
 }
-
-
 #'  convert_to_usd_date
 #'
 #' This function converts the amount of currency into USD, using CAD, EUR and CHF currency pairs values for a given date
@@ -664,9 +713,10 @@ convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
 #'
 #' Last it calls the convert_to_usd function.
 #'
-#' This function can be vectorized for \code{amount} and \code{currency}, but \code{date} MUST be unique.
-#'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF, CAD, etc..
-#'@param convert_date Can be a date, or character, or integer(numeric). By default it is today.
+#' This function can be vectorized for \code{amount}, \code{currency}, and \code{date}.
+#'@param amount is the number to be converted
+#'@param currency is a string whose value is either EUR, CHF, CAD, etc..
+#'@param convert_date can be a date, or character, or integer(numeric). By default it is today.
 #'If type is character/date, then \code{convert_date} argument will be first converted to an integer type with Y/M/D format,
 #'this is the format in CurrencyPairs DB table
 #'@keywords currency trading
@@ -679,49 +729,94 @@ convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
 #'convert_to_usd_date(c(10000,500),c("CHF","EUR"),as.Date("2021-01-09"))
 #'convert_to_usd_date(c(750.543,10),c("USD","EUR"),as.Date("2023-12-03"))
 #'convert_to_usd_date(c(750.543,10),"EUR",as.Date("2023-12-03"))
+#'convert_to_usd_date(10,c("CHF","EUR"),c(as.Date("2025-06-03"), Sys.Date()))
+#'convert_to_usd_date(10,"CHF",c(as.Date("2025-06-03"), Sys.Date()))
 #'}
 #'@export
-convert_to_usd_date = function(amount, currency, convert_date = Sys.Date()) {
+convert_to_usd_date <- function(amount, currency, convert_date = Sys.Date()) {
 
-  if (length(convert_date) != 1) stop("convert_date must be of length 1!")
-
+  # Apply vctrs recycling rules to inputs
   ### If currency is of length 1 - it will be recycled
   ### If amount is of length 1 - it will be recycled
+  ### If convert_date is of length 1 - it will be recycled
   #### tidyverse rules should apply :
   ####  Recycling describes the concept of repeating elements of one vector to match the size of another.
   #### There are two rules that underlie the tidyverse recycling rules:
   #### -  Vectors of size 1 will be recycled to the size of any other vector
   #### - Otherwise, all vectors must have the same size
-  result = data.frame(amount = amount, currency = currency)
-  numeric_date = numeric(0)
+  recycled <- vctrs::vec_recycle_common(amount = amount,
+                                        currency = currency,
+                                        convert_date = convert_date)
 
-  ### If convert_date is of Date type or character type then convert it
-  if (is.numeric(convert_date)) numeric_date <- convert_date
-  else if (inherits(convert_date,"Date")) numeric_date <- as.numeric(format(convert_date,"%Y%m%d"))
-  else if (is.character(convert_date)) numeric_date <- as.numeric(convert_date)
+  amount <- recycled$amount
+  currency <- recycled$currency
+  convert_date <- recycled$convert_date
 
-  ### Retrieve all currency pairs since beginning
-  ### It is assumed here that dates are stored in integer/character format in CurrencyPairs table
-  usd = getAllCurrenciesUSDValues()
+  # Convert dates to numeric format - handle each element individually
+  numeric_date <- vapply(convert_date, function(x) {
+    if (is.numeric(x)) {
+      as.numeric(x)  # Already numeric, use as-is
+    } else if (inherits(x, "Date")) {
+      as.numeric(format(x, "%Y%m%d"))  # Convert Date to YYYYMMDD
+    } else if (is.character(x)) {
+      as.numeric(x)  # Convert character to numeric
+    } else {
+      NA_real_
+    }
+  }, FUN.VALUE = numeric(1))
 
-  ### This works only if date is of length 1
-  ### if date is not recorded yet, it will provide the values of yesterday or before
-  ### If it falls on a closed day and day before and after are business days, then it provides the oldest day
-  # Find nearest date for each currency using vectorized operations
-  usd <- usd |>
-    dplyr::group_by(currency) |>
-    dplyr::slice_min(abs(date - numeric_date), n = 1) |>  # Get row with minimum date difference
-    dplyr::slice_head(n = 1) |>  # Remove duplicates (take first/oldest if tie)
-    dplyr::ungroup() |>
-    dplyr::select(currency, usd_value)
 
-  # Create lookup vector with USD hardcoded
-  currency_rates <- setNames(usd$usd_value, usd$currency)
-  currency_rates["USD"] <- 1.0  # Add USD rate directly
+  # Get unique currency/date combinations for efficient querying
+  unique_lookups <- unique(data.frame(currency = currency, date = numeric_date))
 
-  # Vectorized lookup and calculation
-  rates <- currency_rates[currency]  # Direct vector indexing
-  return(as.numeric(amount * rates))
+  # Handle empty case
+  if (nrow(unique_lookups) == 0) {
+    return(numeric(0))
+  }
+  # Connect to database and execute optimized SQL query
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn))  # Ensure connection cleanup
+
+
+  # Alternative approach: Use temp table which is more reliable
+  temp_table_name <- paste0("temp_lookup_", as.integer(Sys.time()), "_", sample(1000:9999, 1))
+  DBI::dbWriteTable(conn, temp_table_name, unique_lookups, temporary = TRUE)
+
+  # Use simple query with temp table
+  query <- sprintf("
+    WITH ranked_rates AS (
+      SELECT
+        l.currency,
+        l.date as lookup_date,
+        c.usd_value,
+        ROW_NUMBER() OVER (
+          PARTITION BY l.currency, l.date
+          ORDER BY ABS(c.date - l.date), c.date
+        ) as rn
+      FROM %s l
+      JOIN ConvertToUSD c ON c.currency = l.currency
+    )
+    SELECT currency, lookup_date, usd_value
+    FROM ranked_rates
+    WHERE rn = 1",
+  temp_table_name)
+
+  usd_rates <- DBI::dbGetQuery(conn, query)
+
+  # Create lookup table with USD hardcoded
+  lookup_table <- usd_rates |>
+    dplyr::bind_rows(
+      data.frame(currency = "USD",
+                 lookup_date = unique(numeric_date),
+                 usd_value = 1.0)  # USD to USD rate
+    )
+
+  # Join rates back to original vectors
+  result_df <- data.frame(currency = currency, date = numeric_date, amount = amount) |>
+    dplyr::left_join(lookup_table, by = c("currency", "date" = "lookup_date"))
+
+  # Return vectorized conversion maintaining input order
+  return(as.numeric(result_df$amount * result_df$usd_value))
 }
 
 
