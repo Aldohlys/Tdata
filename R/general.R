@@ -9,7 +9,7 @@
 #'@return A vector of characters sorted by alphabetical order, equal to the list of current strategies
 #'@export
 getStrategies = function() {
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   strategies = DBI::dbReadTable(conn, "Strategies")
   DBI::dbDisconnect(conn)
 
@@ -25,7 +25,7 @@ getStrategies = function() {
 #'@export
 getParam <- function(name) {
   ### Look at DB
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
   record <- DBI::dbGetQuery(conn, "SELECT Value FROM Param WHERE Name = ?", params=list(name))
@@ -47,7 +47,7 @@ getParam <- function(name) {
 #'@export
 setParam <- function(name, value=NULL) {
   ### Look at DB
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
   record <- DBI::dbGetQuery(conn, "SELECT Value FROM Param WHERE Name = ?", params=list(name))
@@ -103,7 +103,7 @@ setParam <- function(name, value=NULL) {
 listParam <- function() {
 
   ### Look at DB
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
   df <- DBI::dbGetQuery(conn, "SELECT * FROM Param ORDER BY Name")

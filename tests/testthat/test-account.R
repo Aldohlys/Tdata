@@ -1,3 +1,4 @@
+
 test_that("readPortfolio DU5221795 returns some data and columns are all authorized names", {
   expect_true({
     portf=readPortfolio("DU5221795")

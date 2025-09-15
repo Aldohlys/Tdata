@@ -15,7 +15,7 @@
 readJournal <- function(windowDate = NA) {
   ## Look at current date - 365 (1 year ago)
   if (is.na(windowDate)) windowDate = suppressWarnings(as.integer(format(Sys.Date() - 365,"%Y%m%d")))
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   journal = DBI::dbGetQuery(conn, "SELECT * FROM Journal WHERE date >= ?", list(windowDate))
   DBI::dbDisconnect(conn)
   journal
@@ -31,7 +31,7 @@ readJournal <- function(windowDate = NA) {
 #'}
 #'@export
 readJournalMaxEntryId <- function() {
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   maxId <- DBI::dbGetQuery(conn, "SELECT MAX(entryId) FROM Journal")
   DBI::dbDisconnect(conn)
   suppressWarnings(as.integer(maxId))
@@ -45,7 +45,7 @@ readJournalMaxEntryId <- function() {
 #' sym	close	change	mkt_price	mkt_change text}
 #'@export
 writeJournalEntry <- function(entry) {
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   status <- safe_db_append(conn, "Journal", entry)
   DBI::dbDisconnect(conn)
   status
@@ -125,7 +125,7 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
     params <- append(params, list(entryId))
     t_log_debug("EntryId added: {paste(unlist(params), collapse=\" \")}")
 
-    conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+    conn <- safe_db_connect()
     on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
     ### In case DB cannot be accessed - locked for instance
@@ -148,7 +148,7 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
 #'@export
 deleteJournalEntry <- function(entryId) {
   t_log_debug("deleteJournalentry: entryId {entryId}")
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   status <- DBI::dbExecute(conn, "DELETE FROM Journal WHERE entryId = ?;",
                            params=list(entryId))
   DBI::dbDisconnect(conn)

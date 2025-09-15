@@ -1,5 +1,6 @@
 #' Populate ConvertToCHF table with historical data from 2021
 #' Uses getYahooData to fetch historical currency rates
+#' @keywords internal
 populate_chf_historical_data <- function() {
 
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
@@ -219,11 +220,8 @@ populate_chf_historical_data <- function() {
   logger::log_info("CHF historical data population completed!", namespace = "Tdata")
 }
 
-# Execute the population (uncomment to run)
-# populate_chf_historical_data()
-
-
 # After the main populate function, manually fetch the problem period:
+#' @keywords internal
 manual_fetch_problem_dates <- function() {
   problem_start <- as.Date("2024-07-08")
   problem_end <- as.Date("2025-01-08")
@@ -246,6 +244,7 @@ manual_fetch_problem_dates <- function() {
   }
 }
 
+#' @keywords internal
 fill_missing_march_april_2025 <- function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
@@ -321,6 +320,7 @@ fill_missing_march_april_2025 <- function() {
   }
 }
 
+#' @keywords internal
 fill_usd_march_april_gap <- function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
@@ -386,6 +386,7 @@ fill_usd_march_april_gap <- function() {
   logger::log_info("USD coverage for March-April: {coverage$usd_count} records", namespace = "Tdata")
 }
 
+#' @keywords internal
 fill_cad_march_april_gap <- function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
@@ -446,6 +447,7 @@ fill_cad_march_april_gap <- function() {
   }
 }
 
+#' @keywords internal
 fill_hkd_march_april_gap <- function() {
   # Similar structure for HKD using "USDHKD=X"
   # Same logic but with currency = "HKD"
@@ -510,6 +512,7 @@ fill_hkd_march_april_gap <- function() {
 
 }
 
+#' @keywords internal
 fill_eur_march_april_gap <- function() {
   conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
   on.exit(DBI::dbDisconnect(conn), add = TRUE)

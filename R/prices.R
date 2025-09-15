@@ -431,7 +431,7 @@ getStockPrice = function(sym = NULL, close = FALSE) {
 #'}
 #'@export
 getStoredMetrics = function(name) {
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
   # Check if name is a vector with multiple elements

@@ -23,7 +23,7 @@ saveTrades = function(trades) {
   # utils::write.table(trades,file=paste0(config::get("DirNewTrading"),"Trades.csv"),append=F,
   #             col.names=TRUE,row.names=FALSE,sep=";",dec=".",quote=TRUE)
 
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   safe_db_write(conn, "Trades", trades, #### This will overwrite table in DB
                     field.types=c("TradeNr"=	"INTEGER","TradeDate"	= "INTEGER",
                                   "Pos"	= "INTEGER",
@@ -50,7 +50,7 @@ saveTrades = function(trades) {
 #'@export
 getAllTrades = function() {
   ### Read all trades from DB
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   alltrades = DBI::dbReadTable(conn, "Trades")
   DBI::dbDisconnect(conn)
 
@@ -63,7 +63,7 @@ getAllTrades = function() {
 
 ### Not to be exported - for test purposes
 getActiveTradeQuery <- function(account) {
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   activetrades = DBI::dbGetQuery(conn,
                                  "Select * from Trades WHERE Statut != 'Ferm\U00e9' AND Account = ?",
                                  params=list(account))
@@ -129,7 +129,7 @@ getClosedTrades = function(account, windowDate = Sys.Date()-200) {
   ### Transform windowDate from Date to integer
   windowDate = as.numeric(format(windowDate,"%Y%m%d"))
 
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   closed_trades = DBI::dbGetQuery(conn,
                                  "Select * from Trades WHERE Statut = 'Ferm\U00e9' AND Account = ? AND TradeDate >= ?",
                                  params=list(account, windowDate))
@@ -237,7 +237,7 @@ getInstrument <- function(tradenr, instrument) {
 
 
   ### Open connection with DB to query trades table in get_init_info
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
 
   ### Recycle account up to instrument length
   if (length(tradenr) == 1) tradenr = rep(tradenr, length(instrument))
@@ -305,7 +305,7 @@ getTradeDataQuery <- function(conn, params) {
 #'@export
 getTradeData = function(TradeNr) {
   ### Get the list of all trade numbers currently active
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   ### getTradeQuery returns a list
   trade_data <- getTradeDataQuery(conn, TradeNr)
   DBI::dbDisconnect(conn)
@@ -325,7 +325,7 @@ getTradeData = function(TradeNr) {
 #'@export
 isTradeOpened = function(TradeNr) {
   ### Get the list of all trade numbers currently active
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   ### getTradeQuery returns a list
   active_trade_nr <- getTradeQuery(conn)[[1]]
   DBI::dbDisconnect(conn)

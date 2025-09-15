@@ -335,7 +335,7 @@ getVolMetrics <- function(sym_list) {
     return(NA)
   }
 
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
   purrr::walk(sym_list, \(sym) {

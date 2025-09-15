@@ -223,6 +223,88 @@ validate_prices_data <- function(data) {
   return(data)
 }
 
+#' Safe Database Connection
+#'
+#' Creates a secure database connection with comprehensive error handling and
+#' package check protection. This function centralizes database connection logic
+#' and prevents connection attempts during package installation or checking.
+#'
+#' @details
+#' This function performs several validation checks before establishing a database connection:
+#' \itemize{
+#'   \item Skips connection during R CMD check to prevent installation warnings
+#'   \item Validates configuration file existence
+#'   \item Verifies database file accessibility
+#'   \item Provides informative error messages for troubleshooting
+#' }
+#'
+#' The function uses the database path specified in the configuration file via
+#' \code{config::get("DB")}. Configuration files are searched in the current
+#' working directory and package installation directory.
+#'
+#' @return A DBI connection object to the SQLite database
+#'
+#' Error if:
+#' \itemize{
+#'   \item Called during package check (returns specific error message)
+#'   \item Configuration file is missing
+#'   \item Database file doesn't exist at specified path
+#'   \item Database connection fails
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Establish database connection
+#' conn <- safe_db_connect()
+#'
+#' # Use connection for queries
+#' result <- DBI::dbGetQuery(conn, "SELECT * FROM currencies LIMIT 5")
+#'
+#' # Always close connection when done
+#' DBI::dbDisconnect(conn)
+#'
+#' # Better practice - use on.exit for cleanup
+#' conn <- safe_db_connect()
+#' on.exit(DBI::dbDisconnect(conn), add = TRUE)
+#' data <- DBI::dbReadTable(conn, "currencies")
+#' }
+#'
+#' @seealso
+#' \code{\link[DBI]{dbConnect}} for direct database connections
+#' \code{\link[config]{get}} for configuration management
+#'
+#' @export
+safe_db_connect <- function() {
+  if (Sys.getenv("_R_CHECK_PACKAGE_NAME_", "") != "" &&
+      !identical(Sys.getenv("TESTTHAT"), "true")) {
+    stop("Database operations not available during package check", call. = FALSE)
+  }
+  # ALSO skip during package installation
+  if (Sys.getenv("R_PACKAGE_NAME", "") != "") {
+    stop("Database operations not available during package installation", call. = FALSE)
+  }
+
+  # Let config package handle finding the config file - it knows about R_CONFIG_FILE
+  # No need for manual file.exists() check
+
+  # Retrieve database path from configuration
+  db_path <- config::get("DB")
+
+  # Validate database file exists at specified path
+  if (!file.exists(db_path)) {
+    stop("Database not found at ", db_path,
+         ". Please initialize database with setup_database().",
+         call. = FALSE)
+  }
+
+  # Establish database connection
+  tryCatch({
+    DBI::dbConnect(RSQLite::SQLite(), db_path)
+  }, error = function(e) {
+    stop("Failed to connect to database: ", e$message, call. = FALSE)
+  })
+}
+
 #' Safe database write with type validation
 #'
 #' This function validates data types before writing to database to prevent

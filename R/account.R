@@ -17,7 +17,7 @@
 readAccount = function(account_name) {
 
   #### Open database and prepare disconnection
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add= TRUE)
 
   ### account	date	heure
@@ -98,7 +98,7 @@ readAccount = function(account_name) {
 readPortfolio = function(portfname) {
   message("readPortfolio")
 
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
 
   #### Check if requested portfolio is present in DB (e.g. Live portfolio does not exist)
   name = DBI::dbGetQuery(conn,"SELECT name FROM sqlite_master WHERE type='table' AND name=?",params=list(portfname))
@@ -158,7 +158,7 @@ readPortfolio = function(portfname) {
 readPortfolioDate = function(portfname, date) {
   message("readPortfolioDate")
 
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
 
   #### Check if requested portfolio is present in DB (e.g. Live portfolio does not exist)
   name = DBI::dbGetQuery(conn,"SELECT name FROM sqlite_master WHERE type='table' AND name=?",params=list(portfname))
@@ -215,7 +215,7 @@ readPortfolioDate = function(portfname, date) {
 readLastPortfolio <- function(portfname) {
   # ### retrieve last recorded (date, time) - Other possible implementation
   message("readLastPortfolio")
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
 
   #### Check if requested portfolio is present in DB (e.g. Live portfolio does not exist)
   name = DBI::dbGetQuery(conn,"SELECT name FROM sqlite_master WHERE type='table' AND name=?",params=list(portfname))
@@ -434,7 +434,7 @@ getIBKR <- function() {
   if (nrow(account_data) == 0) return(exit_code)
 
   ### Open connection to user DB and prepare for exit properly
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   ### Add Base Currency to the date
@@ -561,7 +561,7 @@ getIBKR <- function() {
 #' @export
 getIBKRActiveCurrencyValues <- function() {
   ### Open connection to user DB
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   ### Skip USD, CHF and all inactive currencies
@@ -763,7 +763,7 @@ getGonet <- function() {
   ### store prices in .CSV / DB
   ## Make them available for other functions
   ### Open connection to user DB
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   safe_db_append(conn,"Gonet", portf)
   ### Non NaN prices already been stored in DB by getIBKRMetrics function - so only price_user need to be stored in DB
   safe_db_append(conn,"Prices", price_user)
@@ -836,7 +836,7 @@ getAccountGonet <- function() {
     ####  FullMaintMarginReq;FullExcessLiquidity;OptionMarketValue;StockMarketValue;
     ####  UnrealizedPnL;RealizedPnL;TotalCashBalance;CashFlow
     acc = dplyr::select(acc, dplyr::all_of(account.var))
-    conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+    conn <- safe_db_connect()
     safe_db_append(conn,"Account",acc)
     DBI::dbDisconnect(conn)
 }
@@ -864,7 +864,7 @@ getAccountLive <- function() {
 
   ### Processes only data that is posterior to s_date - so it can be used on a regular basis (every day or so)
 
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   account_d <- DBI::dbReadTable(conn,"Account")
 
   ### No need to transform date format, comparison done using character comparison

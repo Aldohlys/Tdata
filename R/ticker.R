@@ -14,7 +14,7 @@
 #'}
 #'@export
 getAllTickers = function() {
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   tickers = DBI::dbReadTable(conn, "Tickers")
@@ -46,7 +46,7 @@ getAllTickers = function() {
 addTicker <- function(name, yahoo_name, sector, trading_class, multiplier = 100, type="STK",
                       currency="USD", exchange="SMART", opt_exchange="SMART", IV="YES", expiration = "") {
 
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   ticker = DBI::dbGetQuery(conn,
@@ -129,7 +129,7 @@ updateTicker <- function(name) {
   rows_affected <- 0
 
   ### Open connection and prepare when exiting function
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   sql <- "UPDATE Tickers
@@ -218,7 +218,7 @@ updateTicker <- function(name) {
 #'}
 #'@export
 getTickers <- function(name) {
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   # Check if name is a vector with multiple elements
@@ -266,7 +266,7 @@ getTickers <- function(name) {
 #'@export
 getTicker <- function(name) {
 
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   # Check if name is a vector with multiple elements
@@ -298,7 +298,7 @@ getTicker <- function(name) {
 #'}
 #'@export
 removeTicker = function(name) {
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   # Delete the row where Name equals ticker
@@ -380,7 +380,7 @@ getYahooName <- function(sym) {
 #'}
 #'@export
 setTicker = function(Name, ...) {
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   params <- update_ticker_params(Name, ...)

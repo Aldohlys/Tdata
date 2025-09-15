@@ -92,7 +92,7 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
                          by = dplyr::join_by(sym == symbol))
 
       tryCatch({
-        myconn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+        myconn <- safe_db_connect()
         on.exit(DBI::dbDisconnect(myconn), add=TRUE)
         safe_db_append(myconn, "Prices", LastIBKRPrice)
       },

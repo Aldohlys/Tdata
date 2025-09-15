@@ -92,7 +92,7 @@ getInterestRates <- function(update_db = TRUE) {
 updateDBRates <- function(rates) {
   # Connect to database using config
   tryCatch({
-    myconn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+    myconn <- safe_db_connect()
     on.exit(DBI::dbDisconnect(myconn), add = TRUE)
 
     # Process each currency
@@ -148,7 +148,7 @@ updateDBRates <- function(rates) {
 getAllTenors <- function(currency="All") {
   tryCatch({
     # Connect to database
-    myconn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+    myconn <- safe_db_connect()
     on.exit(DBI::dbDisconnect(myconn), add = TRUE)
 
     ### If currency is provided or different from "All", verify that currency exists in DB and is active
@@ -214,7 +214,7 @@ getAllTenors <- function(currency="All") {
 getLastRate <- function(currency, DTE=30) {
   tryCatch({
     # Connect to database
-    myconn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+    myconn <- safe_db_connect()
     on.exit(DBI::dbDisconnect(myconn), add = TRUE)
 
     # Query the specific rate and update date

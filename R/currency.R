@@ -23,7 +23,7 @@
 getCurrencyAttrib <- function(currency) {
 
   ### Look at DB
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
   currency_detail <- DBI::dbGetQuery(conn, "SELECT * FROM Currencies WHERE Name = ?", params=list(currency))
@@ -37,7 +37,7 @@ getCurrencyAttrib <- function(currency) {
 #'
 #' Internal function to retrieve all currency values in CHF from DB
 getAllCurrenciesCHFValues <- function() {
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   all_values <- DBI::dbReadTable(conn, "ConvertToCHF")
@@ -48,7 +48,7 @@ getAllCurrenciesCHFValues <- function() {
 #'
 #' Internal function to retrieve all currency values in USD from DB
 getAllCurrenciesUSDValues = function() {
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   all_values <- DBI::dbReadTable(conn, "ConvertToUSD")
@@ -63,7 +63,7 @@ getAllCurrenciesUSDValues = function() {
 #' @returns data frame with date, currency, chf_value fields
 #' @export
 getStoredCHFValue <- function(currency) {
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   placeholders <- paste(rep("?", length(currency)), collapse = ",")
@@ -109,7 +109,7 @@ getStoredCHFValue <- function(currency) {
 #'}
 #'@export
 getStoredUSDValue = function(currency) {
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   placeholders <- paste(rep("?", length(currency)), collapse = ",")
@@ -162,7 +162,7 @@ getLastCHFValue <- function(currency) {
   # Process other currencies normally
   if (length(other_currencies) > 0) {
     Tbasics::display_message("Retrieve currencies from DB...")
-    conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+    conn <- safe_db_connect()
     on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
     # Get currency details including DirectConversion flag
@@ -308,7 +308,7 @@ getLastUSDValue = function(currency) {
   }
 
   Tbasics::display_message("Retrieve currencies from DB...")
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
   # Create placeholders for IN clause based on vector length
@@ -389,15 +389,17 @@ getLastUSDValue = function(currency) {
 #'@param currency a string or a vector of strings - possible values are EUR, CHF,...
 #'@returns a character or a vector of characters
 #'@examples
+#'\dontrun{
 #'currency_sign("USD")
 #'currency_sign("EUR")
 #'currency_sign("CAD")
 #'currency_sign(c("CHF", "USD"))
+#'}
 #'@export
 currency_sign <- function(currency) {
 
   ### Open connection to DB
-  conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+  conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
   # Create temporary table with currency (preserving duplicates)
@@ -426,12 +428,14 @@ currency_sign <- function(currency) {
 
 #'@param amount is the number to be converted, can be also a character if convertible into a number
 #'@examples
+#'\dontrun{
 #'base_currency_format(100.45)
 #'base_currency_format(10000)
 #'base_currency_format(1000)
 #'base_currency_format(758.458)
 #'base_currency_format(100000.455)
 #'base_currency_format(c(100,40))
+#'}
 #'@export
 base_currency_format <- function(amount) {
   tryCatch(
@@ -479,6 +483,7 @@ base_currency_format <- function(amount) {
 #'@param amount is the number to be displayed, can be also a character if convertible into a number
 #'If length(currency) is 1, then it is recycled
 #'@examples
+#'\dontrun{
 #'currency_format(100.45,"EUR")
 #'currency_format(10000,"CHF")
 #'currency_format(1000,"CAD")
@@ -486,6 +491,7 @@ base_currency_format <- function(amount) {
 #'currency_format(100000.455,"EUR")
 #'currency_format(c(100,40),c("EUR","USD"))
 #'currency_format(c(100,40),"EUR")
+#'}
 #'@export
 currency_format = function(amount, currency){
   #Returns the amount values formatted with their respective currency sign, based on the currency argument
@@ -537,10 +543,12 @@ currency_format = function(amount, currency){
 #' @param currency string or vector - currency codes (EUR, USD, CAD...)
 #' @return double, amount in base currency
 #' @examples
+#'\dontrun{
 #' c_to_base(100.45,"EUR")
 #' c_to_base(c(10000,500),c("CHF","EUR"))
 #' c_to_base(c(750.543,10),c("USD","EUR"))
 #' c_to_base(c(500,10),c("CAD","EUR"))
+#' }
 #' @export
 c_to_base <- function(amount, currency) {
   base_currency <- getParam("BaseCurrency")
@@ -575,10 +583,12 @@ c_to_chf <- function(amount, currency) {
 #'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF
 #'@return double, amount in USD
 #'@examples
+#'\dontrun{
 #'c_to_usd(100.45,"EUR")
 #'c_to_usd(c(10000,500),c("CHF","EUR"))
 #'c_to_usd(c(750.543,10),c("USD","EUR"))
 #'c_to_usd(c(500,10),c("CAD","EUR"))
+#'}
 #'@export
 c_to_usd <- function(amount, currency) {
   data <- data.frame(am=amount, cur=currency)
@@ -657,10 +667,11 @@ convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
 #' This function can be vectorized for \code{amount} and \code{currency}, but \code{date} MUST be unique.
 #'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF, CAD, etc..
 #'@param convert_date Can be a date, or character, or integer(numeric). By default it is today.
-#'If type is character/date, then \code{convert_date} argument will be first converted to an integer type with Y/M/D format
-#'- this is the format in CurrencyPairs DB table
+#'If type is character/date, then \code{convert_date} argument will be first converted to an integer type with Y/M/D format,
+#'this is the format in CurrencyPairs DB table
 #'@keywords currency trading
 #'@examples
+#'\dontrun{
 #'convert_to_usd_date(100.45,"EUR",as.Date("2023-10-15"))
 #'convert_to_usd_date(200, "CHF", 20240421)
 #'convert_to_usd_date(200, "EUR", "20240421")
@@ -668,6 +679,7 @@ convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
 #'convert_to_usd_date(c(10000,500),c("CHF","EUR"),as.Date("2021-01-09"))
 #'convert_to_usd_date(c(750.543,10),c("USD","EUR"),as.Date("2023-12-03"))
 #'convert_to_usd_date(c(750.543,10),"EUR",as.Date("2023-12-03"))
+#'}
 #'@export
 convert_to_usd_date = function(amount, currency, convert_date = Sys.Date()) {
 
