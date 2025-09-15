@@ -11,34 +11,32 @@ Imports:
     config,
     DBI,
     dplyr,
+    ecb,
+    glue,
     hms,
+    httr,
+    jsonlite,
+    logger,
+    PerformanceAnalytics,
     purrr,
     quantmod,
     readr,
     reticulate,
+    rlang,
     RSQLite,
+    rvest,
     scales,
+    stats,
     Tbasics,
+    tidyr,
     vctrs,
     utils,
     xts,
     zoo,
-    PerformanceAnalytics,
-    stats,
-    tidyr,
-    httr,
-    jsonlite,
-    rvest,
-    Tlogger,
-    logger,
-    ecb,
-    glue,
-    rlang
+    Tlogger
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Suggests: 
-    knitr,
     rmarkdown,
     testthat (>= 3.0.0)
-VignetteBuilder: knitr
 Config/testthat/edition: 3

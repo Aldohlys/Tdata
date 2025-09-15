@@ -78,5 +78,5 @@ impliedvol <- NULL
 IV <- Name <- current_iv <- current_price <- iv_percentile <- current_hv <- hv_percentile <- NULL
 
 ### currency
-Adjusted <- date <- ticker <- currency <- usd_value <- NULL
+Adjusted <- date <- ticker <- currency <- usd_value <- accountnr <- chf_value <- NULL
 

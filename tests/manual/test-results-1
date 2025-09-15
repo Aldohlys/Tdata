@@ -1,0 +1,975 @@
+Enhanced Test Suite Loaded. Run with: run_enhanced_parquet_tests()
+Starting Enhanced Multi-Exchange Option Chain Tests...
+================================================================================
+Setting up Enhanced Parquet chain discovery tests...
+Testing multiple exchanges and detailed strike analysis...
+Test environment ready with 19 symbols across 5 categories
+
+=== Test 1: Multi-Exchange Chain Discovery ===
+
+--- Testing US Large Cap ETFs and Stocks (SMART) ---
+Testing SPY on SMART...
+  ✅ SPY: 2 chains, 2 trading classes
+    Trading Classes: 2SPY, SPY
+    Total Expirations: 32, Total Strikes: 337
+[2025-08-25 11:27:41] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for SPY...
+[2025-08-25 11:27:41] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for SPY: 2 trading classes across 1 exchanges
+    💡 Recommended TC: SPY
+Testing QQQ on SMART...
+  ✅ QQQ: 2 chains, 2 trading classes
+    Trading Classes: 2QQQ, QQQ
+    Total Expirations: 31, Total Strikes: 359
+[2025-08-25 11:27:42] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for QQQ...
+[2025-08-25 11:27:42] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for QQQ: 2 trading classes across 1 exchanges
+    💡 Recommended TC: QQQ
+Testing AAPL on SMART...
+  ✅ AAPL: 2 chains, 2 trading classes
+    Trading Classes: 2AAPL, AAPL
+    Total Expirations: 22, Total Strikes: 107
+[2025-08-25 11:27:43] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for AAPL...
+[2025-08-25 11:27:43] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for AAPL: 2 trading classes across 1 exchanges
+    💡 Recommended TC: AAPL
+Testing MSFT on SMART...
+  ✅ MSFT: 1 chains, 1 trading classes
+    Trading Classes: MSFT
+    Total Expirations: 21, Total Strikes: 153
+[2025-08-25 11:27:45] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for MSFT...
+[2025-08-25 11:27:45] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for MSFT: 1 trading classes across 1 exchanges
+    💡 Recommended TC: MSFT
+Testing TSLA on SMART...
+  ✅ TSLA: 1 chains, 1 trading classes
+    Trading Classes: TSLA
+    Total Expirations: 21, Total Strikes: 183
+[2025-08-25 11:27:46] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for TSLA...
+[2025-08-25 11:27:46] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for TSLA: 1 trading classes across 1 exchanges
+    💡 Recommended TC: TSLA
+
+--- Testing Commodity and Bond ETFs (SMART) ---
+Testing USO on SMART...
+  ✅ USO: 1 chains, 1 trading classes
+    Trading Classes: USO
+    Total Expirations: 13, Total Strikes: 80
+[2025-08-25 11:27:47] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for USO...
+[2025-08-25 11:27:47] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for USO: 1 trading classes across 1 exchanges
+    💡 Recommended TC: USO
+Testing GLD on SMART...
+  ✅ GLD: 1 chains, 1 trading classes
+    Trading Classes: GLD
+    Total Expirations: 23, Total Strikes: 235
+[2025-08-25 11:27:48] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for GLD...
+[2025-08-25 11:27:48] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for GLD: 1 trading classes across 1 exchanges
+    💡 Recommended TC: GLD
+Testing SLV on SMART...
+  ✅ SLV: 1 chains, 1 trading classes
+    Trading Classes: SLV
+    Total Expirations: 23, Total Strikes: 69
+[2025-08-25 11:27:49] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for SLV...
+[2025-08-25 11:27:49] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for SLV: 1 trading classes across 1 exchanges
+    💡 Recommended TC: SLV
+Testing TLT on SMART...
+  ✅ TLT: 1 chains, 1 trading classes
+    Trading Classes: TLT
+    Total Expirations: 25, Total Strikes: 80
+[2025-08-25 11:27:50] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for TLT...
+[2025-08-25 11:27:50] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for TLT: 1 trading classes across 1 exchanges
+    💡 Recommended TC: TLT
+Testing VIX on SMART...
+  ✅ VIX: 2 chains, 2 trading classes
+    Trading Classes: VIXW, VIX
+    Total Expirations: 12, Total Strikes: 120
+[2025-08-25 11:27:51] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for VIX...
+[2025-08-25 11:27:51] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for VIX: 2 trading classes across 1 exchanges
+    💡 Recommended TC: VIX
+
+--- Testing European Large Cap Stocks (EUREX) ---
+Testing SIE on EUREX...
+  ✅ SIE: 2 chains, 2 trading classes
+    Trading Classes: SIEE, SIE
+    Total Expirations: 28, Total Strikes: 139
+[2025-08-25 11:27:52] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for SIE...
+[2025-08-25 11:27:52] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for SIE: 2 trading classes across 1 exchanges
+    💡 Recommended TC: SIE
+Testing SAP on EUREX...
+[2025-08-25 11:27:53] [PY] [INFO] (tdata_py.chains_manager) Fetching chains from IBKR for SAP (will cache immediately)
+  ❌ SAP: Unexpected chains format: list
+Testing ASME on EUREX...
+[2025-08-25 11:27:57] [PY] [INFO] (tdata_py.chains_manager) Fetching chains from IBKR for ASME (will cache immediately)
+[2025-08-25 11:28:00] [PY] [ERROR] (ib_insync.wrapper) Error 200, reqId 3: No security definition has been found for the request, contract: Contract(secType='STK', symbol='ASME', exchange='SMART', currency='USD')
+[2025-08-25 11:28:00] [PY] [WARNING] (tdata_py.chains_manager) Could not qualify underlying contract for ASME
+  ⚠️  ASME: No chains found on EUREX
+
+--- Testing Major US Index Options (CBOE) ---
+Testing SPX on CBOE...
+  ✅ SPX: 2 chains, 2 trading classes
+    Trading Classes: SPXW, SPX
+    Total Expirations: 58, Total Strikes: 1092
+[2025-08-25 11:28:00] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for SPX...
+[2025-08-25 11:28:00] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for SPX: 2 trading classes across 1 exchanges
+    💡 Recommended TC: SPXW
+Testing NDX on CBOE...
+[2025-08-25 11:28:01] [PY] [INFO] (tdata_py.chains_manager) Fetching chains from IBKR for NDX (will cache immediately)
+[2025-08-25 11:28:03] [PY] [ERROR] (ib_insync.wrapper) Error 200, reqId 3: No security definition has been found for the request, contract: Contract(secType='STK', symbol='NDX', exchange='SMART', currency='USD')
+[2025-08-25 11:28:03] [PY] [WARNING] (tdata_py.chains_manager) Could not qualify underlying contract for NDX
+  ⚠️  NDX: No chains found on CBOE
+Testing RUT on CBOE...
+[2025-08-25 11:28:03] [PY] [INFO] (tdata_py.chains_manager) Fetching chains from IBKR for RUT (will cache immediately)
+[2025-08-25 11:28:05] [PY] [ERROR] (ib_insync.wrapper) Error 200, reqId 3: No security definition has been found for the request, contract: Contract(secType='STK', symbol='RUT', exchange='SMART', currency='USD')
+[2025-08-25 11:28:05] [PY] [WARNING] (tdata_py.chains_manager) Could not qualify underlying contract for RUT
+  ⚠️  RUT: No chains found on CBOE
+
+--- Testing International Country ETFs (SMART) ---
+Testing EWJ on SMART...
+  ✅ EWJ: 1 chains, 1 trading classes
+    Trading Classes: EWJ
+    Total Expirations: 8, Total Strikes: 50
+[2025-08-25 11:28:05] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for EWJ...
+[2025-08-25 11:28:05] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for EWJ: 1 trading classes across 1 exchanges
+    💡 Recommended TC: EWJ
+Testing FXI on SMART...
+  ✅ FXI: 1 chains, 1 trading classes
+    Trading Classes: FXI
+    Total Expirations: 22, Total Strikes: 67
+[2025-08-25 11:28:06] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for FXI...
+[2025-08-25 11:28:06] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for FXI: 1 trading classes across 1 exchanges
+    💡 Recommended TC: FXI
+Testing EWZ on SMART...
+  ✅ EWZ: 1 chains, 1 trading classes
+    Trading Classes: EWZ
+    Total Expirations: 20, Total Strikes: 48
+[2025-08-25 11:28:07] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for EWZ...
+[2025-08-25 11:28:07] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for EWZ: 1 trading classes across 1 exchanges
+    💡 Recommended TC: EWZ
+
+=== Test 2: Detailed Expiration and Strike Analysis ===
+
+--- Strike Analysis for us_equities ---
+
+Analyzing strikes for SPY:
+  Trading Class: 2SPY
+    Expirations (1): 20250912
+    Strike Range: $611.00 - $611.00 (1 strikes)
+    Testing strikes for expiration 20250912...
+[2025-08-25 11:28:08] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SPY 2SPY 20250912 range [549.9, 672.1]
+[2025-08-25 11:28:08] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\SPY\2SPY\20250912_strikes.parquet: 'status'
+[2025-08-25 11:28:08] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 1 need testing, 0 out of scope
+[2025-08-25 11:28:08] [PY] [INFO] (tdata_py.chains_manager) Testing 1 unqualified strikes via TWS API
+[2025-08-25 11:28:11] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 1 newly qualified, 0 newly out of scope
+[2025-08-25 11:28:11] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SPY 2SPY 20250912: 1 qualified, 0 out of scope
+[2025-08-25 11:28:11] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 1 total qualified, 0 total out of scope
+[2025-08-25 11:28:11] [PY] [INFO] (tdata_py.chains_manager) Returning 1 qualified strikes for range [549.9, 672.1]
+      ✅ Qualified 1 strikes: $611.00 - $611.00
+  Trading Class: SPY
+    Expirations (31): 20250825, 20250826, 20250827, 20250828, 20250829
+    ... and 26 more
+    Strike Range: $150.00 - $1000.00 (336 strikes)
+    Testing strikes for expiration 20250825...
+[2025-08-25 11:28:13] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SPY SPY 20250825 range [530.5500000000001, 648.45]
+[2025-08-25 11:28:13] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 49 already qualified, 69 need testing, 5 out of scope
+[2025-08-25 11:28:13] [PY] [INFO] (tdata_py.chains_manager) Testing 69 unqualified strikes via TWS API
+[2025-08-25 11:28:21] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 21 newly qualified, 48 newly out of scope
+[2025-08-25 11:28:21] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SPY SPY 20250825: 102 qualified, 65 out of scope
+[2025-08-25 11:28:21] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 102 total qualified, 65 total out of scope
+[2025-08-25 11:28:21] [PY] [INFO] (tdata_py.chains_manager) Returning 70 qualified strikes for range [530.5500000000001, 648.45]
+      ✅ Qualified 70 strikes: $531.00 - $648.00
+    Testing strikes for expiration 20250826...
+[2025-08-25 11:28:23] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SPY SPY 20250826 range [530.5500000000001, 648.45]
+[2025-08-25 11:28:23] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\SPY\SPY\20250826_strikes.parquet: 'status'
+[2025-08-25 11:28:23] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 123 need testing, 0 out of scope
+[2025-08-25 11:28:23] [PY] [INFO] (tdata_py.chains_manager) Testing 123 unqualified strikes via TWS API
+[2025-08-25 11:28:34] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 70 newly qualified, 53 newly out of scope
+[2025-08-25 11:28:34] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SPY SPY 20250826: 70 qualified, 53 out of scope
+[2025-08-25 11:28:34] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 70 total qualified, 53 total out of scope
+[2025-08-25 11:28:34] [PY] [INFO] (tdata_py.chains_manager) Returning 70 qualified strikes for range [530.5500000000001, 648.45]
+      ✅ Qualified 70 strikes: $531.00 - $648.00
+    Testing strikes for expiration 20250827...
+[2025-08-25 11:28:36] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SPY SPY 20250827 range [530.5500000000001, 648.45]
+[2025-08-25 11:28:36] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 123 need testing, 0 out of scope
+[2025-08-25 11:28:36] [PY] [INFO] (tdata_py.chains_manager) Testing 123 unqualified strikes via TWS API
+[2025-08-25 11:28:48] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 74 newly qualified, 49 newly out of scope
+[2025-08-25 11:28:48] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SPY SPY 20250827: 74 qualified, 49 out of scope
+[2025-08-25 11:28:48] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 74 total qualified, 49 total out of scope
+[2025-08-25 11:28:48] [PY] [INFO] (tdata_py.chains_manager) Returning 74 qualified strikes for range [530.5500000000001, 648.45]
+      ✅ Qualified 74 strikes: $531.00 - $648.00
+
+Analyzing strikes for QQQ:
+  Trading Class: 2QQQ
+    Expirations (1): 20250912
+    Strike Range: $541.00 - $541.00 (1 strikes)
+    Testing strikes for expiration 20250912...
+[2025-08-25 11:28:50] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for QQQ 2QQQ 20250912 range [486.90000000000003, 595.1]
+[2025-08-25 11:28:50] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\QQQ\2QQQ\20250912_strikes.parquet: 'status'
+[2025-08-25 11:28:50] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 1 need testing, 0 out of scope
+[2025-08-25 11:28:50] [PY] [INFO] (tdata_py.chains_manager) Testing 1 unqualified strikes via TWS API
+[2025-08-25 11:28:53] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 1 newly qualified, 0 newly out of scope
+[2025-08-25 11:28:53] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for QQQ 2QQQ 20250912: 1 qualified, 0 out of scope
+[2025-08-25 11:28:53] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 1 total qualified, 0 total out of scope
+[2025-08-25 11:28:53] [PY] [INFO] (tdata_py.chains_manager) Returning 1 qualified strikes for range [486.90000000000003, 595.1]
+      ✅ Qualified 1 strikes: $541.00 - $541.00
+  Trading Class: QQQ
+    Expirations (30): 20250825, 20250826, 20250827, 20250828, 20250829
+    ... and 25 more
+    Strike Range: $174.78 - $865.00 (358 strikes)
+    Testing strikes for expiration 20250825...
+[2025-08-25 11:28:55] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for QQQ QQQ 20250825 range [453.951, 554.8290000000001]
+[2025-08-25 11:28:55] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 40 already qualified, 56 need testing, 26 out of scope
+[2025-08-25 11:28:55] [PY] [INFO] (tdata_py.chains_manager) Testing 56 unqualified strikes via TWS API
+[2025-08-25 11:29:02] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 18 newly qualified, 38 newly out of scope
+[2025-08-25 11:29:02] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for QQQ QQQ 20250825: 103 qualified, 74 out of scope
+[2025-08-25 11:29:02] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 103 total qualified, 74 total out of scope
+[2025-08-25 11:29:02] [PY] [INFO] (tdata_py.chains_manager) Returning 58 qualified strikes for range [453.951, 554.8290000000001]
+      ✅ Qualified 58 strikes: $454.00 - $554.78
+    Testing strikes for expiration 20250826...
+[2025-08-25 11:29:04] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for QQQ QQQ 20250826 range [453.951, 554.8290000000001]
+[2025-08-25 11:29:04] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 122 need testing, 0 out of scope
+[2025-08-25 11:29:04] [PY] [INFO] (tdata_py.chains_manager) Testing 122 unqualified strikes via TWS API
+[2025-08-25 11:29:15] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 56 newly qualified, 66 newly out of scope
+[2025-08-25 11:29:15] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for QQQ QQQ 20250826: 56 qualified, 66 out of scope
+[2025-08-25 11:29:15] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 56 total qualified, 66 total out of scope
+[2025-08-25 11:29:15] [PY] [INFO] (tdata_py.chains_manager) Returning 56 qualified strikes for range [453.951, 554.8290000000001]
+      ✅ Qualified 56 strikes: $454.00 - $554.00
+    Testing strikes for expiration 20250827...
+[2025-08-25 11:29:17] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for QQQ QQQ 20250827 range [453.951, 554.8290000000001]
+[2025-08-25 11:29:17] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 122 need testing, 0 out of scope
+[2025-08-25 11:29:17] [PY] [INFO] (tdata_py.chains_manager) Testing 122 unqualified strikes via TWS API
+[2025-08-25 11:29:28] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 60 newly qualified, 62 newly out of scope
+[2025-08-25 11:29:28] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for QQQ QQQ 20250827: 60 qualified, 62 out of scope
+[2025-08-25 11:29:28] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 60 total qualified, 62 total out of scope
+[2025-08-25 11:29:28] [PY] [INFO] (tdata_py.chains_manager) Returning 60 qualified strikes for range [453.951, 554.8290000000001]
+      ✅ Qualified 60 strikes: $454.00 - $554.00
+
+Analyzing strikes for AAPL:
+  Trading Class: 2AAPL
+    Expirations (1): 20250829
+    Strike Range: $209.00 - $209.00 (1 strikes)
+    Testing strikes for expiration 20250829...
+[2025-08-25 11:29:30] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for AAPL 2AAPL 20250829 range [188.1, 229.9]
+[2025-08-25 11:29:30] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\AAPL\2AAPL\20250829_strikes.parquet: 'status'
+[2025-08-25 11:29:30] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 1 need testing, 0 out of scope
+[2025-08-25 11:29:30] [PY] [INFO] (tdata_py.chains_manager) Testing 1 unqualified strikes via TWS API
+[2025-08-25 11:29:33] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 1 newly qualified, 0 newly out of scope
+[2025-08-25 11:29:33] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for AAPL 2AAPL 20250829: 1 qualified, 0 out of scope
+[2025-08-25 11:29:33] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 1 total qualified, 0 total out of scope
+[2025-08-25 11:29:33] [PY] [INFO] (tdata_py.chains_manager) Returning 1 qualified strikes for range [188.1, 229.9]
+      ✅ Qualified 1 strikes: $209.00 - $209.00
+  Trading Class: AAPL
+    Expirations (21): 20250829, 20250905, 20250912, 20250919, 20250926
+    ... and 16 more
+    Strike Range: $5.00 - $450.00 (106 strikes)
+    Testing strikes for expiration 20250829...
+[2025-08-25 11:29:35] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for AAPL AAPL 20250829 range [201.375, 246.12500000000003]
+[2025-08-25 11:29:35] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\AAPL\AAPL\20250829_strikes.parquet: 'status'
+[2025-08-25 11:29:35] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 18 need testing, 0 out of scope
+[2025-08-25 11:29:35] [PY] [INFO] (tdata_py.chains_manager) Testing 18 unqualified strikes via TWS API
+[2025-08-25 11:29:38] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 18 newly qualified, 0 newly out of scope
+[2025-08-25 11:29:38] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for AAPL AAPL 20250829: 18 qualified, 0 out of scope
+[2025-08-25 11:29:38] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 18 total qualified, 0 total out of scope
+[2025-08-25 11:29:38] [PY] [INFO] (tdata_py.chains_manager) Returning 18 qualified strikes for range [201.375, 246.12500000000003]
+      ✅ Qualified 18 strikes: $202.50 - $245.00
+    Testing strikes for expiration 20250905...
+[2025-08-25 11:29:40] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for AAPL AAPL 20250905 range [201.375, 246.12500000000003]
+[2025-08-25 11:29:40] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\AAPL\AAPL\20250905_strikes.parquet: 'status'
+[2025-08-25 11:29:40] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 18 need testing, 0 out of scope
+[2025-08-25 11:29:40] [PY] [INFO] (tdata_py.chains_manager) Testing 18 unqualified strikes via TWS API
+[2025-08-25 11:29:44] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 17 newly qualified, 1 newly out of scope
+[2025-08-25 11:29:44] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for AAPL AAPL 20250905: 17 qualified, 1 out of scope
+[2025-08-25 11:29:44] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 17 total qualified, 1 total out of scope
+[2025-08-25 11:29:44] [PY] [INFO] (tdata_py.chains_manager) Returning 17 qualified strikes for range [201.375, 246.12500000000003]
+      ✅ Qualified 17 strikes: $202.50 - $245.00
+    Testing strikes for expiration 20250912...
+[2025-08-25 11:29:46] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for AAPL AAPL 20250912 range [201.375, 246.12500000000003]
+[2025-08-25 11:29:46] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 18 need testing, 0 out of scope
+[2025-08-25 11:29:46] [PY] [INFO] (tdata_py.chains_manager) Testing 18 unqualified strikes via TWS API
+[2025-08-25 11:29:50] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 17 newly qualified, 1 newly out of scope
+[2025-08-25 11:29:50] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for AAPL AAPL 20250912: 17 qualified, 1 out of scope
+[2025-08-25 11:29:50] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 17 total qualified, 1 total out of scope
+[2025-08-25 11:29:50] [PY] [INFO] (tdata_py.chains_manager) Returning 17 qualified strikes for range [201.375, 246.12500000000003]
+      ✅ Qualified 17 strikes: $202.50 - $245.00
+
+Analyzing strikes for MSFT:
+  Trading Class: MSFT
+    Expirations (21): 20250829, 20250905, 20250912, 20250919, 20250926
+    ... and 16 more
+    Strike Range: $125.00 - $800.00 (153 strikes)
+    Testing strikes for expiration 20250829...
+[2025-08-25 11:29:52] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for MSFT MSFT 20250829 range [425.25, 519.75]
+[2025-08-25 11:29:52] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\MSFT\MSFT\20250829_strikes.parquet: 'status'
+[2025-08-25 11:29:52] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 34 need testing, 0 out of scope
+[2025-08-25 11:29:52] [PY] [INFO] (tdata_py.chains_manager) Testing 34 unqualified strikes via TWS API
+[2025-08-25 11:29:58] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 34 newly qualified, 0 newly out of scope
+[2025-08-25 11:29:58] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for MSFT MSFT 20250829: 34 qualified, 0 out of scope
+[2025-08-25 11:29:58] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 34 total qualified, 0 total out of scope
+[2025-08-25 11:29:58] [PY] [INFO] (tdata_py.chains_manager) Returning 34 qualified strikes for range [425.25, 519.75]
+      ✅ Qualified 34 strikes: $430.00 - $517.50
+    Testing strikes for expiration 20250905...
+[2025-08-25 11:30:00] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for MSFT MSFT 20250905 range [425.25, 519.75]
+[2025-08-25 11:30:00] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\MSFT\MSFT\20250905_strikes.parquet: 'status'
+[2025-08-25 11:30:00] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 34 need testing, 0 out of scope
+[2025-08-25 11:30:00] [PY] [INFO] (tdata_py.chains_manager) Testing 34 unqualified strikes via TWS API
+[2025-08-25 11:30:04] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 24 newly qualified, 10 newly out of scope
+[2025-08-25 11:30:04] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for MSFT MSFT 20250905: 24 qualified, 10 out of scope
+[2025-08-25 11:30:04] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 24 total qualified, 10 total out of scope
+[2025-08-25 11:30:04] [PY] [INFO] (tdata_py.chains_manager) Returning 24 qualified strikes for range [425.25, 519.75]
+      ✅ Qualified 24 strikes: $430.00 - $517.50
+    Testing strikes for expiration 20250912...
+[2025-08-25 11:30:06] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for MSFT MSFT 20250912 range [425.25, 519.75]
+[2025-08-25 11:30:06] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 34 need testing, 0 out of scope
+[2025-08-25 11:30:06] [PY] [INFO] (tdata_py.chains_manager) Testing 34 unqualified strikes via TWS API
+[2025-08-25 11:30:11] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 24 newly qualified, 10 newly out of scope
+[2025-08-25 11:30:11] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for MSFT MSFT 20250912: 24 qualified, 10 out of scope
+[2025-08-25 11:30:11] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 24 total qualified, 10 total out of scope
+[2025-08-25 11:30:11] [PY] [INFO] (tdata_py.chains_manager) Returning 24 qualified strikes for range [425.25, 519.75]
+      ✅ Qualified 24 strikes: $430.00 - $517.50
+
+Analyzing strikes for TSLA:
+  Trading Class: TSLA
+    Expirations (21): 20250829, 20250905, 20250912, 20250919, 20250926
+    ... and 16 more
+    Strike Range: $5.00 - $960.00 (183 strikes)
+    Testing strikes for expiration 20250829...
+[2025-08-25 11:30:13] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for TSLA TSLA 20250829 range [326.25, 398.75000000000006]
+[2025-08-25 11:30:13] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\TSLA\TSLA\20250829_strikes.parquet: 'status'
+[2025-08-25 11:30:13] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 29 need testing, 0 out of scope
+[2025-08-25 11:30:13] [PY] [INFO] (tdata_py.chains_manager) Testing 29 unqualified strikes via TWS API
+[2025-08-25 11:30:17] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 29 newly qualified, 0 newly out of scope
+[2025-08-25 11:30:17] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for TSLA TSLA 20250829: 29 qualified, 0 out of scope
+[2025-08-25 11:30:17] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 29 total qualified, 0 total out of scope
+[2025-08-25 11:30:17] [PY] [INFO] (tdata_py.chains_manager) Returning 29 qualified strikes for range [326.25, 398.75000000000006]
+      ✅ Qualified 29 strikes: $327.50 - $397.50
+    Testing strikes for expiration 20250905...
+[2025-08-25 11:30:19] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for TSLA TSLA 20250905 range [326.25, 398.75000000000006]
+[2025-08-25 11:30:19] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\TSLA\TSLA\20250905_strikes.parquet: 'status'
+[2025-08-25 11:30:19] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 29 need testing, 0 out of scope
+[2025-08-25 11:30:19] [PY] [INFO] (tdata_py.chains_manager) Testing 29 unqualified strikes via TWS API
+[2025-08-25 11:30:24] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 19 newly qualified, 10 newly out of scope
+[2025-08-25 11:30:24] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for TSLA TSLA 20250905: 19 qualified, 10 out of scope
+[2025-08-25 11:30:24] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 19 total qualified, 10 total out of scope
+[2025-08-25 11:30:24] [PY] [INFO] (tdata_py.chains_manager) Returning 19 qualified strikes for range [326.25, 398.75000000000006]
+      ✅ Qualified 19 strikes: $327.50 - $385.00
+    Testing strikes for expiration 20250912...
+[2025-08-25 11:30:26] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for TSLA TSLA 20250912 range [326.25, 398.75000000000006]
+[2025-08-25 11:30:26] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 29 need testing, 0 out of scope
+[2025-08-25 11:30:26] [PY] [INFO] (tdata_py.chains_manager) Testing 29 unqualified strikes via TWS API
+[2025-08-25 11:30:30] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 19 newly qualified, 10 newly out of scope
+[2025-08-25 11:30:30] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for TSLA TSLA 20250912: 19 qualified, 10 out of scope
+[2025-08-25 11:30:30] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 19 total qualified, 10 total out of scope
+[2025-08-25 11:30:30] [PY] [INFO] (tdata_py.chains_manager) Returning 19 qualified strikes for range [326.25, 398.75000000000006]
+      ✅ Qualified 19 strikes: $327.50 - $385.00
+
+--- Strike Analysis for us_etfs ---
+
+Analyzing strikes for USO:
+  Trading Class: USO
+    Expirations (13): 20250827, 20250829, 20250903, 20250905, 20250912
+    ... and 8 more
+    Strike Range: $35.00 - $125.00 (80 strikes)
+    Testing strikes for expiration 20250827...
+[2025-08-25 11:30:32] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for USO USO 20250827 range [68.625, 83.875]
+[2025-08-25 11:30:32] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\USO\USO\20250827_strikes.parquet: 'status'
+[2025-08-25 11:30:32] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 30 need testing, 0 out of scope
+[2025-08-25 11:30:32] [PY] [INFO] (tdata_py.chains_manager) Testing 30 unqualified strikes via TWS API
+[2025-08-25 11:30:37] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 15 newly qualified, 15 newly out of scope
+[2025-08-25 11:30:37] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for USO USO 20250827: 15 qualified, 15 out of scope
+[2025-08-25 11:30:37] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 15 total qualified, 15 total out of scope
+[2025-08-25 11:30:37] [PY] [INFO] (tdata_py.chains_manager) Returning 15 qualified strikes for range [68.625, 83.875]
+      ✅ Qualified 15 strikes: $69.00 - $81.00
+    Testing strikes for expiration 20250829...
+[2025-08-25 11:30:39] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for USO USO 20250829 range [68.625, 83.875]
+[2025-08-25 11:30:39] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\USO\USO\20250829_strikes.parquet: 'status'
+[2025-08-25 11:30:39] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 30 need testing, 0 out of scope
+[2025-08-25 11:30:39] [PY] [INFO] (tdata_py.chains_manager) Testing 30 unqualified strikes via TWS API
+[2025-08-25 11:30:43] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 28 newly qualified, 2 newly out of scope
+[2025-08-25 11:30:43] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for USO USO 20250829: 28 qualified, 2 out of scope
+[2025-08-25 11:30:43] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 28 total qualified, 2 total out of scope
+[2025-08-25 11:30:43] [PY] [INFO] (tdata_py.chains_manager) Returning 28 qualified strikes for range [68.625, 83.875]
+      ✅ Qualified 28 strikes: $69.00 - $83.00
+    Testing strikes for expiration 20250903...
+[2025-08-25 11:30:45] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for USO USO 20250903 range [68.625, 83.875]
+[2025-08-25 11:30:45] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 30 need testing, 0 out of scope
+[2025-08-25 11:30:45] [PY] [INFO] (tdata_py.chains_manager) Testing 30 unqualified strikes via TWS API
+[2025-08-25 11:30:49] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 15 newly qualified, 15 newly out of scope
+[2025-08-25 11:30:49] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for USO USO 20250903: 15 qualified, 15 out of scope
+[2025-08-25 11:30:49] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 15 total qualified, 15 total out of scope
+[2025-08-25 11:30:49] [PY] [INFO] (tdata_py.chains_manager) Returning 15 qualified strikes for range [68.625, 83.875]
+      ✅ Qualified 15 strikes: $69.00 - $81.00
+
+Analyzing strikes for GLD:
+  Trading Class: GLD
+    Expirations (23): 20250825, 20250827, 20250829, 20250903, 20250905
+    ... and 18 more
+    Strike Range: $80.00 - $600.00 (235 strikes)
+    Testing strikes for expiration 20250825...
+[2025-08-25 11:30:51] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for GLD GLD 20250825 range [247.5, 302.5]
+[2025-08-25 11:30:51] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\GLD\GLD\20250825_strikes.parquet: 'status'
+[2025-08-25 11:30:51] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 55 need testing, 0 out of scope
+[2025-08-25 11:30:51] [PY] [INFO] (tdata_py.chains_manager) Testing 55 unqualified strikes via TWS API
+[2025-08-25 11:30:56] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 43 newly qualified, 12 newly out of scope
+[2025-08-25 11:30:56] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for GLD GLD 20250825: 43 qualified, 12 out of scope
+[2025-08-25 11:30:56] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 43 total qualified, 12 total out of scope
+[2025-08-25 11:30:56] [PY] [INFO] (tdata_py.chains_manager) Returning 43 qualified strikes for range [247.5, 302.5]
+      ✅ Qualified 43 strikes: $258.00 - $302.00
+    Testing strikes for expiration 20250827...
+[2025-08-25 11:30:58] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for GLD GLD 20250827 range [247.5, 302.5]
+[2025-08-25 11:30:58] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\GLD\GLD\20250827_strikes.parquet: 'status'
+[2025-08-25 11:30:58] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 55 need testing, 0 out of scope
+[2025-08-25 11:30:58] [PY] [INFO] (tdata_py.chains_manager) Testing 55 unqualified strikes via TWS API
+[2025-08-25 11:31:04] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 43 newly qualified, 12 newly out of scope
+[2025-08-25 11:31:04] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for GLD GLD 20250827: 43 qualified, 12 out of scope
+[2025-08-25 11:31:04] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 43 total qualified, 12 total out of scope
+[2025-08-25 11:31:04] [PY] [INFO] (tdata_py.chains_manager) Returning 43 qualified strikes for range [247.5, 302.5]
+      ✅ Qualified 43 strikes: $258.00 - $302.00
+    Testing strikes for expiration 20250829...
+[2025-08-25 11:31:06] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for GLD GLD 20250829 range [247.5, 302.5]
+[2025-08-25 11:31:06] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 55 need testing, 0 out of scope
+[2025-08-25 11:31:06] [PY] [INFO] (tdata_py.chains_manager) Testing 55 unqualified strikes via TWS API
+[2025-08-25 11:31:11] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 45 newly qualified, 10 newly out of scope
+[2025-08-25 11:31:11] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for GLD GLD 20250829: 45 qualified, 10 out of scope
+[2025-08-25 11:31:11] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 45 total qualified, 10 total out of scope
+[2025-08-25 11:31:11] [PY] [INFO] (tdata_py.chains_manager) Returning 45 qualified strikes for range [247.5, 302.5]
+      ✅ Qualified 45 strikes: $248.00 - $302.00
+
+Analyzing strikes for SLV:
+  Trading Class: SLV
+    Expirations (23): 20250825, 20250827, 20250829, 20250903, 20250905
+    ... and 18 more
+    Strike Range: $5.00 - $60.00 (69 strikes)
+    Testing strikes for expiration 20250825...
+[2025-08-25 11:31:13] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SLV SLV 20250825 range [28.35, 34.650000000000006]
+[2025-08-25 11:31:13] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 8 already qualified, 5 need testing, 0 out of scope
+[2025-08-25 11:31:13] [PY] [INFO] (tdata_py.chains_manager) Testing 5 unqualified strikes via TWS API
+[2025-08-25 11:31:15] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 5 newly qualified, 0 newly out of scope
+[2025-08-25 11:31:15] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SLV SLV 20250825: 16 qualified, 0 out of scope
+[2025-08-25 11:31:15] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 16 total qualified, 0 total out of scope
+[2025-08-25 11:31:15] [PY] [INFO] (tdata_py.chains_manager) Returning 13 qualified strikes for range [28.35, 34.650000000000006]
+      ✅ Qualified 13 strikes: $28.50 - $34.50
+    Testing strikes for expiration 20250827...
+[2025-08-25 11:31:17] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SLV SLV 20250827 range [28.35, 34.650000000000006]
+[2025-08-25 11:31:17] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\SLV\SLV\20250827_strikes.parquet: 'status'
+[2025-08-25 11:31:17] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 13 need testing, 0 out of scope
+[2025-08-25 11:31:17] [PY] [INFO] (tdata_py.chains_manager) Testing 13 unqualified strikes via TWS API
+[2025-08-25 11:31:20] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 11 newly qualified, 2 newly out of scope
+[2025-08-25 11:31:20] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SLV SLV 20250827: 11 qualified, 2 out of scope
+[2025-08-25 11:31:20] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 11 total qualified, 2 total out of scope
+[2025-08-25 11:31:20] [PY] [INFO] (tdata_py.chains_manager) Returning 11 qualified strikes for range [28.35, 34.650000000000006]
+      ✅ Qualified 11 strikes: $28.50 - $34.50
+    Testing strikes for expiration 20250829...
+[2025-08-25 11:31:22] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SLV SLV 20250829 range [28.35, 34.650000000000006]
+[2025-08-25 11:31:22] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 13 need testing, 0 out of scope
+[2025-08-25 11:31:22] [PY] [INFO] (tdata_py.chains_manager) Testing 13 unqualified strikes via TWS API
+[2025-08-25 11:31:25] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 13 newly qualified, 0 newly out of scope
+[2025-08-25 11:31:25] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SLV SLV 20250829: 13 qualified, 0 out of scope
+[2025-08-25 11:31:25] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 13 total qualified, 0 total out of scope
+[2025-08-25 11:31:25] [PY] [INFO] (tdata_py.chains_manager) Returning 13 qualified strikes for range [28.35, 34.650000000000006]
+      ✅ Qualified 13 strikes: $28.50 - $34.50
+
+Analyzing strikes for TLT:
+  Trading Class: TLT
+    Expirations (25): 20250825, 20250827, 20250829, 20250903, 20250905
+    ... and 20 more
+    Strike Range: $45.00 - $150.00 (80 strikes)
+    Testing strikes for expiration 20250825...
+[2025-08-25 11:31:27] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for TLT TLT 20250825 range [79.425, 97.075]
+[2025-08-25 11:31:27] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\TLT\TLT\20250825_strikes.parquet: 'status'
+[2025-08-25 11:31:27] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 32 need testing, 0 out of scope
+[2025-08-25 11:31:27] [PY] [INFO] (tdata_py.chains_manager) Testing 32 unqualified strikes via TWS API
+[2025-08-25 11:31:31] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 31 newly qualified, 1 newly out of scope
+[2025-08-25 11:31:31] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for TLT TLT 20250825: 31 qualified, 1 out of scope
+[2025-08-25 11:31:31] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 31 total qualified, 1 total out of scope
+[2025-08-25 11:31:31] [PY] [INFO] (tdata_py.chains_manager) Returning 31 qualified strikes for range [79.425, 97.075]
+      ✅ Qualified 31 strikes: $80.00 - $97.00
+    Testing strikes for expiration 20250827...
+[2025-08-25 11:31:33] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for TLT TLT 20250827 range [79.425, 97.075]
+[2025-08-25 11:31:33] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\TLT\TLT\20250827_strikes.parquet: 'status'
+[2025-08-25 11:31:33] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 32 need testing, 0 out of scope
+[2025-08-25 11:31:33] [PY] [INFO] (tdata_py.chains_manager) Testing 32 unqualified strikes via TWS API
+[2025-08-25 11:31:38] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 31 newly qualified, 1 newly out of scope
+[2025-08-25 11:31:38] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for TLT TLT 20250827: 31 qualified, 1 out of scope
+[2025-08-25 11:31:38] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 31 total qualified, 1 total out of scope
+[2025-08-25 11:31:38] [PY] [INFO] (tdata_py.chains_manager) Returning 31 qualified strikes for range [79.425, 97.075]
+      ✅ Qualified 31 strikes: $80.00 - $97.00
+    Testing strikes for expiration 20250829...
+[2025-08-25 11:31:40] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for TLT TLT 20250829 range [79.425, 97.075]
+[2025-08-25 11:31:40] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 32 need testing, 0 out of scope
+[2025-08-25 11:31:40] [PY] [INFO] (tdata_py.chains_manager) Testing 32 unqualified strikes via TWS API
+[2025-08-25 11:31:43] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 18 newly qualified, 14 newly out of scope
+[2025-08-25 11:31:43] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for TLT TLT 20250829: 18 qualified, 14 out of scope
+[2025-08-25 11:31:43] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 18 total qualified, 14 total out of scope
+[2025-08-25 11:31:43] [PY] [INFO] (tdata_py.chains_manager) Returning 18 qualified strikes for range [79.425, 97.075]
+      ✅ Qualified 18 strikes: $80.00 - $97.00
+
+Analyzing strikes for VIX:
+  Trading Class: VIXW
+    Expirations (4): 20250826, 20250902, 20250909, 20250923
+    Strike Range: $10.00 - $100.00 (50 strikes)
+    Testing strikes for expiration 20250826...
+[2025-08-25 11:31:45] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for VIX VIXW 20250826 range [26.55, 32.45]
+[2025-08-25 11:31:45] [PY] [ERROR] (tdata_py.chains_manager) Chain not available for VIX VIXW
+      ⚠️  No strikes qualified in range
+    Testing strikes for expiration 20250902...
+[2025-08-25 11:31:47] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for VIX VIXW 20250902 range [26.55, 32.45]
+[2025-08-25 11:31:47] [PY] [ERROR] (tdata_py.chains_manager) Chain not available for VIX VIXW
+      ⚠️  No strikes qualified in range
+    Testing strikes for expiration 20250909...
+[2025-08-25 11:31:50] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for VIX VIXW 20250909 range [26.55, 32.45]
+[2025-08-25 11:31:50] [PY] [ERROR] (tdata_py.chains_manager) Chain not available for VIX VIXW
+      ⚠️  No strikes qualified in range
+  Trading Class: VIX
+    Expirations (8): 20250916, 20251021, 20251118, 20251216, 20260120
+    ... and 3 more
+    Strike Range: $10.00 - $200.00 (70 strikes)
+    Testing strikes for expiration 20250916...
+[2025-08-25 11:31:52] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for VIX VIX 20250916 range [26.55, 32.45]
+[2025-08-25 11:31:52] [PY] [ERROR] (tdata_py.chains_manager) Chain not available for VIX VIX
+      ⚠️  No strikes qualified in range
+    Testing strikes for expiration 20251021...
+[2025-08-25 11:31:54] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for VIX VIX 20251021 range [26.55, 32.45]
+[2025-08-25 11:31:54] [PY] [ERROR] (tdata_py.chains_manager) Chain not available for VIX VIX
+      ⚠️  No strikes qualified in range
+    Testing strikes for expiration 20251118...
+[2025-08-25 11:31:56] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for VIX VIX 20251118 range [26.55, 32.45]
+[2025-08-25 11:31:56] [PY] [ERROR] (tdata_py.chains_manager) Chain not available for VIX VIX
+      ⚠️  No strikes qualified in range
+
+--- Strike Analysis for european ---
+
+Analyzing strikes for SIE:
+  Trading Class: SIEE
+    Expirations (12): 20250919, 20251017, 20251121, 20251219, 20260320
+    ... and 7 more
+    Strike Range: $0.01 - $560.00 (65 strikes)
+    Testing strikes for expiration 20250919...
+[2025-08-25 11:31:58] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SIE SIEE 20250919 range [171.0, 209.00000000000003]
+[2025-08-25 11:31:58] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\SIE\SIEE\20250919_strikes.parquet: 'status'
+[2025-08-25 11:31:58] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 16 need testing, 0 out of scope
+[2025-08-25 11:31:58] [PY] [INFO] (tdata_py.chains_manager) Testing 16 unqualified strikes via TWS API
+[2025-08-25 11:32:01] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 16 newly qualified, 0 newly out of scope
+[2025-08-25 11:32:01] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SIE SIEE 20250919: 16 qualified, 0 out of scope
+[2025-08-25 11:32:01] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 16 total qualified, 0 total out of scope
+[2025-08-25 11:32:01] [PY] [INFO] (tdata_py.chains_manager) Returning 16 qualified strikes for range [171.0, 209.00000000000003]
+      ✅ Qualified 16 strikes: $172.00 - $205.00
+    Testing strikes for expiration 20251017...
+[2025-08-25 11:32:03] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SIE SIEE 20251017 range [171.0, 209.00000000000003]
+[2025-08-25 11:32:03] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\SIE\SIEE\20251017_strikes.parquet: 'status'
+[2025-08-25 11:32:03] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 16 need testing, 0 out of scope
+[2025-08-25 11:32:03] [PY] [INFO] (tdata_py.chains_manager) Testing 16 unqualified strikes via TWS API
+[2025-08-25 11:32:06] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 15 newly qualified, 1 newly out of scope
+[2025-08-25 11:32:06] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SIE SIEE 20251017: 15 qualified, 1 out of scope
+[2025-08-25 11:32:06] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 15 total qualified, 1 total out of scope
+[2025-08-25 11:32:06] [PY] [INFO] (tdata_py.chains_manager) Returning 15 qualified strikes for range [171.0, 209.00000000000003]
+      ✅ Qualified 15 strikes: $172.00 - $205.00
+    Testing strikes for expiration 20251121...
+[2025-08-25 11:32:08] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SIE SIEE 20251121 range [171.0, 209.00000000000003]
+[2025-08-25 11:32:08] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\SIE\SIEE\20251121_strikes.parquet: 'status'
+[2025-08-25 11:32:08] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 16 need testing, 0 out of scope
+[2025-08-25 11:32:08] [PY] [INFO] (tdata_py.chains_manager) Testing 16 unqualified strikes via TWS API
+[2025-08-25 11:32:11] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 11 newly qualified, 5 newly out of scope
+[2025-08-25 11:32:11] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SIE SIEE 20251121: 11 qualified, 5 out of scope
+[2025-08-25 11:32:11] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 11 total qualified, 5 total out of scope
+[2025-08-25 11:32:11] [PY] [INFO] (tdata_py.chains_manager) Returning 11 qualified strikes for range [171.0, 209.00000000000003]
+      ✅ Qualified 11 strikes: $172.00 - $205.00
+  Trading Class: SIE
+    Expirations (16): 20250829, 20250905, 20250912, 20250919, 20250926
+    ... and 11 more
+    Strike Range: $0.01 - $560.00 (74 strikes)
+    Testing strikes for expiration 20250829...
+[2025-08-25 11:32:13] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SIE SIE 20250829 range [166.05, 202.95000000000002]
+[2025-08-25 11:32:13] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\SIE\SIE\20250829_strikes.parquet: 'status'
+[2025-08-25 11:32:13] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 19 need testing, 0 out of scope
+[2025-08-25 11:32:13] [PY] [INFO] (tdata_py.chains_manager) Testing 19 unqualified strikes via TWS API
+[2025-08-25 11:32:16] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 14 newly qualified, 5 newly out of scope
+[2025-08-25 11:32:16] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SIE SIE 20250829: 14 qualified, 5 out of scope
+[2025-08-25 11:32:16] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 14 total qualified, 5 total out of scope
+[2025-08-25 11:32:16] [PY] [INFO] (tdata_py.chains_manager) Returning 14 qualified strikes for range [166.05, 202.95000000000002]
+      ✅ Qualified 14 strikes: $170.00 - $198.00
+    Testing strikes for expiration 20250905...
+[2025-08-25 11:32:18] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SIE SIE 20250905 range [166.05, 202.95000000000002]
+[2025-08-25 11:32:18] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\SIE\SIE\20250905_strikes.parquet: 'status'
+[2025-08-25 11:32:18] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 19 need testing, 0 out of scope
+[2025-08-25 11:32:18] [PY] [INFO] (tdata_py.chains_manager) Testing 19 unqualified strikes via TWS API
+[2025-08-25 11:32:21] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 14 newly qualified, 5 newly out of scope
+[2025-08-25 11:32:21] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SIE SIE 20250905: 14 qualified, 5 out of scope
+[2025-08-25 11:32:21] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 14 total qualified, 5 total out of scope
+[2025-08-25 11:32:21] [PY] [INFO] (tdata_py.chains_manager) Returning 14 qualified strikes for range [166.05, 202.95000000000002]
+      ✅ Qualified 14 strikes: $170.00 - $198.00
+    Testing strikes for expiration 20250912...
+[2025-08-25 11:32:23] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SIE SIE 20250912 range [166.05, 202.95000000000002]
+[2025-08-25 11:32:23] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 19 need testing, 0 out of scope
+[2025-08-25 11:32:23] [PY] [INFO] (tdata_py.chains_manager) Testing 19 unqualified strikes via TWS API
+[2025-08-25 11:32:26] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 14 newly qualified, 5 newly out of scope
+[2025-08-25 11:32:26] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SIE SIE 20250912: 14 qualified, 5 out of scope
+[2025-08-25 11:32:26] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 14 total qualified, 5 total out of scope
+[2025-08-25 11:32:26] [PY] [INFO] (tdata_py.chains_manager) Returning 14 qualified strikes for range [166.05, 202.95000000000002]
+      ✅ Qualified 14 strikes: $170.00 - $198.00
+
+--- Strike Analysis for indices ---
+
+Analyzing strikes for SPX:
+  Trading Class: SPXW
+    Expirations (39): 20250825, 20250826, 20250827, 20250828, 20250829
+    ... and 34 more
+    Strike Range: $1200.00 - $11200.00 (588 strikes)
+    Testing strikes for expiration 20250825...
+[2025-08-25 11:32:28] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SPX SPXW 20250825 range [5316.75, 6498.250000000001]
+[2025-08-25 11:32:28] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 236 need testing, 0 out of scope
+[2025-08-25 11:32:28] [PY] [INFO] (tdata_py.chains_manager) Testing 236 unqualified strikes via TWS API
+[2025-08-25 11:32:46] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 137 newly qualified, 99 newly out of scope
+[2025-08-25 11:32:46] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SPX SPXW 20250825: 137 qualified, 99 out of scope
+[2025-08-25 11:32:46] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 137 total qualified, 99 total out of scope
+[2025-08-25 11:32:46] [PY] [INFO] (tdata_py.chains_manager) Returning 137 qualified strikes for range [5316.75, 6498.250000000001]
+      ✅ Qualified 137 strikes: $5370.00 - $6495.00
+    Testing strikes for expiration 20250826...
+[2025-08-25 11:32:48] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SPX SPXW 20250826 range [5316.75, 6498.250000000001]
+[2025-08-25 11:32:48] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 236 need testing, 0 out of scope
+[2025-08-25 11:32:48] [PY] [INFO] (tdata_py.chains_manager) Testing 236 unqualified strikes via TWS API
+[2025-08-25 11:33:02] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 137 newly qualified, 99 newly out of scope
+[2025-08-25 11:33:02] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SPX SPXW 20250826: 137 qualified, 99 out of scope
+[2025-08-25 11:33:02] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 137 total qualified, 99 total out of scope
+[2025-08-25 11:33:02] [PY] [INFO] (tdata_py.chains_manager) Returning 137 qualified strikes for range [5316.75, 6498.250000000001]
+      ✅ Qualified 137 strikes: $5370.00 - $6495.00
+    Testing strikes for expiration 20250827...
+[2025-08-25 11:33:04] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SPX SPXW 20250827 range [5316.75, 6498.250000000001]
+[2025-08-25 11:33:04] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 236 need testing, 0 out of scope
+[2025-08-25 11:33:04] [PY] [INFO] (tdata_py.chains_manager) Testing 236 unqualified strikes via TWS API
+[2025-08-25 11:33:19] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 137 newly qualified, 99 newly out of scope
+[2025-08-25 11:33:19] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SPX SPXW 20250827: 137 qualified, 99 out of scope
+[2025-08-25 11:33:19] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 137 total qualified, 99 total out of scope
+[2025-08-25 11:33:19] [PY] [INFO] (tdata_py.chains_manager) Returning 137 qualified strikes for range [5316.75, 6498.250000000001]
+      ✅ Qualified 137 strikes: $5370.00 - $6495.00
+  Trading Class: SPX
+    Expirations (19): 20250918, 20251016, 20251120, 20251218, 20260115
+    ... and 14 more
+    Strike Range: $200.00 - $12000.00 (504 strikes)
+    Testing strikes for expiration 20250918...
+[2025-08-25 11:33:21] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SPX SPX 20250918 range [5303.25, 6481.750000000001]
+[2025-08-25 11:33:21] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 210 need testing, 0 out of scope
+[2025-08-25 11:33:21] [PY] [INFO] (tdata_py.chains_manager) Testing 210 unqualified strikes via TWS API
+[2025-08-25 11:33:33] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 210 newly qualified, 0 newly out of scope
+[2025-08-25 11:33:33] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SPX SPX 20250918: 210 qualified, 0 out of scope
+[2025-08-25 11:33:33] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 210 total qualified, 0 total out of scope
+[2025-08-25 11:33:33] [PY] [INFO] (tdata_py.chains_manager) Returning 210 qualified strikes for range [5303.25, 6481.750000000001]
+      ✅ Qualified 210 strikes: $5310.00 - $6480.00
+    Testing strikes for expiration 20251016...
+[2025-08-25 11:33:35] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SPX SPX 20251016 range [5303.25, 6481.750000000001]
+[2025-08-25 11:33:35] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 210 need testing, 0 out of scope
+[2025-08-25 11:33:35] [PY] [INFO] (tdata_py.chains_manager) Testing 210 unqualified strikes via TWS API
+[2025-08-25 11:33:48] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 200 newly qualified, 10 newly out of scope
+[2025-08-25 11:33:49] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SPX SPX 20251016: 200 qualified, 10 out of scope
+[2025-08-25 11:33:49] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 200 total qualified, 10 total out of scope
+[2025-08-25 11:33:49] [PY] [INFO] (tdata_py.chains_manager) Returning 200 qualified strikes for range [5303.25, 6481.750000000001]
+      ✅ Qualified 200 strikes: $5310.00 - $6480.00
+    Testing strikes for expiration 20251120...
+[2025-08-25 11:33:51] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SPX SPX 20251120 range [5303.25, 6481.750000000001]
+[2025-08-25 11:33:51] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 210 need testing, 0 out of scope
+[2025-08-25 11:33:51] [PY] [INFO] (tdata_py.chains_manager) Testing 210 unqualified strikes via TWS API
+[2025-08-25 11:34:03] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 177 newly qualified, 33 newly out of scope
+[2025-08-25 11:34:03] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SPX SPX 20251120: 177 qualified, 33 out of scope
+[2025-08-25 11:34:03] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 177 total qualified, 33 total out of scope
+[2025-08-25 11:34:03] [PY] [INFO] (tdata_py.chains_manager) Returning 177 qualified strikes for range [5303.25, 6481.750000000001]
+      ✅ Qualified 177 strikes: $5310.00 - $6480.00
+
+--- Strike Analysis for international ---
+
+Analyzing strikes for EWJ:
+  Trading Class: EWJ
+    Expirations (8): 20250919, 20251017, 20251219, 20260116, 20260320
+    ... and 3 more
+    Strike Range: $35.00 - $115.00 (50 strikes)
+    Testing strikes for expiration 20250919...
+[2025-08-25 11:34:05] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for EWJ EWJ 20250919 range [64.35000000000001, 78.65]
+[2025-08-25 11:34:05] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\EWJ\EWJ\20250919_strikes.parquet: 'status'
+[2025-08-25 11:34:05] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 14 need testing, 0 out of scope
+[2025-08-25 11:34:05] [PY] [INFO] (tdata_py.chains_manager) Testing 14 unqualified strikes via TWS API
+[2025-08-25 11:34:08] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 14 newly qualified, 0 newly out of scope
+[2025-08-25 11:34:08] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for EWJ EWJ 20250919: 14 qualified, 0 out of scope
+[2025-08-25 11:34:08] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 14 total qualified, 0 total out of scope
+[2025-08-25 11:34:08] [PY] [INFO] (tdata_py.chains_manager) Returning 14 qualified strikes for range [64.35000000000001, 78.65]
+      ✅ Qualified 14 strikes: $65.00 - $78.00
+    Testing strikes for expiration 20251017...
+[2025-08-25 11:34:10] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for EWJ EWJ 20251017 range [64.35000000000001, 78.65]
+[2025-08-25 11:34:10] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\EWJ\EWJ\20251017_strikes.parquet: 'status'
+[2025-08-25 11:34:10] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 14 need testing, 0 out of scope
+[2025-08-25 11:34:10] [PY] [INFO] (tdata_py.chains_manager) Testing 14 unqualified strikes via TWS API
+[2025-08-25 11:34:13] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 14 newly qualified, 0 newly out of scope
+[2025-08-25 11:34:13] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for EWJ EWJ 20251017: 14 qualified, 0 out of scope
+[2025-08-25 11:34:13] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 14 total qualified, 0 total out of scope
+[2025-08-25 11:34:13] [PY] [INFO] (tdata_py.chains_manager) Returning 14 qualified strikes for range [64.35000000000001, 78.65]
+      ✅ Qualified 14 strikes: $65.00 - $78.00
+    Testing strikes for expiration 20251219...
+[2025-08-25 11:34:15] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for EWJ EWJ 20251219 range [64.35000000000001, 78.65]
+[2025-08-25 11:34:15] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\EWJ\EWJ\20251219_strikes.parquet: 'status'
+[2025-08-25 11:34:15] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 14 need testing, 0 out of scope
+[2025-08-25 11:34:15] [PY] [INFO] (tdata_py.chains_manager) Testing 14 unqualified strikes via TWS API
+[2025-08-25 11:34:18] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 14 newly qualified, 0 newly out of scope
+[2025-08-25 11:34:18] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for EWJ EWJ 20251219: 14 qualified, 0 out of scope
+[2025-08-25 11:34:18] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 14 total qualified, 0 total out of scope
+[2025-08-25 11:34:18] [PY] [INFO] (tdata_py.chains_manager) Returning 14 qualified strikes for range [64.35000000000001, 78.65]
+      ✅ Qualified 14 strikes: $65.00 - $78.00
+
+Analyzing strikes for FXI:
+  Trading Class: FXI
+    Expirations (22): 20250829, 20250905, 20250912, 20250919, 20250926
+    ... and 17 more
+    Strike Range: $11.00 - $60.00 (67 strikes)
+    Testing strikes for expiration 20250829...
+[2025-08-25 11:34:20] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for FXI FXI 20250829 range [30.150000000000002, 36.85]
+[2025-08-25 11:34:20] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\FXI\FXI\20250829_strikes.parquet: 'status'
+[2025-08-25 11:34:20] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 13 need testing, 0 out of scope
+[2025-08-25 11:34:20] [PY] [INFO] (tdata_py.chains_manager) Testing 13 unqualified strikes via TWS API
+[2025-08-25 11:34:23] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 12 newly qualified, 1 newly out of scope
+[2025-08-25 11:34:23] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for FXI FXI 20250829: 12 qualified, 1 out of scope
+[2025-08-25 11:34:23] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 12 total qualified, 1 total out of scope
+[2025-08-25 11:34:23] [PY] [INFO] (tdata_py.chains_manager) Returning 12 qualified strikes for range [30.150000000000002, 36.85]
+      ✅ Qualified 12 strikes: $30.50 - $36.50
+    Testing strikes for expiration 20250905...
+[2025-08-25 11:34:25] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for FXI FXI 20250905 range [30.150000000000002, 36.85]
+[2025-08-25 11:34:25] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\FXI\FXI\20250905_strikes.parquet: 'status'
+[2025-08-25 11:34:25] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 13 need testing, 0 out of scope
+[2025-08-25 11:34:25] [PY] [INFO] (tdata_py.chains_manager) Testing 13 unqualified strikes via TWS API
+[2025-08-25 11:34:29] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 11 newly qualified, 2 newly out of scope
+[2025-08-25 11:34:29] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for FXI FXI 20250905: 11 qualified, 2 out of scope
+[2025-08-25 11:34:29] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 11 total qualified, 2 total out of scope
+[2025-08-25 11:34:29] [PY] [INFO] (tdata_py.chains_manager) Returning 11 qualified strikes for range [30.150000000000002, 36.85]
+      ✅ Qualified 11 strikes: $30.50 - $36.50
+    Testing strikes for expiration 20250912...
+[2025-08-25 11:34:31] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for FXI FXI 20250912 range [30.150000000000002, 36.85]
+[2025-08-25 11:34:31] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 13 need testing, 0 out of scope
+[2025-08-25 11:34:31] [PY] [INFO] (tdata_py.chains_manager) Testing 13 unqualified strikes via TWS API
+[2025-08-25 11:34:34] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 11 newly qualified, 2 newly out of scope
+[2025-08-25 11:34:34] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for FXI FXI 20250912: 11 qualified, 2 out of scope
+[2025-08-25 11:34:34] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 11 total qualified, 2 total out of scope
+[2025-08-25 11:34:34] [PY] [INFO] (tdata_py.chains_manager) Returning 11 qualified strikes for range [30.150000000000002, 36.85]
+      ✅ Qualified 11 strikes: $30.50 - $36.50
+
+Analyzing strikes for EWZ:
+  Trading Class: EWZ
+    Expirations (20): 20250829, 20250905, 20250912, 20250919, 20250926
+    ... and 15 more
+    Strike Range: $12.00 - $50.00 (48 strikes)
+    Testing strikes for expiration 20250829...
+[2025-08-25 11:34:36] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for EWZ EWZ 20250829 range [25.425, 31.075000000000003]
+[2025-08-25 11:34:36] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\EWZ\EWZ\20250829_strikes.parquet: 'status'
+[2025-08-25 11:34:36] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 12 need testing, 0 out of scope
+[2025-08-25 11:34:36] [PY] [INFO] (tdata_py.chains_manager) Testing 12 unqualified strikes via TWS API
+[2025-08-25 11:34:39] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 12 newly qualified, 0 newly out of scope
+[2025-08-25 11:34:39] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for EWZ EWZ 20250829: 12 qualified, 0 out of scope
+[2025-08-25 11:34:39] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 12 total qualified, 0 total out of scope
+[2025-08-25 11:34:39] [PY] [INFO] (tdata_py.chains_manager) Returning 12 qualified strikes for range [25.425, 31.075000000000003]
+      ✅ Qualified 12 strikes: $25.50 - $31.00
+    Testing strikes for expiration 20250905...
+[2025-08-25 11:34:41] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for EWZ EWZ 20250905 range [25.425, 31.075000000000003]
+[2025-08-25 11:34:41] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\EWZ\EWZ\20250905_strikes.parquet: 'status'
+[2025-08-25 11:34:41] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 12 need testing, 0 out of scope
+[2025-08-25 11:34:41] [PY] [INFO] (tdata_py.chains_manager) Testing 12 unqualified strikes via TWS API
+[2025-08-25 11:34:44] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 12 newly qualified, 0 newly out of scope
+[2025-08-25 11:34:45] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for EWZ EWZ 20250905: 12 qualified, 0 out of scope
+[2025-08-25 11:34:45] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 12 total qualified, 0 total out of scope
+[2025-08-25 11:34:45] [PY] [INFO] (tdata_py.chains_manager) Returning 12 qualified strikes for range [25.425, 31.075000000000003]
+      ✅ Qualified 12 strikes: $25.50 - $31.00
+    Testing strikes for expiration 20250912...
+[2025-08-25 11:34:47] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for EWZ EWZ 20250912 range [25.425, 31.075000000000003]
+[2025-08-25 11:34:47] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 12 need testing, 0 out of scope
+[2025-08-25 11:34:47] [PY] [INFO] (tdata_py.chains_manager) Testing 12 unqualified strikes via TWS API
+[2025-08-25 11:34:49] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 12 newly qualified, 0 newly out of scope
+[2025-08-25 11:34:49] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for EWZ EWZ 20250912: 12 qualified, 0 out of scope
+[2025-08-25 11:34:49] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 12 total qualified, 0 total out of scope
+[2025-08-25 11:34:49] [PY] [INFO] (tdata_py.chains_manager) Returning 12 qualified strikes for range [25.425, 31.075000000000003]
+      ✅ Qualified 12 strikes: $25.50 - $31.00
+
+=== Test 3: Trading Class Comparison Analysis ===
+Found 6 symbols with multiple trading classes:
+
+--- Comparing Trading Classes for SPY ---
+Available Trading Classes: 2SPY, SPY
+Comparison Table:
+  Symbol Exchange Trading_Class Multiplier Expirations Strikes Strike_Min Strike_Max Underlying_ID
+1    SPY    SMART          2SPY        100           1       1        611        611        756733
+2    SPY    SMART           SPY        100          31     336        150       1000        756733
+
+Testing auto-selection functions:
+  💡 Best TC (most strikes): SPY (336 strikes)
+[2025-08-25 11:34:52] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SPY SPY 20250912 range [None, None]
+[2025-08-25 11:34:52] [PY] [WARNING] (tdata_py.parquet_storage) Error loading strike states C:\Users\aldoh\Documents\NewTrading\strikes\SPY\SPY\20250912_strikes.parquet: 'status'
+[2025-08-25 11:34:52] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 336 need testing, 0 out of scope
+[2025-08-25 11:34:52] [PY] [INFO] (tdata_py.chains_manager) Testing 336 unqualified strikes via TWS API
+[2025-08-25 11:35:10] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 128 newly qualified, 208 newly out of scope
+[2025-08-25 11:35:10] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SPY SPY 20250912: 128 qualified, 208 out of scope
+[2025-08-25 11:35:10] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 128 total qualified, 208 total out of scope
+[2025-08-25 11:35:10] [PY] [INFO] (tdata_py.chains_manager) Returning 128 qualified strikes for range [None, None]
+  🎯 Auto strikes for 20250912: 128 strikes
+
+--- Comparing Trading Classes for QQQ ---
+Available Trading Classes: 2QQQ, QQQ
+Comparison Table:
+  Symbol Exchange Trading_Class Multiplier Expirations Strikes Strike_Min Strike_Max Underlying_ID
+1    QQQ    SMART          2QQQ        100           1       1     541.00        541     320227571
+2    QQQ    SMART           QQQ        100          30     358     174.78        865     320227571
+
+Testing auto-selection functions:
+  💡 Best TC (most strikes): QQQ (358 strikes)
+[2025-08-25 11:35:10] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for QQQ QQQ 20250912 range [None, None]
+[2025-08-25 11:35:10] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 358 need testing, 0 out of scope
+[2025-08-25 11:35:10] [PY] [INFO] (tdata_py.chains_manager) Testing 358 unqualified strikes via TWS API
+[2025-08-25 11:35:31] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 114 newly qualified, 244 newly out of scope
+[2025-08-25 11:35:31] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for QQQ QQQ 20250912: 114 qualified, 244 out of scope
+[2025-08-25 11:35:31] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 114 total qualified, 244 total out of scope
+[2025-08-25 11:35:31] [PY] [INFO] (tdata_py.chains_manager) Returning 114 qualified strikes for range [None, None]
+  🎯 Auto strikes for 20250912: 114 strikes
+
+--- Comparing Trading Classes for AAPL ---
+Available Trading Classes: 2AAPL, AAPL
+Comparison Table:
+  Symbol Exchange Trading_Class Multiplier Expirations Strikes Strike_Min Strike_Max Underlying_ID
+1   AAPL    SMART         2AAPL        100           1       1        209        209        265598
+2   AAPL    SMART          AAPL        100          21     106          5        450        265598
+
+Testing auto-selection functions:
+  💡 Best TC (most strikes): AAPL (106 strikes)
+[2025-08-25 11:35:31] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for AAPL AAPL 20250829 range [None, None]
+[2025-08-25 11:35:31] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 18 already qualified, 88 need testing, 0 out of scope
+[2025-08-25 11:35:31] [PY] [INFO] (tdata_py.chains_manager) Testing 88 unqualified strikes via TWS API
+[2025-08-25 11:35:37] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 39 newly qualified, 49 newly out of scope
+[2025-08-25 11:35:37] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for AAPL AAPL 20250829: 57 qualified, 49 out of scope
+[2025-08-25 11:35:37] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 57 total qualified, 49 total out of scope
+[2025-08-25 11:35:37] [PY] [INFO] (tdata_py.chains_manager) Returning 57 qualified strikes for range [None, None]
+  🎯 Auto strikes for 20250829: 57 strikes
+
+--- Comparing Trading Classes for VIX ---
+Available Trading Classes: VIXW, VIX
+Comparison Table:
+  Symbol Exchange Trading_Class Multiplier Expirations Strikes Strike_Min Strike_Max Underlying_ID
+1    VIX    SMART           VIX        100           8      70         10        200      13455763
+2    VIX    SMART          VIXW        100           4      50         10        100      13455763
+
+Testing auto-selection functions:
+  💡 Best TC (most strikes): VIX (70 strikes)
+[2025-08-25 11:35:37] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for VIX VIX 20250826 range [None, None]
+[2025-08-25 11:35:37] [PY] [ERROR] (tdata_py.chains_manager) Expiration 20250826 not available for VIX VIX
+
+--- Comparing Trading Classes for SIE ---
+Available Trading Classes: SIEE, SIE
+Comparison Table:
+  Symbol Exchange Trading_Class Multiplier Expirations Strikes Strike_Min Strike_Max Underlying_ID
+1    SIE    EUREX           SIE        100          16      74       0.01        560         14217
+2    SIE    EUREX          SIEE        100          12      65       0.01        560         14217
+
+Testing auto-selection functions:
+  💡 Best TC (most strikes): SIE (74 strikes)
+[2025-08-25 11:35:37] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SIE SIE 20250919 range [None, None]
+[2025-08-25 11:35:37] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 0 already qualified, 74 need testing, 0 out of scope
+[2025-08-25 11:35:37] [PY] [INFO] (tdata_py.chains_manager) Testing 74 unqualified strikes via TWS API
+[2025-08-25 11:35:42] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 53 newly qualified, 21 newly out of scope
+[2025-08-25 11:35:42] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SIE SIE 20250919: 53 qualified, 21 out of scope
+[2025-08-25 11:35:42] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 53 total qualified, 21 total out of scope
+[2025-08-25 11:35:42] [PY] [INFO] (tdata_py.chains_manager) Returning 53 qualified strikes for range [None, None]
+  🎯 Auto strikes for 20250919: 53 strikes
+
+--- Comparing Trading Classes for SPX ---
+Available Trading Classes: SPXW, SPX
+Comparison Table:
+  Symbol Exchange Trading_Class Multiplier Expirations Strikes Strike_Min Strike_Max Underlying_ID
+1    SPX    SMART           SPX        100          19     504        200      12000        416904
+2    SPX    SMART          SPXW        100          39     588       1200      11200        416904
+
+Testing auto-selection functions:
+  💡 Best TC (most strikes): SPXW (588 strikes)
+[2025-08-25 11:35:42] [PY] [INFO] (tdata_py.chains_manager) Fetching strikes for SPX SPXW 20250825 range [None, None]
+[2025-08-25 11:35:42] [PY] [INFO] (tdata_py.chains_manager) Strike analysis: 137 already qualified, 352 need testing, 99 out of scope
+[2025-08-25 11:35:42] [PY] [INFO] (tdata_py.chains_manager) Testing 352 unqualified strikes via TWS API
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.chains_manager) TWS API results: 69 newly qualified, 283 newly out of scope
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.parquet_storage) Cached strike states for SPX SPXW 20250825: 206 qualified, 382 out of scope
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.chains_manager) Updated cache: 206 total qualified, 382 total out of scope
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.chains_manager) Returning 206 qualified strikes for range [None, None]
+  🎯 Auto strikes for 20250825: 206 strikes
+
+=== Test 4: Exchange-Specific Features ===
+
+--- SMART Exchange Features ---
+Description: US Equities and ETFs
+Symbols found: SPY, QQQ, AAPL, MSFT, TSLA, USO, GLD, SLV, TLT, VIX, EWJ, FXI, EWZ
+
+Detailed analysis of SPY:
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for SPY...
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for SPY: 2 trading classes across 1 exchanges
+  Total Chains: 2
+  Trading Classes: 2
+  Total Expirations: 32
+  Total Strikes: 337
+  Recommended: SPY (most_strikes)
+
+--- CBOE Exchange Features ---
+Description: Index Options
+Symbols found: SPX
+
+Detailed analysis of SPX:
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for SPX...
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for SPX: 2 trading classes across 1 exchanges
+  Total Chains: 2
+  Trading Classes: 2
+  Total Expirations: 58
+  Total Strikes: 1092
+  Recommended: SPXW (most_strikes)
+
+--- EUREX Exchange Features ---
+Description: European Options
+Symbols found: SIE
+
+Detailed analysis of SIE:
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for SIE...
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for SIE: 2 trading classes across 1 exchanges
+  Total Chains: 2
+  Trading Classes: 2
+  Total Expirations: 28
+  Total Strikes: 139
+  Recommended: SIE (most_strikes)
+
+=== Test 5: Performance and Caching Analysis ===
+
+--- Performance Test for SPY ---
+First call (cache check)...
+  ✅ First call: 0.01 seconds, 2 chains
+Second call (cache test)...
+  ✅ Second call: 0.01 seconds
+  ✅ Results identical - caching working correctly
+  ⚡ Some speedup detected
+Testing enhanced functions...
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for SPY...
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for SPY: 2 trading classes across 1 exchanges
+  📊 Exploration: 0.02 seconds
+
+--- Performance Test for QQQ ---
+First call (cache check)...
+  ✅ First call: 0.01 seconds, 2 chains
+Second call (cache test)...
+  ✅ Second call: 0.01 seconds
+  ✅ Results identical - caching working correctly
+  ⚡ Some speedup detected
+Testing enhanced functions...
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.chains_manager) Exploring option chains for QQQ...
+[2025-08-25 11:36:04] [PY] [INFO] (tdata_py.chains_manager) Exploration complete for QQQ: 2 trading classes across 1 exchanges
+  📊 Exploration: 0.02 seconds
+
+ ================================================================================
+COMPREHENSIVE TEST REPORT
+================================================================================
+📊 SUMMARY STATISTICS:
+   Total Symbols Tested: 19
+   Successful: 15 (78.9%)
+   Total Chains Found: 21
+   Total Trading Classes: 21
+   Average Chains per Symbol: 1.4
+
+📈 EXCHANGE BREAKDOWN:
+   SMART: 13 symbols, 17 chains
+   EUREX: 1 symbols, 2 chains
+   CBOE: 1 symbols, 2 chains
+
+🎯 STRIKE ANALYSIS SUMMARY:
+   Expirations Tested: 57
+   Successful Qualifications: 51 (89.5%)
+
+🎉 TEST SUITE COMPLETE!
+
+📋 NEXT STEPS:
+1. Review any failed symbols and investigate exchange connectivity
+2. Test additional expiration dates during market hours
+3. Implement symbol-specific strike range optimizations
+4. Consider adding more international exchanges

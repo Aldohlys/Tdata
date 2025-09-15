@@ -189,3 +189,79 @@ test_that("CHF data validation works correctly", {
   expect_true(is.numeric(validated$chf_value))
   expect_equal(nrow(validated), 2)
 })
+
+#### Test getCurrencyAttrib ########
+test_that("getCurrencyAttrib retrieves currency attributes correctly", {
+  # Test single currency
+  result <- getCurrencyAttrib("USD")
+  expect_true(is.data.frame(result))
+  expect_true(nrow(result) >= 0)
+
+  # Test vectorized input
+  result_vector <- getCurrencyAttrib(c("EUR", "CHF"))
+  expect_true(is.data.frame(result_vector))
+})
+
+#### Test getLastCHFValue ########
+test_that("getLastCHFValue retrieves and updates CHF values", {
+  skip_if_not(file.exists(config::get("DB")), "Database file not found")
+
+  result <- getLastCHFValue("EUR")
+  expect_true(is.data.frame(result))
+  expect_true(nrow(result) >= 0)
+
+  # Test CHF currency returns 1.0
+  chf_result <- getLastCHFValue("CHF")
+  expect_equal(chf_result$chf_value[chf_result$currency == "CHF"], 1.0)
+})
+
+#### Test getLastUSDValue ########
+test_that("getLastUSDValue retrieves and updates USD values", {
+  skip_if_not(file.exists(config::get("DB")), "Database file not found")
+
+  result <- getLastUSDValue("EUR")
+  expect_true(is.data.frame(result))
+  expect_true(nrow(result) >= 0)
+
+  # Test error for USD input
+  expect_error(getLastUSDValue("USD"))
+})
+
+#### Test base_currency_format ########
+test_that("base_currency_format works correctly", {
+  skip_if_not(file.exists(config::get("DB")), "Database file not found")
+
+  result <- base_currency_format(100.45)
+  expect_true(is.character(result))
+  expect_true(!is.na(result))
+
+  # Test vectorized
+  result_vector <- base_currency_format(c(100, 200))
+  expect_equal(length(result_vector), 2)
+})
+
+#### Test c_to_base ########
+test_that("c_to_base converts to base currency correctly", {
+  skip_if_not(file.exists(config::get("DB")), "Database file not found")
+
+  result <- c_to_base(100, "EUR")
+  expect_true(is.numeric(result))
+  expect_true(result > 0)
+
+  # Test vectorized
+  result_vector <- c_to_base(c(100, 200), c("EUR", "USD"))
+  expect_equal(length(result_vector), 2)
+})
+
+#### Test convert_to_base_date ########
+test_that("convert_to_base_date converts to base currency for specific date", {
+  skip_if_not(file.exists(config::get("DB")), "Database file not found")
+
+  result <- convert_to_base_date(100, "EUR", as.Date("2023-11-20"))
+  expect_true(is.numeric(result))
+  expect_true(result > 0)
+
+  # Test vectorized currencies
+  result_vector <- convert_to_base_date(c(100, 200), c("EUR", "USD"), as.Date("2023-11-20"))
+  expect_equal(length(result_vector), 2)
+})

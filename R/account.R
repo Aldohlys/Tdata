@@ -337,29 +337,29 @@ twr <- function(dates, e_nlv, cashflows) {
 #' All Greek net values will be then summed up over all positions, for each Greek. If data is grouped, then Greeks will be computed separately for each group (summarize will do the trick).
 #'
 #'@param portf a data frame with one line per instrument, may be grouped by date and time.
-#'Either it contains only \code{pos; mktPrice} columns and then only delta and delta dollars are computed
+#'Either it contains only \code{pos; mktPrice} columns and then only delta and delta notional are computed
 #'or it contains \code{type; pos; multiplier; delta; gamma; vega; theta; uPrice;
 #' theta; uPrice} - these are named after portfolio tables in DB, see also readPortfolio function.
 #' and then all Greeks are computed. Type is necessary to have a distinction between stocks and options.
-#'@returns a data frame of double numbers with \code{delta, deltadollars, gamma, theta, vega} for each group.
-#'It is worth noticing that delta dollars is an amount in USD, converted from other currencies using last available currency rate.
+#'@returns a data frame of double numbers with \code{delta, deltanotional, gamma, theta, vega} for each group.
+#'It is worth noticing that delta notional is an amount in base currency, converted from other currencies using last available currency rate.
 #'@export
 greeksNet = function(portf) {
   ## Manage case of Gonet portfolio - without options
   if (!all(c("type","pos", "multiplier", "delta", "uPrice", "gamma", "theta", "vega")
       %in% colnames(portf))) {
-    portf=dplyr::mutate(portf, mktPrice=c_to_usd(mktPrice, currency))
+    portf=dplyr::mutate(portf, mktPrice=c_to_base(mktPrice, currency))
     dplyr::summarize(dplyr::mutate(portf, dnet = pos, ddnet = pos*mktPrice, gnet = 0, tnet = NA, vnet = NA),
                      delta=sum(dnet,na.rm=FALSE),
-                     deltadollars=sum(ddnet,na.rm=FALSE),
+                     deltanotional=sum(ddnet,na.rm=FALSE),
                      gamma=0,
                      theta= NA,
                      vega= NA)
   }
 
   else {
-    ## First convert to USD value
-    portf=dplyr::mutate(portf, uPrice=c_to_usd(uPrice, currency))
+    ## First convert to base currency value
+    portf=dplyr::mutate(portf, uPrice=c_to_base(uPrice, currency))
 
     #### portf is grouped by datetime
     #### Therefore summarize will do the computation per datetime

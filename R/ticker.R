@@ -429,6 +429,7 @@ setTicker = function(Name, ...) {
 #' If only a given symbol is not found, then NA will be returned for this symbol.
 #'
 #'@param Name IBKR security name or a vector of names
+#'@param ... Key/value pairs to be updated for security
 #'@return list with Name and updated arguments list
 update_ticker_params <- function(Name, ...) {
   kwargs <- list(...)

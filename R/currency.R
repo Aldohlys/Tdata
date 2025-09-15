@@ -69,6 +69,7 @@ getStoredCHFValue <- function(currency) {
   placeholders <- paste(rep("?", length(currency)), collapse = ",")
 
   # Add CHF to union only if requested
+  ## Notice it is a constant string returned by SELECT
   chf_union <- if("CHF" %in% currency) {
     sprintf("SELECT 'CHF' as currency, %s as date, 1.0 as chf_value UNION ALL",
             as.numeric(format(Sys.Date(),"%Y%m%d")))
@@ -81,7 +82,8 @@ getStoredCHFValue <- function(currency) {
       SELECT currency, date, chf_value FROM ConvertToCHF WHERE currency IN (%s)
     )
     GROUP BY currency",
-                   chf_union, placeholders
+    chf_union,
+    placeholders
   )
 
   result <- DBI::dbGetQuery(conn, query, params = as.list(currency))
@@ -412,6 +414,56 @@ currency_sign <- function(currency) {
   return(currency_detail$Display)
 }
 
+#'  base_currency_format
+#'
+#' This function returns a string with converted amount into base currency and base currency symbol
+#'
+#' It defines a labeling functions for base currency.
+#'
+#' Currency symbols (CHF, $) are also taken into consideration.
+#'
+#' Only 2 digits after decimal are displayed. Big mark (3 digits separator) equal to space.
+
+#'@param amount is the number to be converted, can be also a character if convertible into a number
+#'@examples
+#'base_currency_format(100.45)
+#'base_currency_format(10000)
+#'base_currency_format(1000)
+#'base_currency_format(758.458)
+#'base_currency_format(100000.455)
+#'base_currency_format(c(100,40))
+#'@export
+base_currency_format <- function(amount) {
+  tryCatch(
+    {
+      ## Try to convert to numeric if not already the case
+      amount <- as.numeric(amount)
+
+      currency_sign <- currency_sign(getParam("BaseCurrency"))
+
+      ### Compute display functions based upon currency signs
+      display_currency <- scales::label_currency(
+          prefix = "",
+          suffix = paste0(" ", currency_sign), #### EURO sign = \u20ac", ...
+          big.mark = " ",
+          accuracy=0.01
+      )
+
+      display_currency(amount)
+    },
+
+    error = function(cond) {
+      logger::log_error("Currency formatting error: {cond}")
+      NA
+    },
+
+    warning = function(cond) {
+      logger::log_warn("Currency formatting warning: {cond}")
+      NA
+    }
+  )
+}
+
 
 #'  currency_format
 #'
@@ -452,7 +504,7 @@ currency_format = function(amount, currency){
 
       ### Compute display functions based upon currency signs
       display_currencies <- purrr::map(currency_signs, \(curr) {
-        scales::label_dollar(
+        scales::label_currency(
           prefix = "",
           suffix = paste0(" ", curr), #### EURO sign = \u20ac"
           big.mark = " ",
@@ -465,26 +517,48 @@ currency_format = function(amount, currency){
     },
 
     error = function(cond) {
-      message("Tdata::currency_format ERROR")
-      message(conditionMessage(cond))
+     logger::log_error("Currency formatting error: {cond}")
       NA
     },
 
     warning = function(cond) {
-      message("Tdata::currency_format WARNING")
-      message(conditionMessage(cond))
+      logger::log_warn("Currency formatting warning: {cond}")
       NA
     }
   )
 
 }
 
-#' c_to_chf
+#' c_to_base
 #'
-#' Converts amount of currency into CHF using stored DB values
+#' Converts amount of currency into base currency using stored DB values. Wrapper for USD or CHF base currencies.
 #'
 #' @param amount numeric or vector - amounts to convert
 #' @param currency string or vector - currency codes (EUR, USD, CAD...)
+#' @return double, amount in base currency
+#' @examples
+#' c_to_base(100.45,"EUR")
+#' c_to_base(c(10000,500),c("CHF","EUR"))
+#' c_to_base(c(750.543,10),c("USD","EUR"))
+#' c_to_base(c(500,10),c("CAD","EUR"))
+#' @export
+c_to_base <- function(amount, currency) {
+  base_currency <- getParam("BaseCurrency")
+  if (base_currency == "CHF") return(c_to_chf(amount, currency))
+  else if (base_currency == "USD") return(c_to_usd(amount, currency))
+  else Tbasics::display_message("Wrong base currency in DB!!!")
+  return(NA)
+}
+
+#' c_to_chf
+#'
+#' Converts amount of currency into CHF using stored DB values
+#' It merely performs a multiplication of the amount by currency pair value, using \link{getStoredCHFValue}.
+#' This function can be vectorized
+#'
+#' @param amount numeric or vector - amounts to convert
+#' @param currency string or vector - currency codes (EUR, USD, CAD...)
+#' @return double, amount in CHF
 #' @export
 c_to_chf <- function(amount, currency) {
   data <- data.frame(am = amount, cur = currency)
@@ -496,10 +570,10 @@ c_to_chf <- function(amount, currency) {
 #'
 #' This function converts the amount of currency into USD, using currency pairs values stored in DB
 #'
-#' It merely performs a multiplication of the amount by currency pair value, using getStoredValue.
+#' It merely performs a multiplication of the amount by currency pair value, using \link{getStoredUSDValue}.
 #' This function can be vectorized
 #'@param amount,currency amount is the number to be converted, currency is a string whose value is either EUR, CHF
-#'@keywords currency trading
+#'@return double, amount in USD
 #'@examples
 #'c_to_usd(100.45,"EUR")
 #'c_to_usd(c(10000,500),c("CHF","EUR"))
@@ -510,6 +584,23 @@ c_to_usd <- function(amount, currency) {
   data <- data.frame(am=amount, cur=currency)
   data <- dplyr::mutate(data, res = am*getStoredUSDValue(cur)$usd_value)
   return(data$res)
+}
+
+
+#' convert_to_base_date
+#'
+#' Converts currency amounts to base currency for specific date. Wrapper for USD or CHF base currencies.
+#'
+#' @param amount numeric or vector - amounts to convert
+#' @param currency string or vector - currency codes
+#' @param convert_date date, character, or numeric - conversion date
+#' @export
+convert_to_base_date <- function(amount, currency, convert_date = Sys.Date()) {
+  base_currency <- getParam("BaseCurrency")
+  if (base_currency == "CHF") return(convert_to_chf_date(amount, currency, convert_date))
+  else if (base_currency == "USD") return(convert_to_usd_date(amount, currency, convert_date))
+  else Tbasics::display_message("Wrong base currency in DB!!!")
+  return(NA)
 }
 
 
