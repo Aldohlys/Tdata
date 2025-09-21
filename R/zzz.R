@@ -26,6 +26,7 @@ tdata_py <- NULL  # Will be assigned in .onLoad()
   invisible()
 }
 
+
 #' @title Initialize minimal logging
 #' @keywords internal
 .init_package_logging <- function(pkgname) {

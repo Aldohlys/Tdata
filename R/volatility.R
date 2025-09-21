@@ -481,7 +481,7 @@ getIV_DTE <- function(sym, currency, spot_price, DTE=30){
   }
 
 
-  # iv_computations <- Tstudy::calculate_vix_optimized(near_term_options, next_term_options,
+  # iv_computations <- calculate_vix_optimized(near_term_options, next_term_options,
   #                                                    risk_free_rate_near = near_interest_rate,
   #                                                    risk_free_rate_next = next_interest_rate,
   #                                                    current_time = Sys.time(),

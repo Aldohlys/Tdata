@@ -1,6 +1,6 @@
 {
   "R": {
-    "Version": "4.4.3",
+    "Version": "4.4.1",
     "Repositories": [
       {
         "Name": "CRAN",
@@ -68,7 +68,7 @@
     },
     "MASS": {
       "Package": "MASS",
-      "Version": "7.3-64",
+      "Version": "7.3-61",
       "Source": "Repository",
       "Repository": "CRAN",
       "Requirements": [
@@ -79,11 +79,11 @@
         "stats",
         "utils"
       ],
-      "Hash": "49d2d8090b74c1179df1aff16201caf8"
+      "Hash": "0cafd6f0500e5deba33be22c46bf6055"
     },
     "Matrix": {
       "Package": "Matrix",
-      "Version": "1.7-2",
+      "Version": "1.7-0",
       "Source": "Repository",
       "Repository": "CRAN",
       "Requirements": [
@@ -96,7 +96,7 @@
         "stats",
         "utils"
       ],
-      "Hash": "f6a81550f166acbe2cd5229e9ca079b9"
+      "Hash": "1920b2f11133b12350024297d8a4ff4a"
     },
     "PerformanceAnalytics": {
       "Package": "PerformanceAnalytics",
@@ -187,10 +187,10 @@
     },
     "Tbasics": {
       "Package": "Tbasics",
-      "Version": "1.4.4",
+      "Version": "1.4.5",
       "Source": "Local",
       "RemoteType": "local",
-      "RemoteUrl": "C:/Users/aldoh/Documents/RApplication/Tbasics_1.4.4.tar.gz",
+      "RemoteUrl": "C:/Users/aldoh/Documents/RApplication/Tbasics_1.4.5.tar.gz",
       "Requirements": [
         "DescTools",
         "Tlogger",
@@ -210,7 +210,7 @@
         "vctrs",
         "withr"
       ],
-      "Hash": "31403b0cf62c4e8d1a8ab1bc9e8572f5"
+      "Hash": "269a7c8a7e4a3601630af8c357546ff0"
     },
     "Tlogger": {
       "Package": "Tlogger",
@@ -385,7 +385,7 @@
     },
     "class": {
       "Package": "class",
-      "Version": "7.3-23",
+      "Version": "7.3-22",
       "Source": "Repository",
       "Repository": "CRAN",
       "Requirements": [
@@ -394,7 +394,7 @@
         "stats",
         "utils"
       ],
-      "Hash": "d0cb9cc838c3b43560bd958fc4317fdc"
+      "Hash": "f91f6b29f38b8c280f2b9477787d4bb2"
     },
     "cli": {
       "Package": "cli",
