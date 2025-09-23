@@ -1,42 +1,19 @@
 Package: Tdata
 Title: Provide basic utilities for trading IBKR account
-Version: 5.7.5
-Authors@R: 
-    person("Alexis", "Martin", , "aldohlys@gmail.com", role = c("aut","cre"),
-           comment = c(ORCID = ""))
-Description: This package contains various R and Python functions that are to be used in cunjunction with an IBKR and other account. More specifically, it is interfaced with ib_insync Python package to get all TWS functions through the TWS API.
+Version: 5.7.8
+Authors@R: person("Alexis", "Martin", , "aldohlys@gmail.com", role =
+        c("aut","cre"), comment = c(ORCID = ""))
+Description: This package contains various R and Python functions that
+        are to be used in cunjunction with an IBKR and other account.
+        More specifically, it is interfaced with ib_insync Python
+        package to get all TWS functions through the TWS API.
 License: MIT + file LICENSE
 Encoding: UTF-8
-Imports:
-    config,
-    DBI,
-    dplyr,
-    ecb,
-    glue,
-    hms,
-    httr,
-    jsonlite,
-    logger,
-    PerformanceAnalytics,
-    purrr,
-    quantmod,
-    readr,
-    reticulate,
-    rlang,
-    RSQLite,
-    rvest,
-    scales,
-    stats,
-    Tbasics,
-    tidyr,
-    vctrs,
-    utils,
-    xts,
-    zoo,
-    Tlogger
+Imports: config, DBI, dplyr, ecb, glue, hms, httr, jsonlite, logger,
+        PerformanceAnalytics, purrr, quantmod, readr, reticulate,
+        rlang, RSQLite, rvest, scales, stats, Tbasics, tidyr, vctrs,
+        utils, xts, zoo, Tlogger
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
-Suggests: 
-    rmarkdown,
-    testthat (>= 3.0.0)
+Suggests: rmarkdown, testthat (>= 3.0.0)
 Config/testthat/edition: 3

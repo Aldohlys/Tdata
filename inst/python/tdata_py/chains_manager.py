@@ -469,8 +469,10 @@ def _test_contract_batch_with_states(ib, batch_contracts):
                 qualified_strikes.append(float(strike))
                 logger.debug(f"Strike {strike}: QUALIFIED (batch)")
             else:
-                out_of_scope_strikes.append(float(strike))
-                logger.debug(f"Strike {strike}: OUT_OF_SCOPE (batch)")
+                # Don't mark as out_of_scope if just missing from batch response
+                # Only mark as out_of_scope if explicitly failed qualification
+                logger.debug(f"Strike {strike}: MISSING from batch response (will retry later)")
+                # Note: Missing strikes are not added to out_of_scope_strikes
         
         # Only warn about truncation at debug level to avoid clutter
         if len(qualified_contracts) < len(batch_contracts):
