@@ -141,6 +141,12 @@ try:
         get_option_historical_data,
         manage_contracts
     )
+
+    # Import on-demand retrieval functions
+    from .on_demand_historical import (
+        get_or_retrieve_option_historical_data,
+        clear_on_demand_cache
+    )
     
     package_logger.info("✅ Historical option data module loaded")
     historical_data_available = True

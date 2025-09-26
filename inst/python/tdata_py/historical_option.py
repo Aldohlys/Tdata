@@ -51,8 +51,9 @@ class ContractConfig:
             'last_updated': self.last_updated
         }
 
-    def from_dict(data: dict):
-        return ContractConfig(
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
             symbol=data['symbol'],
             trading_class=data['trading_class'],
             expiration=data['expiration'],
@@ -448,17 +449,35 @@ class HistoricalDataManager:
             self.config_manager = HistoricalDataConfig(config_file)
         self.storage = HistoricalStorage()
     
-    def collect_data_for_active_contracts(self, data_type: str = "both", ib_connection=None) -> Dict:
+    def collect_data_for_active_contracts(self, data_type: str = "both", contracts: List = None, ib_connection=None) -> Dict:
         """
-        Collect data for all active contracts.
-        
+        Collect data for contracts.
+
         Args:
             data_type: 'intraday', 'historical', or 'both'
+            contracts: Optional list of contracts (dicts or ContractConfig objects). If None, uses config file contracts.
+            ib_connection: Optional existing IB connection to reuse
         """
-        active_contracts = self.config_manager.get_active_contracts()
-        
-        if not active_contracts:
-            return {"message": "No active contracts to update"}
+        # Option 1: Use provided contracts
+        if contracts is not None:
+            active_contracts = []
+            for contract in contracts:
+                if isinstance(contract, dict):
+                    active_contracts.append(ContractConfig.from_dict(contract))
+                elif isinstance(contract, ContractConfig):
+                    active_contracts.append(contract)
+                else:
+                    logger.error(f"Invalid contract type: {type(contract)}")
+                    continue
+
+            if not active_contracts:
+                return {"message": "No valid contracts provided"}
+
+        # Option 2: Use config file contracts (existing behavior)
+        else:
+            active_contracts = self.config_manager.get_active_contracts()
+            if not active_contracts:
+                return {"message": "No active contracts to update"}
         
         close_connection = False
         if ib_connection is not None:
@@ -833,11 +852,30 @@ def add_historical_tracking(contracts_config) -> bool:
         logger.error(f"Error setting up tracking: {e}")
         return False
 
-def update_historical_data(data_type: str = "both") -> Dict:
-    """Update historical data for all active contracts."""
+def update_historical_data(data_type: str = "both", contracts: List = None) -> Dict:
+    """
+    Update historical data for contracts.
+
+    Args:
+        data_type: 'intraday', 'historical', or 'both'
+        contracts: Optional list of contracts (dicts or ContractConfig objects).
+                  If None, uses contracts from config file.
+
+    Examples:
+        # Use contracts from config file (existing behavior)
+        update_historical_data("both")
+
+        # Update single contract on-demand
+        contract = {'symbol': 'SPY', 'trading_class': 'SPY', 'expiration': '20250321', 'strike': 450.0, 'right': 'C'}
+        update_historical_data("historical", contracts=[contract])
+
+        # Update multiple contracts
+        contracts = [contract1, contract2, contract3]
+        update_historical_data("both", contracts=contracts)
+    """
     try:
         manager = HistoricalDataManager()
-        return manager.collect_data_for_active_contracts(data_type)
+        return manager.collect_data_for_active_contracts(data_type, contracts=contracts)
     except Exception as e:
         logger.error(f"Error updating historical data: {e}")
         return {"error": str(e)}
