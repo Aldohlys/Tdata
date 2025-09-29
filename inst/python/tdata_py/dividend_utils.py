@@ -89,10 +89,11 @@ def get_NTM_dividend(ib, contract):
     symbol = contract.symbol
     logger.debug("Requesting dividend data", {"symbol": symbol})
     dividend = -1  # Initialize with "unknown" value
-    
+    ticker = None  # Initialize ticker variable
+
     try:
         ib.qualifyContracts(contract)
-        
+
         # Try to get dividend data from ticker: expected value for 12 coming months
         ticker = ib.reqMktData(contract, '456')
         ib.sleep(1)
@@ -101,22 +102,27 @@ def get_NTM_dividend(ib, contract):
         # Check if dividend is None or NaN
         if dividend is None or (isinstance(dividend, float) and math.isnan(dividend)):
             raise ValueError("No next 12 months dividend data available")
-        
+
     except Exception as e:
         logger.warn("Error getting next 12 months dividend", {"error": str(e)})
-        
-        try:
-            dividend = ticker.dividends.past12Months
-            logger.debug("Using past 12 months dividend", {"dividend": dividend})
 
-            # Check if past dividend is also None or NaN
-            if dividend is None or (isinstance(dividend, float) and math.isnan(dividend)):
-                raise ValueError("No past 12 months dividend data available")
-            
-        except Exception as e:
-            logger.warn("Error getting past 12 months dividend", {"error": str(e)})
+        # Only try past12Months if ticker was successfully created
+        if ticker is not None:
+            try:
+                dividend = ticker.dividends.past12Months
+                logger.debug("Using past 12 months dividend", {"dividend": dividend})
 
-            # Fallback logic: use typical values for common symbols
+                # Check if past dividend is also None or NaN
+                if dividend is None or (isinstance(dividend, float) and math.isnan(dividend)):
+                    raise ValueError("No past 12 months dividend data available")
+
+            except Exception as e:
+                logger.warn("Error getting past 12 months dividend", {"error": str(e)})
+                # Continue to fallback logic below
+
+        # If we still don't have valid dividend data, use fallback logic
+        # This ensures fallback happens for any symbol that doesn't have IBKR dividend data
+        if dividend == -1:  # Still at initial value, meaning no valid data was found
             logger.debug("Using fallback dividend values for symbol", {"symbol": symbol})
             
             if symbol in ['ESTX50', 'SX5E']:
@@ -139,5 +145,7 @@ def get_NTM_dividend(ib, contract):
                 dividend =  -1  # Don't know answer
 
     finally:
-        ib.cancelMktData(contract)  # Cancel the subscription
+        # Only cancel market data if ticker was successfully created
+        if ticker is not None:
+            ib.cancelMktData(contract)  # Cancel the subscription
         return dividend
