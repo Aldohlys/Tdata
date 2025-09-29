@@ -78,17 +78,17 @@ def getNTMDividend(symbol, secType=None, currency=None, exchange = None):
 def get_NTM_dividend(ib, contract):
     """
     Get the annual dividend for a given security, and try a guess for index options
-    
+
     Args:
         ib: IB connection object
         contract: The contract for the  security
-        
+
     Returns:
         float: Next or Past 12 months dividend per share
     """
     symbol = contract.symbol
     logger.debug("Requesting dividend data", {"symbol": symbol})
-    dividend = 0
+    dividend = -1  # Initialize with "unknown" value
     
     try:
         ib.qualifyContracts(contract)
@@ -97,6 +97,10 @@ def get_NTM_dividend(ib, contract):
         ticker = ib.reqMktData(contract, '456')
         ib.sleep(1)
         dividend = ticker.dividends.next12Months
+
+        # Check if dividend is None or NaN
+        if dividend is None or (isinstance(dividend, float) and math.isnan(dividend)):
+            raise ValueError("No next 12 months dividend data available")
         
     except Exception as e:
         logger.warn("Error getting next 12 months dividend", {"error": str(e)})
@@ -104,6 +108,10 @@ def get_NTM_dividend(ib, contract):
         try:
             dividend = ticker.dividends.past12Months
             logger.debug("Using past 12 months dividend", {"dividend": dividend})
+
+            # Check if past dividend is also None or NaN
+            if dividend is None or (isinstance(dividend, float) and math.isnan(dividend)):
+                raise ValueError("No past 12 months dividend data available")
             
         except Exception as e:
             logger.warn("Error getting past 12 months dividend", {"error": str(e)})
