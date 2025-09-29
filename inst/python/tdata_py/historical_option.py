@@ -462,6 +462,7 @@ class HistoricalDataManager:
         if contracts is not None:
             active_contracts = []
             for contract in contracts:
+                logger.debug(f"Processing {contract['symbol']} {contract.get('trading_class')} {contract.get('expiration')} {contract.get('right')}")
                 if isinstance(contract, dict):
                     active_contracts.append(ContractConfig.from_dict(contract))
                 elif isinstance(contract, ContractConfig):

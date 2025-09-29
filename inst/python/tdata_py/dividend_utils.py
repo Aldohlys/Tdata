@@ -31,7 +31,7 @@ def getNTMDividend(symbol, secType=None, currency=None, exchange = None):
     ticker_info = ticker_db.get_ticker_info(symbol)
     
     if ticker_info is None:
-        logger.warning(f"No ticker info found for {sym}, using defaults")
+        logger.warning(f"No ticker info found for {symbol}, using defaults")
         if secType is None: secType = 'STK'
         if currency is None: currency = 'USD'
         if exchange is None: exchange = 'SMART'
