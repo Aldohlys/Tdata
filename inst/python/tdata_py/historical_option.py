@@ -527,11 +527,11 @@ class HistoricalDataManager:
                     if data_type in ["intraday", "both"]:
                         intraday_data = {}
                         for what_to_show in self.config_manager.intraday_what_to_show:
-                            bars = self._collect_bars(ib, ib_contract, "intraday", what_to_show, timeout)
+                            bars = self._collect_bars(ib, ib_contract, "intraday", what_to_show, timeout, is_incremental=is_incremental)
                             if bars:
                                 df = self._convert_bars_to_dataframe(bars, what_to_show)
                                 intraday_data[what_to_show] = df
-                        
+
                         if intraday_data:
                             files_added = self.storage.save_active_data(
                                 contract.symbol, contract.trading_class,
@@ -539,15 +539,15 @@ class HistoricalDataManager:
                                 "intraday", intraday_data, incremental=True
                             )
                             contract_files += files_added
-                    
+
                     if data_type in ["historical", "both"]:
                         historical_data = {}
                         for what_to_show in self.config_manager.historical_what_to_show:
-                            bars = self._collect_bars(ib, ib_contract, "historical", what_to_show, timeout)
+                            bars = self._collect_bars(ib, ib_contract, "historical", what_to_show, timeout, is_incremental=is_incremental)
                             if bars:
                                 df = self._convert_bars_to_dataframe(bars, what_to_show)
                                 historical_data[what_to_show] = df
-                        
+
                         if historical_data:
                             files_added = self.storage.save_active_data(
                                 contract.symbol, contract.trading_class,
@@ -593,27 +593,33 @@ class HistoricalDataManager:
         )
         return existing_data is not None and not existing_data.empty
     
-    def _collect_bars(self, ib, contract, data_type: str, what_to_show: str, timeout: int):
+    def _collect_bars(self, ib, contract, data_type: str, what_to_show: str, timeout: int, is_incremental: bool = False):
         """Collect bars from IB API with proper parameters"""
         config = self.config_manager
-        
+
         if data_type == "intraday":
             duration = config.intraday_duration
             bar_size = config.intraday_frequency
+            # For incremental intraday updates, only get last 2 days to avoid overwriting old data
+            if is_incremental:
+                duration = "2 D"
         else:  # historical
             duration = config.historical_duration
             bar_size = config.historical_frequency
-        
+            # For incremental historical updates, only get last week to avoid overwriting old data
+            if is_incremental:
+                duration = "1 W"
+
         try:
             qualified_contracts = ib.qualifyContracts(contract)
-        
+
             if not qualified_contracts:
                 logger.error(f"Contract qualification failed: {contract}")
                 return None
-            
+
             qualified_contract = qualified_contracts[0]
-            logger.debug(f"Qualified contract: {qualified_contract}")
-            
+            logger.debug(f"Qualified contract: {qualified_contract} (incremental: {is_incremental}, duration: {duration})")
+
             ib_logger = logging.getLogger('ib_insync.wrapper')
             ib_logger.addFilter(lambda record: 'Error 162' not in record.getMessage())
 
@@ -629,7 +635,7 @@ class HistoricalDataManager:
                 timeout=timeout
             )
             return bars
-            
+
         except Exception as e:
             logger.debug(f"Error collecting bars ({what_to_show}): {e}")
             return None
