@@ -53,9 +53,24 @@ class ContractConfig:
 
     @classmethod
     def from_dict(cls, data: dict):
+        # Validate trading_class
+        trading_class = data.get('trading_class')
+        symbol = data.get('symbol', 'UNKNOWN')
+
+        # Check if trading_class is empty, None, or an empty list/tuple
+        if not trading_class or (isinstance(trading_class, (list, tuple)) and len(trading_class) == 0):
+            raise ValueError(
+                f"Invalid or missing trading_class for symbol '{symbol}'. "
+                f"Got: {repr(trading_class)} (type: {type(trading_class).__name__}). "
+                f"Please set trading class in database using R: setTicker('{symbol}', TradingClass='...')"
+            )
+
+        # Ensure trading_class is a string
+        trading_class_str = str(trading_class)
+
         return cls(
-            symbol=data['symbol'],
-            trading_class=data['trading_class'],
+            symbol=symbol,
+            trading_class=trading_class_str,
             expiration=data['expiration'],
             strike=data['strike'],
             right=data['right'],
@@ -63,6 +78,7 @@ class ContractConfig:
             active=data.get('active', True),
             last_updated=data.get('last_updated')
         )
+
 
 ### Layer on top of actual Parquet files structure
 ### This provide the ability to load/save/archive data as needed
@@ -138,7 +154,8 @@ class HistoricalStorage:
         if existing_data is not None and not existing_data.empty:
             combined_data = pd.concat([existing_data, new_combined_data], ignore_index=True)
             # Deduplicate by datetime and what_to_show
-            combined_data = combined_data.drop_duplicates(subset=['datetime', 'what_to_show'], keep='last')
+            # Use 'first' to preserve original historical values, only add new timestamps
+            combined_data = combined_data.drop_duplicates(subset=['datetime', 'what_to_show'], keep='first')
             combined_data = combined_data.sort_values(['datetime', 'what_to_show'])
         else:
             combined_data = new_combined_data
@@ -644,24 +661,43 @@ class HistoricalDataManager:
         """Convert IB bars to standardized DataFrame format"""
         data = []
         for bar in bars:
+            # Base record structure
             record = {
                 'datetime': pd.to_datetime(bar.date),
-                'open': bar.open,
-                'high': bar.high,
-                'low': bar.low,
-                'close': bar.close,
                 'volume': bar.volume if hasattr(bar, 'volume') else 0
             }
-            
-            # Add specific fields based on what_to_show type
+
+            # Handle different what_to_show types correctly
             if what_to_show == "BID_ASK":
-                # For BID_ASK: open=time_avg_bid, high=max_ask, low=min_bid, close=time_avg_ask
-                record['bid'] = bar.low    # Min bid
-                record['ask'] = bar.high   # Max ask
-            # Note: OPTION_IMPLIED_VOLATILITY not available for options according to IBKR documentation
-            
+                # For BID_ASK from IBKR:
+                #   bar.open = time_avg_bid, bar.close = time_avg_ask
+                #   bar.low = min_bid, bar.high = max_ask
+                # Use raw bar values for OHLC (preserves bid/ask spread variation)
+                record["open"] = bar.open
+                record["high"] = bar.high
+                record["low"] = bar.low
+                record["close"] = bar.close
+                # Store bid/ask fields for reference
+                record["bid"] = bar.open      # time-weighted average bid
+                record["ask"] = bar.close     # time-weighted average ask
+                record["bid_low"] = bar.low   # minimum bid
+                record["ask_high"] = bar.high # maximum ask
+            elif what_to_show == "MIDPOINT":
+                # For MIDPOINT: OHLC values are midpoint between bid/ask
+                # This is what we want for charting
+                record['open'] = bar.open
+                record['high'] = bar.high
+                record['low'] = bar.low
+                record['close'] = bar.close
+            else:  # TRADES or other
+                # For TRADES: OHLC values are actual trade prices
+                record['open'] = bar.open
+                record['high'] = bar.high
+                record['low'] = bar.low
+                record['close'] = bar.close
+
             data.append(record)
-        
+
         return pd.DataFrame(data)
     
     def archive_expired_contracts(self) -> Dict:
