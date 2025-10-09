@@ -477,7 +477,7 @@ getTradeDates = function(trade_nr) {
 
   ### Verify that for all non 0 positions, Exp.Date is greater than today if it exists
   wrong_trades = all_dates_data[all_dates_data$Pos!=0,] |>
-                 filter(!is.na(Exp.Date), Exp.Date < getToday())
+                 dplyr::filter(!is.na(Exp.Date), Exp.Date < getToday())
 
   if (nrow(wrong_trades) > 0) {
     pasted_msg <- paste(unique(wrong_trades$TradeNr), collapse=", ")
@@ -485,7 +485,7 @@ getTradeDates = function(trade_nr) {
   }
   ## Remove all wrong trades
   all_dates_data <- all_dates_data |>
-    anti_join(wrong_trades, by = "TradeNr")
+    dplyr::anti_join(wrong_trades, by = "TradeNr")
   if (nrow(all_dates_data) == 0) {
     logger::log_error("No valid trade data", namespace="Tdata")
     return(NULL)
@@ -493,7 +493,7 @@ getTradeDates = function(trade_nr) {
 
   ### Prepare result ###
   ### Grouping key is TradeNr - now only 1 line per trade
-  result <- summarize(all_dates_data,
+  result <- dplyr::summarize(all_dates_data,
                       orig_date = min(orig_date),
                       last_date = max(last_date),
                       strategy = first(strategy))
@@ -506,10 +506,12 @@ getTradeDates = function(trade_nr) {
 
   if (nrow(trade_exp_date) > 0) {
     trade_exp_date = dplyr::summarize(trade_exp_date, exp_date = min(Exp.Date, na.rm=TRUE))
-    result <- left_join(result, trade_exp_date) |> select(TradeNr, strategy, exp_date,  orig_date, last_date)
+    result <- dplyr::left_join(result, trade_exp_date) |>
+      dplyr::select(TradeNr, strategy, exp_date,  orig_date, last_date)
   }
 
-  else result = mutate(result, exp_date=as.Date(NA)) |> select(TradeNr, strategy, exp_date,  orig_date, last_date)
+  else result = dplyr::mutate(result, exp_date=as.Date(NA)) |>
+         dplyr::select(TradeNr, strategy, exp_date,  orig_date, last_date)
 
   ### This tibble is grouped by TradeNr for future handling
   result <- dplyr::group_by(result, TradeNr)
