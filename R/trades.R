@@ -62,6 +62,17 @@ getAllTrades = function() {
 }
 
 ### Not to be exported - for test purposes
+getClosedRecentTradeQuery <- function(account, windowDate) {
+  conn <- safe_db_connect()
+  closedtrades = DBI::dbGetQuery(conn,
+                                 "Select * from Trades WHERE Statut == 'Ferm\U00e9' AND Account = ? AND TradeDate >= ?",
+                                 params=list(account, windowDate))
+  DBI::dbDisconnect(conn)
+  closedtrades
+}
+
+
+### Not to be exported - for test purposes
 getActiveTradeQuery <- function(account) {
   conn <- safe_db_connect()
   activetrades = DBI::dbGetQuery(conn,
@@ -128,14 +139,12 @@ getClosedTrades = function(account, windowDate = Sys.Date()-200) {
 
   ### Transform windowDate from Date to integer
   windowDate = as.numeric(format(windowDate,"%Y%m%d"))
+  closed_trades = getClosedRecentTradeQuery(account, windowDate)
 
-  conn <- safe_db_connect()
-  closed_trades = DBI::dbGetQuery(conn,
-                                 "Select * from Trades WHERE Statut = 'Ferm\U00e9' AND Account = ? AND TradeDate >= ?",
-                                 params=list(account, windowDate))
-  DBI::dbDisconnect(conn)
-
-
+  if (nrow(closed_trades) == 0) {
+    logger::log_warn("No closed trades to return", namespace="Tdata")
+    return(data.frame())
+  }
 
   ### If necessary display a warning message and convert data
   if (any(with(closed_trades, !is.numeric(c(TradeNr, TradeDate, Pos, Prix, Comm., Total, Risk, Reward, PnL))))) {
@@ -143,12 +152,26 @@ getClosedTrades = function(account, windowDate = Sys.Date()-200) {
       with(closed_trades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
   }
 
-  window_date_info <- getOpenDate(unique(closed_trades$TradeNr))
-  closed_trades <- dplyr::left_join(closed_trades, window_date_info, by = "TradeNr")
-  closed_trades <- dplyr::filter(closed_trades, orig_date >= as.Date(as.character(windowDate),"%Y%m%d"))
+  window_date_info <- getTradeDates(unique(closed_trades$TradeNr))
 
-  ### Remove all date related information - has been useful to filter data
-  dplyr::select(closed_trades, -c(strategy, exp_date, orig_date, last_date))
+  ### Check if any difference between both data frames
+  if (nrow(window_date_info) < nrow(closed_trades)) {
+    pasted_msg = paste(unique(closed_trades[!closed_trades$TradeNr %in% window_date_info$TradeNr, "TradeNr"]), collapse=", ")
+    logger::log_warn("Some closed trades are not recorded correctly in trades table: {pasted_msg}", namespace = "Tdata")
+    ### Keep only correct trades
+    closed_trades = closed_trades[closed_trades$TradeNr %in% window_date_info$TradeNr, ]
+    if (nrow(closed_trades) == 0) {
+      logger::log_warn("No closed trades to return", namespace="Tdata")
+      return(data.frame())
+    }
+  }
+
+  ### By comparing all trade data with trade opening date (orig_date)
+  ###   we make sure that all trade data belong to trades whose opening date is posterior to window date
+  closed_trades <- dplyr::left_join(closed_trades, window_date_info, by = "TradeNr") |>
+                   dplyr::filter(orig_date >= as.Date(as.character(windowDate),"%Y%m%d")) |>
+                   dplyr::select(-c(strategy, exp_date, orig_date, last_date))
+  closed_trades
 }
 
 
@@ -389,7 +412,7 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
   return(as.integer(trade_nr))
 }
 
-#' getOpenDate
+#' getTradeDates
 #'
 #' This function retrieves one or a vector of dates, pertaining to open, adjusted or closed trades, plus trade number and strategy.
 #'
@@ -397,8 +420,14 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
 #' Then the oldest date per trade is returned, plus still active expiration/active opening date (for existing position only)
 #' plus strategy.
 #' If the same trade number is present multiple times as input, then all output data will be repeated as many times
-#' This is useful for mass getOpenDate calls
+#' This is useful for multiple getTradeDate calls.
 #'
+#' * If any trade_nr element is non-numeric, it will log an error message and return NULL.
+#' * If any trade_nr element does not belong to Trade table, it will be removed from trade_nr vector and an error message will be logged.
+#' * If any trade has an instrument with position different from 0 (open position) and expiration date is greater than today,
+#'then it will be removed from result and an error message will be logged.
+#'
+#' N.B: If no trade_nr element is valid, it will log an error message and return NULL.
 #'@param trade_nr an integer or a vector of integers
 #'@return a data frame including:
 #'* `TradeNr` trade number, an integer
@@ -407,72 +436,87 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
 #'* `orig_date`  the original opening trade date (even if corresponding instrument part of the trade has been closed since)
 #'* `last_date` the last trading date on the trade - will be the close date if the trade is closed
 #'@export
-getOpenDate = function(trade_nr) {
+getTradeDates = function(trade_nr) {
 
   if (!is.numeric(trade_nr)) {
-    Tbasics::display_error_message("trade_nr must be a numeric")
+    pasted_msg = paste(trade_nr, collapse=", ")
+    logger::log_error("trade_nr must be a numeric: {pasted_msg}", trade_nr, namespace="Tdata")
+    return(NULL)
   }
 
   trades=getAllTrades()
-  ### This will create a line for trade_nr even if trade_nr does not exist in trades data frame
-  ### trades is grouped by TradeNr
-  trades = suppressMessages(dplyr::group_by(dplyr::right_join(trades, data.frame(TradeNr=trade_nr), by="TradeNr"), TradeNr))
+  missing_trades = trade_nr[!trade_nr %in% unique(trades$TradeNr)]
 
-  ### Retrieve initial opening date for each trade - trades are grouped by trade_nr
+  if (length(missing_trades) != 0) {
+    pasted_msg <- paste(missing_trades, collapse=", ")
+    logger::log_error("There are inexisting trades in argument: {pasted_msg}", namespace="Tdata")
+    trade_nr = trade_nr[trade_nr %in% unique(trades$TradeNr)]
+  }
+
+  if (length(trade_nr) == 0) {
+    logger::log_error("No trade to analyze", namespace="Tdata")
+    return(NULL)
+  }
+
+  ### Keep only trade data related to trade_nr - we know they all exist
+  ### trades is grouped by TradeNr & Instrument for summarize to use TradeNr and Instrument as grouping keys
+  ### Retrieve initial opening date for each trade
   ### orig_date is the oldest date recorded for the trade -
-  orig_date = dplyr::summarize(trades,orig_date=min(as.Date(as.character(TradeDate),format="%Y%m%d")))
-
   ### last_date is the most recent date recorded for the trade
-  last_date = dplyr::summarize(trades,last_date=max(as.Date(as.character(TradeDate),format="%Y%m%d")))
 
-  ### Retrieve strategies for each trade - trades are grouped by trade_nr
-  strategy = dplyr::summarize(trades,strategy=dplyr::first(Strategy))
+  all_dates_data = trades[trades$TradeNr %in% trade_nr,] |>
+            dplyr::mutate(TradeDate = as.Date(as.character(TradeDate),format="%Y%m%d"),
+                          Exp.Date = dplyr::if_else(Exp.Date == "NA", as.Date(NA), as.Date(Exp.Date,format="%d.%m.%Y"))) |>
+            dplyr::group_by(TradeNr, Instrument) |>
+            #### Result will still be grouped by TradeNr - 1 line per Instrument
+            dplyr::summarize(orig_date=min(TradeDate),
+                     last_date=max(TradeDate),
+                     Exp.Date=first(Exp.Date),
+                     Pos=sum(Pos),
+                     strategy=dplyr::first(Strategy))
 
-  non_trades = dplyr::pull(dplyr::filter(orig_date,is.na(orig_date)), TradeNr)
-  if (length(non_trades)!=0) {
-    stop("There are inexisting trades in argument ",non_trades)
+  ### Verify that for all non 0 positions, Exp.Date is greater than today if it exists
+  wrong_trades = all_dates_data[all_dates_data$Pos!=0,] |>
+                 filter(!is.na(Exp.Date), Exp.Date < getToday())
+
+  if (nrow(wrong_trades) > 0) {
+    pasted_msg <- paste(unique(wrong_trades$TradeNr), collapse=", ")
+    logger::log_warn("There are active trades in DB with expiration date prior today in argument: {pasted_msg}", namespace="Tdata")
+  }
+  ## Remove all wrong trades
+  all_dates_data <- all_dates_data |>
+    anti_join(wrong_trades, by = "TradeNr")
+  if (nrow(all_dates_data) == 0) {
+    logger::log_error("No valid trade data", namespace="Tdata")
+    return(NULL)
   }
 
-  ### Remove all instrument that have been closed - keep only active ones
-  ### For any instrument within a trade, keep the last active date
-  ### trades is grouped by TradeNr
-  trades = dplyr::filter(
-              dplyr::summarize(
-                dplyr::group_by(trades,TradeNr,Instrument),
-                ### Exp.Date is expiration date associated to Instrument - unique by definition
-                Exp.Date=as.Date(dplyr::first(Exp.Date),format="%d.%m.%Y"),
-                ### Pos gives the current position of the instrument - may be 0 if instrument has been sold in the trade (ex: roll out)
-                ### Will be 0 if trade is closed in any case
-                Pos=sum(Pos)),
-              Pos !=0)
+  ### Prepare result ###
+  ### Grouping key is TradeNr - now only 1 line per trade
+  result <- summarize(all_dates_data,
+                      orig_date = min(orig_date),
+                      last_date = max(last_date),
+                      strategy = first(strategy))
 
-  #### In case expiration trades have not been recorded,
-  #### keep only positions whose expiration date is posterior or equal to today
-  trades = dplyr::filter(trades, Exp.Date >= getToday())
+  ### TradeNr is used as grouping key for summarize
+  ## only Instruments whose position is not 0 are taken into account and Exp.Date is not NA
+  ### Take the first date to come in those trades
+  trade_exp_date = all_dates_data[all_dates_data$Pos!=0 & !is.na(all_dates_data$Exp.Date),
+                                   !names(all_dates_data) %in% c("Instrument", "Pos")]
 
-  ### Remove Instrument and Pos column
-  trades = dplyr::select(trades,c(TradeNr,exp_date=Exp.Date))
-
-  ### In case there are still open/adjusted trades
-  if (nrow(trades) != 0) {
-    ### Remove duplicated lines - in case several instrument were handled at the same time for the same trade
-    trades = trades[!duplicated(trades),]
-    ### Retrieve first expiration date to come (still active) for each trade number
-    trades = dplyr::group_by(dplyr::summarize(trades, exp_date=min(exp_date)),TradeNr)
+  if (nrow(trade_exp_date) > 0) {
+    trade_exp_date = dplyr::summarize(trade_exp_date, exp_date = min(Exp.Date, na.rm=TRUE))
+    result <- left_join(result, trade_exp_date) |> select(TradeNr, strategy, exp_date,  orig_date, last_date)
   }
 
-
-  ### Include also original trade date, last_trade date and strategy for each trade
-  ### In order to make sure to include also closed trades start by left join with orig_date
-  trades = suppressMessages(dplyr::left_join(strategy,trades,by=TradeNr))
-  trades = suppressMessages(dplyr::left_join(trades,orig_date,by=TradeNr))
-  trades = suppressMessages(dplyr::left_join(trades,last_date, by=TradeNr))
+  else result = mutate(result, exp_date=as.Date(NA)) |> select(TradeNr, strategy, exp_date,  orig_date, last_date)
 
   ### This tibble is grouped by TradeNr for future handling
-  result <- dplyr::group_by(trades,TradeNr)
+  result <- dplyr::group_by(result, TradeNr)
 
   ### If same TradeNr is requested multiple times then result will be repeated multiple times
-  suppressMessages(dplyr::left_join(data.frame(TradeNr = trade_nr), result))
+  if (anyDuplicated(trade_nr) > 0) suppressMessages(dplyr::left_join(data.frame(TradeNr = trade_nr), result))
+  else result
 }
 
 #' getRnR

@@ -14,7 +14,7 @@ Global <- NULL
 ### for .init_python_environment
 path <- NULL
 
-### for getOpenDate
+### for geTradeDates
 TradeNr <- Statut <- TradeDate <- Strategy <- exp_date <- Exp.Date <- Pos <- NULL
 
 ### for getTradeNr

@@ -16,6 +16,13 @@ getActiveTestTradeQuery <- function(account) {
                                  params=list(account))
 }
 
+
+getClosedRecentTestTradeQuery <- function(account, windowDate) {
+  DBI::dbGetQuery(conn,
+                  "Select * from TestTrades WHERE Statut == 'Ferm\U00e9' AND Account = ? AND TradeDate >= ?",
+                  params=list(account, windowDate))
+}
+
 getTestInstrumentQuery <- function(conn, tradenr, instr) {
   return(DBI::dbGetQuery(conn,
                          "SELECT Prix As startPrice,`Exp.Date` as expdate, Ssjacent as symbol, min(TradeDate) AS initial_trade_date
@@ -256,40 +263,39 @@ test_that("Test a trade from Simu account NA with account type equals to Live", 
     })
 })
 
-test_that("getOpenDate works with a closed trade", {
+test_that("getTradeDates works with a closed trade", {
   with_mocked_bindings(
     getAllTrades = getTestTrades,
     getToday = function()(as.Date("2024-04-04")), {
-        expect_equal(as.data.frame(getOpenDate(300)),
+        expect_equal(as.data.frame(getTradeDates(300)),
              data.frame(TradeNr=300,strategy="BOT",exp_date=as.Date(NA),
                         orig_date=as.Date("2023-08-02"),last_date=as.Date("2023-08-29")))
     })
 })
 
 
-test_that("getOpenDate works with a closed trade without expiring closing trade recorded", {
+test_that("getTradeDates returns NULL with a closed trade without expiring closing trade recorded", {
   with_mocked_bindings(
     getAllTrades = getTestTrades, getToday = function()(as.Date("2024-04-04")),{
-      expect_equal(as.data.frame(getOpenDate(316)),
-                   data.frame(TradeNr=316,strategy="OFI",exp_date=as.Date(NA),
-                              orig_date=as.Date("2023-09-18"),last_date=as.Date("2023-09-28")))
+      expect_true(is.null(getTradeDates(316)))
     })
 })
 
 
-test_that("getOpenDate works with a opened trade", {
+test_that("getTradeDates works with a opened trade", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades,getToday = function()(as.Date("2024-04-04")), {
-      expect_equal(as.data.frame(getOpenDate(399)),
+    getAllTrades = getTestTrades,
+    getToday = function()(as.Date("2024-04-04")), {
+      expect_equal(as.data.frame(getTradeDates(399)),
                    data.frame(TradeNr=399,strategy="BPT",exp_date=as.Date("2024-04-19"),
                               orig_date=as.Date("2024-03-21"),last_date=as.Date("2024-03-21")))
     })
 })
 
-test_that("getOpenDate works with opened and closed trades, opened trade with multiple expiration dates",{
+test_that("getTradeDates works with opened and closed trades, opened trade with multiple expiration dates",{
   with_mocked_bindings(
     getAllTrades = getTestTrades,getToday = function()(as.Date("2024-04-04")), {
-      expect_equal(as.data.frame(getOpenDate(c(367,370,392))),
+      expect_equal(as.data.frame(getTradeDates(c(367,370,392))),
                    data.frame(TradeNr=c(367,370,392),strategy=c("OFI","BPT","OFI"),
                               exp_date=c(as.Date(NA),as.Date("2025-12-19"),as.Date("2024-04-19")),
                               orig_date=c(as.Date("2023-12-14"),as.Date("2023-12-21"),as.Date("2024-02-23")),
@@ -338,10 +344,16 @@ test_that("getActiveTrades returns correct trades", {
 })
 
 test_that("getClosedTrades does not return trades whose trade dates are across window date", {
-  closed_trades <- getClosedTrades("U1804173", windowDate = as.Date("20240201", "%Y%m%d"))
-  trade_nr <- unique(closed_trades$TradeNr)
-  expect_false(371 %in% trade_nr)
-  expect_true(380 %in% trade_nr)
+  with_mocked_bindings(
+    getAllTrades = getTestTrades,
+    getClosedRecentTradeQuery = getClosedRecentTestTradeQuery,
+    getToday = function()(as.Date("2024-04-04")), {
+      closed_trades <- getClosedTrades(account = "U1804173", windowDate = as.Date("20240201", "%Y%m%d"))
+      trade_nr <- unique(closed_trades$TradeNr)
+      print(trade_nr)
+      expect_false(371 %in% trade_nr)
+      expect_true(391 %in% trade_nr)
+    })
 })
 
 DBI::dbDisconnect(conn)
