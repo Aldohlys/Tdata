@@ -1,5 +1,30 @@
 #### CURRENCY management
 
+#' getActiveCurrencies
+#'
+#' This function retrieves all active currencies in DB.
+#'
+#' It looks into Currencies table and requests all corresponding records.
+#'
+#' N.B: This will not work for currencies that have been used in the past, but are not active any more.
+#'@returns a character vector with all active currencies names
+#'@examples
+#'\dontrun{
+#'getActiveCurrencies()
+#'}
+#'@export
+getActiveCurrencies <- function(currency) {
+
+  ### Look at DB
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add=TRUE)
+
+  currency_list <- DBI::dbGetQuery(conn, "SELECT Name FROM Currencies WHERE Active = 'Yes'")
+  return(currency_list$Name)
+}
+
+
+
 #' getCurrencyAttrib
 #'
 #' This function retrieves all attributes of a given currency from DB.
