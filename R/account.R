@@ -387,7 +387,7 @@ greeksNet = function(portf) {
       logger::log_warn("Greeks computation returns NA because one or several positions Greeks are NA", namespace="Tdata")
     }
 
-    summarize(portf_extended,
+    dplyr::summarize(portf_extended,
               delta=sum(dnet,na.rm=FALSE),
               deltadollars=sum(ddnet,na.rm=FALSE),
               gamma=sum(gnet,na.rm=FALSE),

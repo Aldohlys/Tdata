@@ -471,7 +471,7 @@ getTradeDates = function(trade_nr) {
             #### Result will still be grouped by TradeNr - 1 line per Instrument
             dplyr::summarize(orig_date=min(TradeDate),
                      last_date=max(TradeDate),
-                     Exp.Date=first(Exp.Date),
+                     Exp.Date=dplyr::first(Exp.Date),
                      Pos=sum(Pos),
                      strategy=dplyr::first(Strategy))
 
@@ -496,7 +496,7 @@ getTradeDates = function(trade_nr) {
   result <- dplyr::summarize(all_dates_data,
                       orig_date = min(orig_date),
                       last_date = max(last_date),
-                      strategy = first(strategy))
+                      strategy = dplyr::first(strategy))
 
   ### TradeNr is used as grouping key for summarize
   ## only Instruments whose position is not 0 are taken into account and Exp.Date is not NA
