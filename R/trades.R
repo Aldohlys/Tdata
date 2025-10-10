@@ -443,7 +443,7 @@ getTradeDates = function(trade_nr) {
     logger::log_error("trade_nr must be a numeric: {pasted_msg}", trade_nr, namespace="Tdata")
     return(NULL)
   }
-
+  logger::log_debug("getTradeDates arguments: {paste(trade_nr, collapse=', ')}", namespace = "Tdata")
   trades=getAllTrades()
   missing_trades = trade_nr[!trade_nr %in% unique(trades$TradeNr)]
 
@@ -506,7 +506,7 @@ getTradeDates = function(trade_nr) {
 
   if (nrow(trade_exp_date) > 0) {
     trade_exp_date = dplyr::summarize(trade_exp_date, exp_date = min(Exp.Date, na.rm=TRUE))
-    result <- dplyr::left_join(result, trade_exp_date) |>
+    result <- suppressMessages(dplyr::left_join(result, trade_exp_date)) |>
       dplyr::select(TradeNr, strategy, exp_date,  orig_date, last_date)
   }
 

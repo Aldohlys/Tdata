@@ -363,13 +363,14 @@ greeksNet = function(portf) {
 
     #### portf is grouped by datetime
     #### Therefore summarize will do the computation per datetime
-    dplyr::summarize(dplyr::mutate(portf,
+    portf_extended <- dplyr::mutate(portf,
                                    dnet=dplyr::case_when(
-                                     type=="Stock" ~ 1*pos,
+                                     (type=="Stock"| type=="Future") ~ 1*pos,
                                      (type=="Call" | type=="Put") ~ multiplier*delta*pos,
                                      TRUE ~ 0),
                                    ddnet=dplyr::case_when(
                                      type=="Stock" ~ 1*pos*mktPrice,
+                                     type=="Future" ~ multiplier*pos*uPrice,
                                      (type=="Call" | type=="Put") ~ multiplier*delta*pos*uPrice,
                                      TRUE ~ 0),
                                    gnet=dplyr::if_else((type=="Call" | type=="Put"),
@@ -380,12 +381,19 @@ greeksNet = function(portf) {
                                                        0),
                                    vnet=dplyr::if_else((type=="Call" | type=="Put"),
                                                        multiplier*vega*pos,
-                                                       0)),
-                     delta=sum(dnet,na.rm=FALSE),
-                     deltadollars=sum(ddnet,na.rm=FALSE),
-                     gamma=sum(gnet,na.rm=FALSE),
-                     theta=sum(tnet,na.rm=FALSE),
-                     vega=sum(vnet,na.rm=FALSE))
+                                                       0))
+
+    if (any(is.na(portf_extended[,c("dnet", "ddnet", "gnet", "tnet", "vnet")]))) {
+      logger::log_warn("Greeks computation returns NA because one or several positions Greeks are NA", namespace="Tdata")
+    }
+
+    summarize(portf_extended,
+              delta=sum(dnet,na.rm=FALSE),
+              deltadollars=sum(ddnet,na.rm=FALSE),
+              gamma=sum(gnet,na.rm=FALSE),
+              theta=sum(tnet,na.rm=FALSE),
+              vega=sum(vnet,na.rm=FALSE)
+              )
   }
 }
 
