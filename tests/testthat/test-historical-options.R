@@ -65,11 +65,12 @@ test_that("get_or_retrieve_option_historical validates right parameter", {
   # Test with "C"
   result_c <- tryCatch({
     get_or_retrieve_option_historical(
-      symbol = "SPY",
-      trading_class = "SPY",
+      symbol = "ITB",
+      trading_class = "ITB",
       expiration = "20251121",
-      strike = 660,
-      right = "C"
+      strike = 110,
+      right = "C",
+      exchange = "SMART"
     )
   }, error = function(e) {
     NULL

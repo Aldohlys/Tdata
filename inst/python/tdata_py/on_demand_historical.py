@@ -145,14 +145,9 @@ def _fetch_single_contract_data(
         data_manager = HistoricalDataManager()
 
         # Fetch data from IBKR and store it
-        results = data_manager.collect_data_for_active_contracts(data_type, [contract_spec])
+        data_manager.collect_data_for_active_contracts(data_type, [contract_spec])
 
-        # Check if collection was successful
-        if not results or not results[0].get('success', False):
-            logger.warning(f"Failed to retrieve data from IBKR for {contract_spec['symbol']}")
-            return None
-
-        # Retrieve the stored data
+        # Retrieve the stored data (HistoricalDataManager auto-stores to parquet)
         from . import get_option_historical_data
         fetched_data = get_option_historical_data(
             contract_spec['symbol'],
@@ -165,6 +160,11 @@ def _fetch_single_contract_data(
             True  # include_archived
         )
 
+        if fetched_data is None or fetched_data.empty:
+            logger.warning(f"No data available from IBKR for {contract_spec['symbol']} {contract_spec['strike']}{contract_spec['right']}")
+            return None
+
+        logger.info(f"Successfully retrieved {len(fetched_data)} records for {contract_spec['symbol']} {contract_spec['strike']}{contract_spec['right']}")
         return fetched_data
 
     except Exception as e:
