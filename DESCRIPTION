@@ -1,6 +1,6 @@
 Package: Tdata
 Title: Provide basic utilities for trading IBKR account
-Version: 5.7.19
+Version: 5.7.23
 Authors@R: person("Alexis", "Martin", , "aldohlys@gmail.com", role =
         c("aut","cre"), comment = c(ORCID = ""))
 Description: This package contains various R and Python functions that
@@ -11,8 +11,8 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 Imports: config, DBI, dplyr, ecb, glue, hms, httr, jsonlite, logger,
         PerformanceAnalytics, purrr, quantmod, readr, reticulate,
-        rlang, RSQLite, rvest, scales, stats, Tbasics, tidyr, vctrs,
-        utils, xts, zoo, Tlogger
+        rlang, RSQLite, rvest, scales, stats, Tbasics, tibble, tidyr,
+        vctrs, utils, xts, zoo, Tlogger
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Suggests: rmarkdown, testthat (>= 3.0.0)

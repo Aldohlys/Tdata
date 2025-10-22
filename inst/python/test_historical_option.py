@@ -14,6 +14,20 @@ print(f"Add: {'Success' if success else 'Failed'}")
 
 settings = td.HistoricalDataConfig()
 
+data_manager = td.HistoricalDataManager()
+contract_spec = {
+      'symbol': "ITB",
+      'trading_class': "ITB",
+      'expiration': "20251128",
+      'strike': 110,
+      'right': "C",
+      'exchange': "SMART"  # Default exchange
+}
+results = data_manager.collect_data_for_active_contracts("historical", [contract_spec])
+td.get_option_historical_data(contract_spec["symbol"], contract_spec["trading_class"], contract_spec["expiration"],
+contract_spec["strike"], contract_spec["right"], "historical", "TRADES")
+
+
 # 2. Configure Collection Settings
 settings.update_settings(
     market_data_type=3,  # Delayed data

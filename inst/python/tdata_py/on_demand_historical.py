@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 
 from .historical_option import HistoricalStorage, HistoricalDataManager
-from .ibkr_integration import IBKRDataCollector
+from .IB_connection import isIBAvailable
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,7 @@ def get_or_retrieve_option_historical_data(
     expiration: str,
     strike: float,
     right: str,
+    exchange: str,
     data_type: str = "historical",
     what_to_show: str = "TRADES",
     include_archived: bool = True,
@@ -99,12 +100,12 @@ def get_or_retrieve_option_historical_data(
             'expiration': expiration,
             'strike': strike,
             'right': right,
-            'exchange': 'SMART'  # Default exchange
+            'exchange': exchange  # Default exchange
         }
 
         # Fetch data directly from IBKR
         fetched_data = _fetch_single_contract_data(
-            contract_spec, data_type, what_to_show
+            contract_spec, data_type
         )
 
         if fetched_data is None or fetched_data.empty:
@@ -129,8 +130,7 @@ def get_or_retrieve_option_historical_data(
 
 def _fetch_single_contract_data(
     contract_spec: Dict[str, Any],
-    data_type: str,
-    what_to_show: str
+    data_type: str
 ) -> Optional[pd.DataFrame]:
     """
     Fetch data for a single contract directly from IBKR.
@@ -138,50 +138,34 @@ def _fetch_single_contract_data(
     This bypasses the tracking configuration and fetches on-demand.
     """
     try:
-        # Use existing IBKR collector infrastructure
-        collector = IBKRDataCollector()
-
-        if not collector.check_connection():
+        if not isIBAvailable():
             logger.error("IBKR not available for on-demand data retrieval")
             return None
 
-        # Create contract object
-        contract = collector._create_contract(
-            symbol=contract_spec['symbol'],
-            trading_class=contract_spec['trading_class'],
-            expiration=contract_spec['expiration'],
-            strike=contract_spec['strike'],
-            right=contract_spec['right'],
-            exchange=contract_spec['exchange']
-        )
+        data_manager = HistoricalDataManager()
 
-        # Fetch data based on type
-        if data_type == "historical":
-            data = collector._collect_historical_data(contract, what_to_show)
-        elif data_type == "intraday":
-            data = collector._collect_intraday_data(contract, what_to_show)
-        elif data_type == "combined":
-            # Fetch both and combine
-            historical = collector._collect_historical_data(contract, what_to_show)
-            intraday = collector._collect_intraday_data(contract, what_to_show)
+        # Fetch data from IBKR and store it
+        results = data_manager.collect_data_for_active_contracts(data_type, [contract_spec])
 
-            combined_data = []
-            if historical is not None and not historical.empty:
-                combined_data.append(historical)
-            if intraday is not None and not intraday.empty:
-                combined_data.append(intraday)
-
-            if combined_data:
-                data = pd.concat(combined_data, ignore_index=True)
-                data = data.drop_duplicates(subset=['datetime'], keep='last')
-                data = data.sort_values('datetime')
-            else:
-                data = None
-        else:
-            logger.error(f"Unknown data_type: {data_type}")
+        # Check if collection was successful
+        if not results or not results[0].get('success', False):
+            logger.warning(f"Failed to retrieve data from IBKR for {contract_spec['symbol']}")
             return None
 
-        return data
+        # Retrieve the stored data
+        from . import get_option_historical_data
+        fetched_data = get_option_historical_data(
+            contract_spec['symbol'],
+            contract_spec['trading_class'],
+            contract_spec['expiration'],
+            contract_spec['strike'],
+            contract_spec['right'],
+            data_type,
+            "TRADES",
+            True  # include_archived
+        )
+
+        return fetched_data
 
     except Exception as e:
         logger.error(f"Error fetching single contract data: {e}")
