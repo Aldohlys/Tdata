@@ -132,13 +132,18 @@ get_or_retrieve_option_historical <- function(
     )
 
     # Check if result is NULL or None
-    if (is.null(result) || reticulate::py_is_null_xptr(result)) {
+    if (is.null(result)) {
       t_log_warn("No data returned from Python function")
       return(NULL)
     }
 
-    # Convert Python DataFrame to R tibble
-    data_tibble <- tibble::as_tibble(result)
+    # Convert to tibble (reticulate auto-converts pandas DataFrame to R data.frame)
+    if (inherits(result, "data.frame")) {
+      data_tibble <- tibble::as_tibble(result)
+    } else {
+      # If still a Python object, convert explicitly
+      data_tibble <- tibble::as_tibble(reticulate::py_to_r(result))
+    }
 
     t_log_info(paste0("Retrieved ", nrow(data_tibble), " data points"))
 
