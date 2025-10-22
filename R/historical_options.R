@@ -15,6 +15,7 @@
 #' @param expiration Character. Expiration date in YYYYMMDD format (e.g., "20250321")
 #' @param strike Numeric. Strike price
 #' @param right Character. Option type: "C" for Call, "P" for Put
+#' @param exchange Character. Exchange for routing (e.g., "SMART", "CBOE"). Default: "SMART"
 #' @param data_type Character. Type of data: "historical", "intraday", or "combined". Default: "historical"
 #' @param what_to_show Character. IBKR data type: "TRADES", "BID_ASK", "MIDPOINT". Default: "TRADES"
 #' @param include_archived Logical. Check archived data if not in active storage. Default: TRUE
@@ -71,6 +72,7 @@ get_or_retrieve_option_historical <- function(
   expiration,
   strike,
   right,
+  exchange = "SMART",
   data_type = "historical",
   what_to_show = "TRADES",
   include_archived = TRUE,
@@ -121,6 +123,7 @@ get_or_retrieve_option_historical <- function(
       expiration = expiration,
       strike = as.numeric(strike),
       right = right_normalized,
+      exchange = exchange,
       data_type = data_type,
       what_to_show = what_to_show,
       include_archived = include_archived,
