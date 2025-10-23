@@ -335,10 +335,10 @@ getLastTickerData = function(ticker) {
 #'getStockPrice
 #'
 #'For a given ticker or a vector of tickers, this function returns either the last close price from Yahoo service
-#'or the last stored price (latest from both).
+#'or the last stored price (latest from both), or the last price known by IBKR if available.
 #'
 #'This will depend upon close parameter.
-#'If close is TRUE then Yahoo service is used, otherwise data is retrieved from prices DB.
+#'If close is TRUE then Yahoo service is used, otherwise data is retrieved from prices DB if IBKR is not available or directly from IBKR.
 #'If no data can be found in prices DB (e.g. sym is not found in DB), then last available Yahoo price is returned.
 #'
 #'This function is vectorized, if no price ticker exists in DB it will then return an empty line for the corresponding ticker.
@@ -360,52 +360,70 @@ getStockPrice = function(sym = NULL, close = FALSE) {
     return(NA)
   }
 
-  prices_list = purrr::map_dbl(sym, \(s) {
-    sym_yahoo = getYahooName(s)
-    if (is.na(sym_yahoo)) return(NA)
-    else return(getLastAdjustedPrice(s))
-  })
+  ### If last close, retrieve last value from Yahôo
+  if (close) {
+    prices_list = purrr::map_dbl(sym, \(s) {
+      sym_yahoo = getYahooName(s)
+      if (is.na(sym_yahoo)) return(NA)
+      else return(getLastAdjustedPrice(s))
+    })
 
-  t_log_debug("prices_list: {paste(prices_list, collapse=', ')}")
+    t_log_debug("prices_list: {paste(prices_list, collapse=', ')}")
 
-  ### Initialize all lines with data from Yahoo,
-  ###   dated yesterday close of business for US stocks (maybe different for European stocks)
-  ### This will have as many lines as sym
-  line <- data.frame(
-    datetime = paste(format(Sys.Date() - 1,"%Y-%m-%d"), "22:00"),
-    sym = sym,
-    ### price is field name in Prices DB
-    price =  prices_list ### This may include NA if unknown by Yahoo
-  )
+    ### Initialize all lines with data from Yahoo,
+    ###   dated yesterday close of business for US stocks (maybe different for European stocks)
+    ### This will have as many lines as sym
+    line <- data.frame(
+      datetime = paste(format(Sys.Date() - 1,"%Y-%m-%d"), "22:00"),
+      sym = sym,
+      ### price is field name in Prices DB
+      price =  prices_list ### This may include NA if unknown by Yahoo
+    )
+
+  }
 
   ### Just retrieve latest price from DB or Yahoo but no trial to update using IBKR
-  if (!close) {
-    conn <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
-    on.exit(DBI::dbDisconnect(conn), add=TRUE)
+  else {
 
-    ### Retrieve last price stored in DB
-    line_db <- DBI::dbGetQuery(conn, "SELECT datetime, sym, price FROM Prices
+    ### No IBKR connection available - retrieve data from DB
+    if (!isIBAvailable()) {
+      conn <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
+      on.exit(DBI::dbDisconnect(conn), add=TRUE)
+
+      ### Retrieve last price stored in DB
+      line_db <- DBI::dbGetQuery(conn, "SELECT datetime, sym, price FROM Prices
                           WHERE sym = ? ORDER BY ROWID DESC LIMIT 1;", params = list(sym))
 
-    ### Add this info to line info retrieved from Yahoo
-    line <- dplyr::left_join(line, line_db, dplyr::join_by(sym))
-    line <- dplyr::mutate(line,
-                          dt_x = as.POSIXct(datetime.x),
-                          dt_y = as.POSIXct(datetime.y, format="%Y%m%d %H:%M"),
+      ### Add this info to line info retrieved from Yahoo
+      line <- dplyr::left_join(line, line_db, dplyr::join_by(sym))
+      line <- dplyr::mutate(line,
+                            dt_x = as.POSIXct(datetime.x),
+                            dt_y = as.POSIXct(datetime.y, format="%Y%m%d %H:%M"),
 
-                          ### Takes the more recent datetime - datetime.x will always be yesterday's close datetime
-                          ### i.e. datetime.x cannot be NA
-                          datetime = dplyr::if_else(is.na(datetime.y),
-                                                    datetime.x,
-                                                    dplyr::if_else(dt_x > dt_y, datetime.x, datetime.y)),
+                            ### Takes the more recent datetime - datetime.x will always be yesterday's close datetime
+                            ### i.e. datetime.x cannot be NA
+                            datetime = dplyr::if_else(is.na(datetime.y),
+                                                      datetime.x,
+                                                      dplyr::if_else(dt_x > dt_y, datetime.x, datetime.y)),
 
-                          ### Looks first if DB price is NA (no price returned) and then takes Yahoo price
-                          ### Otherwise takes the most recent price as well
-                          price = dplyr::if_else(is.na(price.y), price.x,
-                                          dplyr::if_else(dt_x > dt_y, price.x, price.y)))
+                            ### Looks first if DB price is NA (no price returned) and then takes Yahoo price
+                            ### Otherwise takes the most recent price as well
+                            price = dplyr::if_else(is.na(price.y), price.x,
+                                                   dplyr::if_else(dt_x > dt_y, price.x, price.y)))
 
-    line <- dplyr::select(line, datetime, sym, price)
-    t_log_debug("From DB: ", line)
+      line <- dplyr::select(line, datetime, sym, price)
+      t_log_debug("From DB: ", line)
+    }
+
+    ### Most recent data requested and IB is available
+    else {
+      ### get prices from IBKR using list_sec= "STK", and otherwise values from GonetTrades
+      line <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=2, close=FALSE)
+      conn <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
+      on.exit(DBI::dbDisconnect(conn), add=TRUE)
+      safe_db_append(conn,"Prices", line)
+    }
+
   }
 
   if (nrow(line) != 0) t_log_info("Most recent price either Yahoo or stored in DB:", line)

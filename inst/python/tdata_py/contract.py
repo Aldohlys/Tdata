@@ -92,7 +92,7 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
             if sym_secType is None: sym_secType = ticker_info.get('Type')
             if sym_currency is None: sym_currency = ticker_info.get('Currency')
             if sym_exchange is None: sym_exchange = ticker_info.get('Exchange')
-            if sym_expiration is None: sym_expiration = ticker_info.get('Expiration')
+            if sym_expiration is None: sym_expiration = int(ticker_info.get('Expiration'))
 
         # Log function call
         logger.info("getValue data", {

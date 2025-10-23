@@ -224,8 +224,8 @@ test_that("getStockPrice works with 2 symbols SPY, SPX", {
   expect_length(res$price, 2)
 })
 
-test_that("getStockPrice returns NA for all non-Yahoo syms - US-T, SOFR3", {
-  res <- getStockPrice(c("US-T", "SOFR3"))
+test_that("If close data requesed, getStockPrice returns NA for non-Yahoo syms - US-T, SOFR3", {
+  res <- getStockPrice(c("US-T", "SR3Z6"), close=TRUE)
   expect_true(all(is.character(c(res$datetime, res$sym))))
   expect_true(is.numeric(res$price))
   expect_length(res$price, 2)
@@ -238,6 +238,13 @@ test_that("getSymIntervalDate works with SPY and USO", {
   expect_true(is.numeric(res$SPY))
   expect_true(is.numeric(res$USO))
   expect_true(ncol(res) == 3)
+})
+
+test_that("getStockPrice works for future -with IBKR", {
+  res <- getStockPrice("SR3Z6")
+  expect_true(all(is.character(c(res$datetime, res$sym))))
+  expect_true(is.numeric(res$price))
+  expect_length(res$price, 1)
 })
 
 test_that("getSymIntervalDate works with US-T, GVGV and USO", {
