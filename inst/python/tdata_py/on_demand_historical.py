@@ -105,7 +105,7 @@ def get_or_retrieve_option_historical_data(
 
         # Fetch data directly from IBKR
         fetched_data = _fetch_single_contract_data(
-            contract_spec, data_type
+            contract_spec, data_type, what_to_show
         )
 
         if fetched_data is None or fetched_data.empty:
@@ -130,12 +130,18 @@ def get_or_retrieve_option_historical_data(
 
 def _fetch_single_contract_data(
     contract_spec: Dict[str, Any],
-    data_type: str
+    data_type: str,
+    what_to_show: str = "TRADES"
 ) -> Optional[pd.DataFrame]:
     """
     Fetch data for a single contract directly from IBKR.
 
     This bypasses the tracking configuration and fetches on-demand.
+
+    Args:
+        contract_spec: Contract specification dictionary
+        data_type: Type of data ("historical" or "intraday")
+        what_to_show: What data to show ("TRADES", "MIDPOINT", "BID_ASK")
     """
     try:
         if not isIBAvailable():
@@ -156,7 +162,7 @@ def _fetch_single_contract_data(
             contract_spec['strike'],
             contract_spec['right'],
             data_type,
-            "TRADES",
+            what_to_show,  # Use the passed what_to_show parameter
             True  # include_archived
         )
 
