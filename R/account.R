@@ -284,7 +284,11 @@ twr <- function(dates, e_nlv, cashflows) {
     cash_flows <- merge(xts::xts(cashflows, order.by = dates),
                         seq(from = min(dates), to = max(dates), by = "day"))
 
-    e_nlv <- as.numeric(zoo::na.approx(e_nlv_regular))
+    # Interpolate middle gaps, keep leading/trailing NAs (na.rm = FALSE prevents vector shortening)
+    e_nlv <- as.numeric(zoo::na.approx(e_nlv_regular, na.rm = FALSE))
+    # Extend first/last non-NA values to fill leading/trailing NAs
+    e_nlv <- zoo::na.fill(e_nlv, fill = "extend")
+
     cash_flows[is.na(cash_flows)]=0
     cash_flows=as.numeric(cash_flows)
 
