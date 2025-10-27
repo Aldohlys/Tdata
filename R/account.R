@@ -836,9 +836,9 @@ getAccountGonet <- function() {
                     EquityWithLoanValue = NetLiquidation,
                     FullAvailableFunds = TotalCashBalance,
                     CashFlow = 0,
-                    FullInitMarginReq = NA,
-                    FullMaintMarginReq = NA,
-                    FullExcessLiquidity = NA,
+                    FullInitMarginReq = NA_real_,
+                    FullMaintMarginReq = NA_real_,
+                    FullExcessLiquidity = NA_real_,
                     OptionMarketValue = 0,
                     RealizedPnL = 0,
     )
