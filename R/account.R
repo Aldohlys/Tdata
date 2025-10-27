@@ -270,7 +270,7 @@ twr <- function(dates, e_nlv, cashflows) {
   ### dates are dates when data are provided - there should be only one data point per dates
   if (!all(!duplicated(dates))) {
     Tbasics::display_error_message("twr:All dates must be different!")
-    return(NA)
+    return(NA_real_)
   }
   else {
     #####  e_nlv: End of day net liquidation values: D1, D2, ... Dn
@@ -303,7 +303,7 @@ twr <- function(dates, e_nlv, cashflows) {
       print(paste0("NLV:",length(e_nlv)))
       print(paste0("Cash flows",length(cash_flows)))
       Tbasics::display_error_message("twr:Cash flows number of elements different from Porfolio values!!!!")
-      return(NA)
+      return(NA_real_)
     }
     else {
       ### Cash flows are beginning of the day, cash_flows
