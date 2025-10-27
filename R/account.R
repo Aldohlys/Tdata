@@ -797,15 +797,15 @@ getGonet <- function() {
 #'}
 getAccountGonet <- function() {
 
-  account.var = c("account","date","heure","NetLiquidation","EquityWithLoanValue","FullAvailableFunds","FullInitMarginReq","FullMaintMarginReq","FullExcessLiquidity","OptionMarketValue","StockMarketValue","UnrealizedPnL","RealizedPnL","TotalCashBalance","CashFlow")
+  account.var = c("account","date","heure","Currency","NetLiquidation","EquityWithLoanValue","FullAvailableFunds","FullInitMarginReq","FullMaintMarginReq","FullExcessLiquidity","OptionMarketValue","StockMarketValue","UnrealizedPnL","RealizedPnL","TotalCashBalance","CashFlow")
   portf <- readLastPortfolio("Gonet")
 
   #### There are "portf_lines" opened positions in the GOnet portfolio (stocks)
   #### Some may be empty (NA lines) -> in this case the whole is considered as NA and therefore not stored
   #### ### DO not take into account days where one of the exchanges (NYSE, Euronext, SMI) is closed
 
-  acc = dplyr::summarize(portf, StockMarketValue = round(sum(convert_to_usd_date(mktValue, currency, Sys.Date()), na.rm = FALSE),2),
-                UnrealizedPnL = round(sum(convert_to_usd_date(unPnL, currency, Sys.Date()), na.rm = FALSE),2))
+  acc = dplyr::summarize(portf, StockMarketValue = round(sum(convert_to_base_date(mktValue, currency, Sys.Date()), na.rm = FALSE),2),
+                UnrealizedPnL = round(sum(convert_to_base_date(unPnL, currency, Sys.Date()), na.rm = FALSE),2))
   if (any(is.na(acc))) {
     Tbasics::display_error_message("Could not get a complete potfolio record - some prices are missing -> no account recorded")
   }
@@ -822,13 +822,15 @@ getAccountGonet <- function() {
   # Cash_USD = data.frame(date=as.Date(zoo::index(Cash_USD)), Cash_USD=as.numeric(Cash_USD))
 
   #### Add Cash positions to acc data frame using date as join
- cash_balance <- round(convert_to_usd_date(as.numeric(Cash_EUR[Sys.Date()]), "EUR", Sys.Date()) +
-                  as.numeric(Cash_USD[Sys.Date()]), 2)
+ cash_balance <- round(convert_to_base_date(as.numeric(Cash_EUR[Sys.Date()]), "EUR", Sys.Date()) +
+                  convert_to_base_date(as.numeric(Cash_USD[Sys.Date()]), "USD", Sys.Date()), 2)
 
-  ### convert to USD all Gonet positions
+  ### convert to base currency all Gonet positions
+  base_currency <- getParam("BaseCurrency")
   acc <- dplyr::mutate(acc, account="Gonet",
                     date = format(Sys.Date(),"%Y%m%d"),
                     heure = format(Sys.time(),"%H:%M:%S"),
+                    Currency = base_currency,
                     TotalCashBalance = cash_balance,
                     NetLiquidation = round(TotalCashBalance + StockMarketValue, 2),
                     EquityWithLoanValue = NetLiquidation,
