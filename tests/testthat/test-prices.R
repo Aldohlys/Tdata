@@ -255,7 +255,7 @@ test_that("getSymIntervalDate works with US-T, GVGV and USO", {
   expect_true(all(is.na(res$GVGV)))
 })
 
-test_that("getStockPrice falls back to DB when IBKR not available", {
+test_that("getStockPrice falls back to DB when IBKR not available - single symbol", {
   # Mock isIBAvailable to return FALSE
   with_mocked_bindings(
     isIBAvailable = function() FALSE,
@@ -275,11 +275,27 @@ test_that("getStockPrice falls back to DB when IBKR not available", {
 
       # price should be numeric (may be NA if not in DB)
       expect_true(is.numeric(res$price))
+    }
+  )
+})
 
-      # Test multiple symbols
-      res_multi <- getStockPrice(c("SPY", "SPX"), close=FALSE)
-      expect_equal(nrow(res_multi), 2)
-      expect_equal(res_multi$sym, c("SPY", "SPX"))
+test_that("getStockPrice falls back to DB when IBKR not available - multiple symbols", {
+  # Mock isIBAvailable to return FALSE
+  with_mocked_bindings(
+    isIBAvailable = function() FALSE,
+    {
+      # Test multiple symbols - critical for Gonet portfolio loading
+      res_multi <- getStockPrice(c("SPY", "SPX", "AAPL"), close=FALSE)
+
+      # Should return correct structure
+      expect_true(is.data.frame(res_multi))
+      expect_equal(colnames(res_multi), c("datetime", "sym", "price"))
+      expect_equal(nrow(res_multi), 3)
+      expect_equal(res_multi$sym, c("SPY", "SPX", "AAPL"))
+
+      # All columns should have correct types
+      expect_true(is.character(res_multi$datetime))
+      expect_true(is.character(res_multi$sym))
       expect_true(all(is.numeric(res_multi$price)))
     }
   )

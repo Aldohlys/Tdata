@@ -394,12 +394,22 @@ getStockPrice = function(sym = NULL, close = FALSE) {
         price = as.numeric(NA)
       )
 
-      ### Retrieve last price stored in DB
+      ### Retrieve last price stored in DB for each symbol
       conn <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
       on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
-      line_db <- DBI::dbGetQuery(conn, "SELECT datetime, sym, price FROM Prices
-                          WHERE sym = ? ORDER BY ROWID DESC LIMIT 1;", params = list(sym))
+      ### Build SQL query with IN clause for multiple symbols
+      placeholders <- paste(rep("?", length(sym)), collapse = ", ")
+      query <- sprintf("SELECT t1.datetime, t1.sym, t1.price
+                        FROM Prices t1
+                        INNER JOIN (
+                          SELECT sym, MAX(ROWID) as max_rowid
+                          FROM Prices
+                          WHERE sym IN (%s)
+                          GROUP BY sym
+                        ) t2 ON t1.sym = t2.sym AND t1.ROWID = t2.max_rowid", placeholders)
+
+      line_db <- DBI::dbGetQuery(conn, query, params = as.list(sym))
 
       ### Add DB info to initialized line
       line <- dplyr::left_join(line, line_db, dplyr::join_by(sym))
