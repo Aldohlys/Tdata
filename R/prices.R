@@ -387,29 +387,26 @@ getStockPrice = function(sym = NULL, close = FALSE) {
 
     ### No IBKR connection available - retrieve data from DB
     if (!isIBAvailable()) {
+      ### Initialize with default values
+      line <- data.frame(
+        datetime = as.character(NA),
+        sym = sym,
+        price = as.numeric(NA)
+      )
+
+      ### Retrieve last price stored in DB
       conn <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
       on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
-      ### Retrieve last price stored in DB
       line_db <- DBI::dbGetQuery(conn, "SELECT datetime, sym, price FROM Prices
                           WHERE sym = ? ORDER BY ROWID DESC LIMIT 1;", params = list(sym))
 
-      ### Add this info to line info retrieved from Yahoo
+      ### Add DB info to initialized line
       line <- dplyr::left_join(line, line_db, dplyr::join_by(sym))
       line <- dplyr::mutate(line,
-                            dt_x = as.POSIXct(datetime.x),
-                            dt_y = as.POSIXct(datetime.y, format="%Y%m%d %H:%M"),
-
-                            ### Takes the more recent datetime - datetime.x will always be yesterday's close datetime
-                            ### i.e. datetime.x cannot be NA
-                            datetime = dplyr::if_else(is.na(datetime.y),
-                                                      datetime.x,
-                                                      dplyr::if_else(dt_x > dt_y, datetime.x, datetime.y)),
-
-                            ### Looks first if DB price is NA (no price returned) and then takes Yahoo price
-                            ### Otherwise takes the most recent price as well
-                            price = dplyr::if_else(is.na(price.y), price.x,
-                                                   dplyr::if_else(dt_x > dt_y, price.x, price.y)))
+                            ### Use DB datetime and price if available, otherwise keep NA
+                            datetime = dplyr::coalesce(datetime.y, datetime.x),
+                            price = dplyr::coalesce(price.y, price.x))
 
       line <- dplyr::select(line, datetime, sym, price)
       t_log_debug("From DB: ", line)

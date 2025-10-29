@@ -13,6 +13,12 @@
 #'isIBAvailable()
 #'}
 isIBAvailable <- function() {
+  ### Check if tdata_py is available (Python module loaded successfully)
+  if (is.null(tdata_py)) {
+    t_log_warn("tdata_py Python module not available - Python environment not initialized")
+    return(FALSE)
+  }
+
   ### Open a connection and then close it with IBKR TWS API
   is_api_available <- tdata_py$isIBAvailable()
 

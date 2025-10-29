@@ -254,3 +254,52 @@ test_that("getSymIntervalDate works with US-T, GVGV and USO", {
   expect_true(ncol(res) == 4)
   expect_true(all(is.na(res$GVGV)))
 })
+
+test_that("getStockPrice falls back to DB when IBKR not available", {
+  # Mock isIBAvailable to return FALSE
+  with_mocked_bindings(
+    isIBAvailable = function() FALSE,
+    {
+      # Test single symbol - should return data structure even if IBKR unavailable
+      res <- getStockPrice("SPY", close=FALSE)
+
+      # Should return a data.frame with correct structure
+      expect_true(is.data.frame(res))
+      expect_equal(colnames(res), c("datetime", "sym", "price"))
+      expect_equal(nrow(res), 1)
+      expect_equal(res$sym, "SPY")
+
+      # datetime and sym should be character
+      expect_true(is.character(res$datetime))
+      expect_true(is.character(res$sym))
+
+      # price should be numeric (may be NA if not in DB)
+      expect_true(is.numeric(res$price))
+
+      # Test multiple symbols
+      res_multi <- getStockPrice(c("SPY", "SPX"), close=FALSE)
+      expect_equal(nrow(res_multi), 2)
+      expect_equal(res_multi$sym, c("SPY", "SPX"))
+      expect_true(all(is.numeric(res_multi$price)))
+    }
+  )
+})
+
+test_that("getStockPrice with close=TRUE always uses Yahoo regardless of IBKR", {
+  # Mock isIBAvailable to return FALSE
+  with_mocked_bindings(
+    isIBAvailable = function() FALSE,
+    {
+      # Test that close=TRUE path works independently of IBKR
+      res <- getStockPrice("SPY", close=TRUE)
+
+      expect_true(is.data.frame(res))
+      expect_equal(colnames(res), c("datetime", "sym", "price"))
+      expect_equal(res$sym, "SPY")
+      expect_true(is.numeric(res$price))
+
+      # Should have valid price from Yahoo (not NA)
+      expect_false(is.na(res$price))
+    }
+  )
+})
