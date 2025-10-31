@@ -9,6 +9,7 @@ import pandas as pd
 from typing import Optional, Dict, Any
 import logging
 from pathlib import Path
+import pytz
 
 from .historical_option import HistoricalStorage, HistoricalDataManager
 from .IB_connection import isIBAvailable
@@ -137,6 +138,7 @@ def _fetch_single_contract_data(
     Fetch data for a single contract directly from IBKR.
 
     This bypasses the tracking configuration and fetches on-demand.
+    Also fetches underlying stock data and merges it for accurate IV calculations.
 
     Args:
         contract_spec: Contract specification dictionary
@@ -150,10 +152,10 @@ def _fetch_single_contract_data(
 
         data_manager = HistoricalDataManager()
 
-        # Fetch data from IBKR and store it
+        # Fetch option data from IBKR and store it
         data_manager.collect_data_for_active_contracts(data_type, [contract_spec])
 
-        # Retrieve the stored data (HistoricalDataManager auto-stores to parquet)
+        # Retrieve the stored option data (HistoricalDataManager auto-stores to parquet)
         from . import get_option_historical_data
         fetched_data = get_option_historical_data(
             contract_spec['symbol'],
@@ -170,12 +172,236 @@ def _fetch_single_contract_data(
             logger.warning(f"No data available from IBKR for {contract_spec['symbol']} {contract_spec['strike']}{contract_spec['right']}")
             return None
 
-        logger.info(f"Successfully retrieved {len(fetched_data)} records for {contract_spec['symbol']} {contract_spec['strike']}{contract_spec['right']}")
-        return fetched_data
+        logger.info(f"Successfully retrieved {len(fetched_data)} option records for {contract_spec['symbol']} {contract_spec['strike']}{contract_spec['right']}")
+
+        # Also fetch underlying stock data for accurate IV calculations
+        underlying_data = _fetch_underlying_stock_data(
+            contract_spec['symbol'],
+            data_type,
+            data_manager
+        )
+
+        # Merge underlying prices with option data
+        if underlying_data is not None and not underlying_data.empty:
+            merged_data = _merge_underlying_with_option(fetched_data, underlying_data)
+            logger.info(f"Merged {len(merged_data)} records with underlying prices")
+            return merged_data
+        else:
+            logger.warning(f"Could not retrieve underlying data for {contract_spec['symbol']}, returning option data without underlying prices")
+            return fetched_data
 
     except Exception as e:
         logger.error(f"Error fetching single contract data: {e}")
         return None
+
+
+def _fetch_underlying_stock_data(
+    symbol: str,
+    data_type: str,
+    data_manager: HistoricalDataManager
+) -> Optional[pd.DataFrame]:
+    """
+    Fetch historical data for the underlying stock.
+
+    Args:
+        symbol: Stock symbol
+        data_type: Type of data ("historical" or "intraday")
+        data_manager: HistoricalDataManager instance to reuse connection
+
+    Returns:
+        DataFrame with columns: datetime, underlying_price
+    """
+    try:
+        from .IB_connection import safe_ib_connect
+        from ib_insync import Stock
+        from .core import ticker_db
+
+        # Get or create IB connection
+        ib = safe_ib_connect()
+        if not ib or not ib.isConnected():
+            logger.error("No IB connection available for stock data retrieval")
+            return None
+
+        # Get stock info from ticker database to determine correct exchange/currency
+        ticker_info = ticker_db.get_ticker_info(symbol)
+
+        if ticker_info is not None and len(ticker_info) > 0:
+            # get_ticker_info returns a dict
+            exchange = ticker_info.get('Exchange', 'SMART')
+            currency = ticker_info.get('Currency', 'USD')
+
+            # Handle empty values
+            if not exchange or exchange == '':
+                exchange = 'SMART'
+            if not currency or currency == '':
+                currency = 'USD'
+
+            logger.info(f"Using ticker info for {symbol}: exchange={exchange}, currency={currency}")
+        else:
+            # Fallback to SMART/USD for US stocks
+            exchange = 'SMART'
+            currency = 'USD'
+            logger.warning(f"No ticker info found for {symbol}, using default: exchange=SMART, currency=USD")
+
+        # Create stock contract with proper exchange and currency
+        stock_contract = Stock(symbol=symbol, exchange=exchange, currency=currency)
+
+        # Use same configuration as option data
+        config = data_manager.config_manager
+
+        # Determine parameters based on data_type
+        if data_type == "intraday":
+            duration = config.intraday_duration
+            bar_size = config.intraday_frequency
+        else:  # historical
+            duration = config.historical_duration
+            bar_size = config.historical_frequency
+
+        logger.info(f"Fetching underlying stock data for {symbol} ({data_type}: {duration} of {bar_size} bars)")
+
+        # Fetch stock bars using the same method as options
+        bars = data_manager._collect_bars(
+            ib=ib,
+            contract=stock_contract,
+            data_type=data_type,
+            what_to_show="TRADES",  # Use actual trades for stock
+            timeout=config.incremental_timeout,
+            is_incremental=False
+        )
+
+        if not bars or len(bars) == 0:
+            logger.warning(f"No stock data returned for {symbol}")
+            return None
+
+        # Convert to DataFrame
+        stock_df = pd.DataFrame([
+            {
+                'datetime': pd.to_datetime(bar.date),
+                'underlying_price': bar.close  # Use close price for IV calculations
+            }
+            for bar in bars
+        ])
+
+        logger.info(f"Retrieved {len(stock_df)} stock price records for {symbol}")
+        return stock_df
+
+    except Exception as e:
+        logger.error(f"Error fetching underlying stock data for {symbol}: {e}")
+        return None
+
+def _get_tz_name(tzinfo) -> str | None:
+    """Return timezone name regardless of whether it's pytz or zoneinfo."""
+    if tzinfo is None:
+        return None
+    if hasattr(tzinfo, "zone"):  # pytz
+        return tzinfo.zone
+    if hasattr(tzinfo, "key"):   # zoneinfo
+        return tzinfo.key
+    return str(tzinfo)
+
+
+
+def _merge_underlying_with_option(
+    option_data: pd.DataFrame,
+    underlying_data: pd.DataFrame
+) -> pd.DataFrame:
+    """Merge option and underlying data with timezone-aware alignment."""
+    try:
+        # --- 1️⃣ Ensure datetime columns are valid ---
+        option_data['datetime'] = pd.to_datetime(option_data['datetime'], errors='coerce')
+        underlying_data['datetime'] = pd.to_datetime(underlying_data['datetime'], errors='coerce')
+
+        # --- 2️⃣ Unify timezone awareness (from previous code) ---
+        def _get_tz_name(tzinfo):
+            if tzinfo is None:
+                return None
+            if hasattr(tzinfo, "zone"):  # pytz
+                return tzinfo.zone
+            if hasattr(tzinfo, "key"):   # zoneinfo
+                return tzinfo.key
+            return str(tzinfo)
+
+        def _infer_timezone(df):
+            CURRENCY_TZ_MAP = {
+                "USD": "America/New_York",
+                "EUR": "Europe/Paris",
+                "GBP": "Europe/London",
+                "CHF": "Europe/Zurich",
+                "JPY": "Asia/Tokyo"
+            }
+            SYMBOL_HINTS = {
+                "SPX": "America/New_York",
+                "NDX": "America/New_York",
+                "DAX": "Europe/Berlin",
+                "ESTX50": "Europe/Paris",
+                "CAC": "Europe/Paris",
+                "FTSE": "Europe/London",
+                "N225": "Asia/Tokyo"
+            }
+            if "currency" in df.columns and pd.notna(df["currency"].iloc[0]):
+                curr = str(df["currency"].iloc[0]).upper()
+                if curr in CURRENCY_TZ_MAP:
+                    return CURRENCY_TZ_MAP[curr]
+            if "symbol" in df.columns and pd.notna(df["symbol"].iloc[0]):
+                sym = str(df["symbol"].iloc[0]).upper()
+                for key, val in SYMBOL_HINTS.items():
+                    if key in sym:
+                        return val
+            return "UTC"
+
+        def _ensure_tz(df, tz):
+            if df['datetime'].dt.tz is None:
+                return df.assign(datetime=df['datetime'].dt.tz_localize(tz))
+            else:
+                current_tz = _get_tz_name(df['datetime'].dt.tz)
+                if current_tz != tz:
+                    return df.assign(datetime=df['datetime'].dt.tz_convert(tz))
+                else:
+                    return df
+
+        # Infer and align
+        opt_tz = _get_tz_name(option_data['datetime'].dt.tz)
+        und_tz = _get_tz_name(underlying_data['datetime'].dt.tz)
+
+        if not opt_tz:
+            opt_tz = _infer_timezone(option_data)
+            option_data = _ensure_tz(option_data, opt_tz)
+        if not und_tz:
+            und_tz = _infer_timezone(underlying_data)
+            underlying_data = _ensure_tz(underlying_data, und_tz)
+
+        if opt_tz != und_tz:
+            underlying_data = _ensure_tz(underlying_data, opt_tz)
+
+        # --- 3️⃣ Normalize internal precision ---
+        # This avoids ns/us mismatch
+        option_data['datetime'] = option_data['datetime'].dt.tz_convert('UTC').astype('datetime64[ns, UTC]')
+        underlying_data['datetime'] = underlying_data['datetime'].dt.tz_convert('UTC').astype('datetime64[ns, UTC]')
+
+        # --- 4️⃣ Sort before merge_asof ---
+        option_data = option_data.sort_values('datetime')
+        underlying_data = underlying_data.sort_values('datetime')
+
+        # --- 5️⃣ Merge ---
+        merged = pd.merge_asof(
+            option_data,
+            underlying_data,
+            on='datetime',
+            direction='nearest',
+            tolerance=pd.Timedelta('5 minutes')
+        )
+
+        # --- 6️⃣ Log missing matches ---
+        if 'underlying_price' in merged.columns:
+            missing_count = merged['underlying_price'].isna().sum()
+            if missing_count > 0:
+                logger.warning(f"{missing_count} option bars could not be matched with underlying prices")
+
+        return merged
+
+    except Exception as e:
+        logger.error(f"Error merging underlying with option data: {e}")
+        return option_data
 
 
 def _cache_retrieved_data(
@@ -187,34 +413,18 @@ def _cache_retrieved_data(
     """
     Cache retrieved data for future use without adding to tracking configuration.
 
-    This stores data in a separate "on-demand" cache to avoid cluttering
-    the main tracking configuration.
+    Note: Data is already cached by HistoricalDataManager in the standard location.
+    This function is a placeholder for potential future on-demand cache optimization.
     """
     try:
-        storage = HistoricalStorage()
-
-        # Create a temporary storage path for on-demand data
-        cache_path = storage.get_on_demand_cache_path(
-            contract_spec['symbol'],
-            contract_spec['trading_class'],
-            contract_spec['expiration'],
-            contract_spec['strike'],
-            contract_spec['right'],
-            data_type,
-            what_to_show
-        )
-
-        # Ensure directory exists
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Save data
-        data.to_parquet(cache_path, index=False)
-        logger.info(f"Cached data to {cache_path}")
-
+        # Data is already cached by HistoricalDataManager.collect_data_for_active_contracts()
+        # in the standard strikes directory structure, so no additional caching needed
+        logger.debug(f"Data already cached in standard location for {contract_spec['symbol']} " +
+                    f"{contract_spec['strike']}{contract_spec['right']}")
         return True
 
     except Exception as e:
-        logger.error(f"Error caching retrieved data: {e}")
+        logger.error(f"Error in cache placeholder: {e}")
         return False
 
 

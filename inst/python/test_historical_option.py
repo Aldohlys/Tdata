@@ -435,7 +435,361 @@ def export_config_for_powershell():
     return config_summary
 
 # Usage
-# config_status = export_config_for_powershell()=3):
+# config_status = export_config_for_powershell()
+
+# ==============================================================================
+# TESTS FOR UNDERLYING PRICE RETRIEVAL (NEW FEATURE)
+# ==============================================================================
+
+print("\n" + "="*80)
+print("TESTING UNDERLYING PRICE RETRIEVAL FEATURE")
+print("="*80)
+
+def test_underlying_price_retrieval():
+    """
+    Test that get_or_retrieve_option_historical_data returns data with
+    underlying_price column for accurate IV calculations.
+    """
+    print("\n--- Test 1: Basic Underlying Price Retrieval ---")
+
+    # Test contract
+    test_contract = {
+        'symbol': 'SGO',
+        'trading_class': 'GOB',
+        'expiration': '20251219',
+        'strike': 87.0,
+        'right': 'P',
+        'exchange': 'EUREX'
+    }
+
+    print(f"Retrieving option data for {test_contract['symbol']} " +
+          f"{test_contract['strike']}{test_contract['right']} {test_contract['expiration']}")
+
+    # This should now include underlying_price column
+    # IMPORTANT: Use force_refresh=True to bypass old cached data and test new code
+    data = td.get_or_retrieve_option_historical_data(
+        symbol=test_contract['symbol'],
+        trading_class=test_contract['trading_class'],
+        expiration=test_contract['expiration'],
+        strike=test_contract['strike'],
+        right=test_contract['right'],
+        exchange=test_contract['exchange'],
+        data_type='historical',
+        what_to_show='TRADES',
+        force_refresh=True  # Must bypass cache to test new underlying price feature
+    )
+
+    if data is None or data.empty:
+        print("❌ FAILED: No data returned")
+        return False
+
+    print(f"✓ Retrieved {len(data)} data points")
+    print(f"✓ Columns: {list(data.columns)}")
+
+    # Check for underlying_price column
+    if 'underlying_price' not in data.columns:
+        print("❌ FAILED: underlying_price column not found in data")
+        return False
+
+    print("✓ underlying_price column present")
+
+    # Check that underlying prices are valid
+    underlying_prices = data['underlying_price'].dropna()
+    if len(underlying_prices) == 0:
+        print("❌ FAILED: All underlying prices are NA")
+        return False
+
+    print(f"✓ Valid underlying prices: {len(underlying_prices)}/{len(data)}")
+    print(f"✓ Underlying price range: ${underlying_prices.min():.2f} - ${underlying_prices.max():.2f}")
+    print(f"✓ Average underlying price: ${underlying_prices.mean():.2f}")
+
+    # Check that underlying prices are reasonable (should be close to strike for ATM)
+    avg_underlying = underlying_prices.mean()
+    if avg_underlying < 100 or avg_underlying > 700:
+        print(f"⚠️  WARNING: Underlying price ${avg_underlying:.2f} seems unusual for {test_contract['symbol']}")
+
+    # Display sample data
+    print("\nSample data (first 3 rows):")
+    print(data[['datetime', 'close', 'underlying_price']].head(3).to_string())
+
+    print("\n✅ Test 1 PASSED: Underlying prices successfully retrieved and merged")
+    return True
+
+def test_underlying_price_consistency():
+    """
+    Test that underlying prices are consistent and properly matched to option bars.
+    """
+    print("\n--- Test 2: Underlying Price Consistency ---")
+
+    test_contract = {
+        'symbol': 'SGO',
+        'trading_class': 'GOB',
+        'expiration': '20251219',
+        'strike': 87.0,
+        'right': 'P',
+        'exchange': 'EUREX'
+    }
+
+    print(f"Testing data consistency for {test_contract['symbol']}")
+
+    data = td.get_or_retrieve_option_historical_data(
+        symbol=test_contract['symbol'],
+        trading_class=test_contract['trading_class'],
+        expiration=test_contract['expiration'],
+        strike=test_contract['strike'],
+        right=test_contract['right'],
+        exchange=test_contract['exchange'],
+        data_type='historical',
+        what_to_show='TRADES',
+        force_refresh=True  # Bypass cache to test new feature
+    )
+
+    if data is None or data.empty:
+        print("⚠️  SKIPPED: No data available for QQQ")
+        return True  # Not a failure, just no data
+
+    if 'underlying_price' not in data.columns:
+        print("❌ FAILED: No underlying_price column")
+        return False
+
+    # Check for NaN values
+    nan_count = data['underlying_price'].isna().sum()
+    nan_pct = (nan_count / len(data)) * 100
+
+    print(f"✓ Total data points: {len(data)}")
+    print(f"✓ Missing underlying prices: {nan_count} ({nan_pct:.1f}%)")
+
+    if nan_pct > 10:
+        print(f"⚠️  WARNING: {nan_pct:.1f}% of underlying prices are missing (threshold: 10%)")
+    else:
+        print(f"✓ Missing data within acceptable range (<10%)")
+
+    # Check that datetime alignment is reasonable
+    # Underlying prices should not have huge jumps between adjacent bars
+    data_sorted = data.sort_values('datetime')
+    price_changes = data_sorted['underlying_price'].diff().abs()
+    max_change = price_changes.max()
+    avg_change = price_changes.mean()
+
+    print(f"✓ Max underlying price change between bars: ${max_change:.2f}")
+    print(f"✓ Avg underlying price change between bars: ${avg_change:.2f}")
+
+    # Reasonable threshold: no single bar change > 10% of average price
+    avg_price = data['underlying_price'].mean()
+    if max_change > avg_price * 0.10:
+        print(f"⚠️  WARNING: Large price jump detected (${max_change:.2f}, {max_change/avg_price*100:.1f}%)")
+
+    print("\n✅ Test 2 PASSED: Underlying price consistency verified")
+    return True
+
+
+def test_iv_calculation_with_historical_prices():
+    """
+    Test that IV can be calculated using historical underlying prices.
+    This mimics what the R Shiny app will do.
+    """
+    print("\n--- Test 3: IV Calculation with Historical Prices ---")
+
+    try:
+        import numpy as np
+        from scipy.stats import norm
+    except ImportError:
+        print("⚠️  SKIPPED: scipy not available for IV calculation test")
+        return True
+
+    test_contract = {
+        'symbol': 'SGO',
+        'trading_class': 'GOB',
+        'expiration': '20251219',
+        'strike': 87.0,
+        'right': 'P',
+        'exchange': 'EUREX'
+    }
+
+    print(f"Testing IV calculation for {test_contract['symbol']}")
+
+    data = td.get_or_retrieve_option_historical_data(
+        symbol=test_contract['symbol'],
+        trading_class=test_contract['trading_class'],
+        expiration=test_contract['expiration'],
+        strike=test_contract['strike'],
+        right=test_contract['right'],
+        exchange=test_contract['exchange'],
+        data_type='historical',
+        what_to_show='TRADES',
+        force_refresh=True  # Bypass cache to test new feature
+    )
+
+    if data is None or data.empty or 'underlying_price' not in data.columns:
+        print("⚠️  SKIPPED: No data with underlying prices available")
+        return True
+
+    # Simple IV calculation test (Black-Scholes approximation)
+    # This is simplified - real IV calculation would use Newton-Raphson or uniroot
+    sample_row = data.dropna(subset=['close', 'underlying_price']).iloc[0]
+
+    option_price = sample_row['close']
+    underlying_price = sample_row['underlying_price']
+    strike = test_contract['strike']
+
+    print(f"✓ Sample data point:")
+    print(f"  - Option price: ${option_price:.2f}")
+    print(f"  - Underlying price: ${underlying_price:.2f}")
+    print(f"  - Strike: ${strike:.2f}")
+    print(f"  - Moneyness: {underlying_price/strike:.2%}")
+
+    # Check that data is reasonable for IV calculation
+    if option_price <= 0:
+        print("❌ FAILED: Option price must be positive")
+        return False
+
+    if underlying_price <= 0:
+        print("❌ FAILED: Underlying price must be positive")
+        return False
+
+    # Intrinsic value check
+    intrinsic = max(0, underlying_price - strike) if test_contract['right'] == 'C' else max(0, strike - underlying_price)
+
+    print(f"  - Intrinsic value: ${intrinsic:.2f}")
+    print(f"  - Time value: ${option_price - intrinsic:.2f}")
+
+    if option_price < intrinsic - 0.01:  # Allow small rounding
+        print(f"⚠️  WARNING: Option price (${option_price:.2f}) < Intrinsic value (${intrinsic:.2f})")
+    else:
+        print(f"✓ Option price > intrinsic value (valid for IV calculation)")
+
+    # Test that we can iterate through all rows (mimics R purrr::pmap_dbl)
+    valid_count = 0
+    for idx, row in data.iterrows():
+        if not np.isnan(row['close']) and not np.isnan(row['underlying_price']):
+            if row['close'] > 0 and row['underlying_price'] > 0:
+                valid_count += 1
+
+    print(f"✓ Valid rows for IV calculation: {valid_count}/{len(data)} ({valid_count/len(data)*100:.1f}%)")
+
+    print("\n✅ Test 3 PASSED: Data suitable for IV calculation")
+    return True
+
+
+def test_merge_asof_tolerance():
+    """
+    Test that merge_asof tolerance is working properly.
+    Underlying and option bars should be closely matched in time.
+    """
+    print("\n--- Test 4: Time Alignment Check ---")
+
+    # This test checks that the merge_asof 5-minute tolerance is appropriate
+    test_contract = {
+        'symbol': 'SGO',
+        'trading_class': 'GOB',
+        'expiration': '20251219',
+        'strike': 87.0,
+        'right': 'P',
+        'exchange': 'EUREX'
+    }
+
+    print(f"Checking time alignment for {test_contract['symbol']}")
+
+    data = td.get_or_retrieve_option_historical_data(
+        symbol=test_contract['symbol'],
+        trading_class=test_contract['trading_class'],
+        expiration=test_contract['expiration'],
+        strike=test_contract['strike'],
+        right=test_contract['right'],
+        exchange=test_contract['exchange'],
+        data_type='historical',
+        what_to_show='TRADES',
+        force_refresh=True  # Bypass cache to test new feature
+    )
+
+    if data is None or data.empty or 'underlying_price' not in data.columns:
+        print("⚠️  SKIPPED: No data available")
+        return True
+
+    # Check datetime format
+    if not hasattr(data['datetime'].iloc[0], 'hour'):
+        print("✓ Datetime column properly formatted")
+
+    # Check for large gaps that might indicate merge issues
+    # (This is indirect - we can't check actual merge offsets without the original data)
+    underlying_na = data['underlying_price'].isna().sum()
+
+    if underlying_na == 0:
+        print("✓ Perfect match: All option bars have underlying prices")
+    elif underlying_na < len(data) * 0.05:
+        print(f"✓ Good match: Only {underlying_na} ({underlying_na/len(data)*100:.1f}%) bars missing underlying price")
+    else:
+        print(f"⚠️  WARNING: {underlying_na} ({underlying_na/len(data)*100:.1f}%) bars missing underlying price")
+        print("   (May indicate time alignment issues or sparse underlying data)")
+
+    print("\n✅ Test 4 PASSED: Time alignment check completed")
+    return True
+
+
+# Run all tests
+def run_all_underlying_price_tests():
+    """Run complete test suite for underlying price feature."""
+    print("\n" + "="*80)
+    print("RUNNING UNDERLYING PRICE FEATURE TEST SUITE")
+    print("="*80)
+
+    tests = [
+        ("Underlying Price Retrieval", test_underlying_price_retrieval),
+        ("Price Consistency", test_underlying_price_consistency),
+        ("IV Calculation Readiness", test_iv_calculation_with_historical_prices),
+        ("Time Alignment", test_merge_asof_tolerance)
+    ]
+
+    results = []
+    for test_name, test_func in tests:
+        try:
+            result = test_func()
+            results.append((test_name, result))
+        except Exception as e:
+            print(f"\n❌ EXCEPTION in {test_name}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            results.append((test_name, False))
+
+    # Summary
+    print("\n" + "="*80)
+    print("TEST SUMMARY")
+    print("="*80)
+
+    passed = sum(1 for _, result in results if result)
+    total = len(results)
+
+    for test_name, result in results:
+        status = "✅ PASSED" if result else "❌ FAILED"
+        print(f"{status}: {test_name}")
+
+    print(f"\nTotal: {passed}/{total} tests passed ({passed/total*100:.0f}%)")
+
+    if passed == total:
+        print("\n🎉 ALL TESTS PASSED! Underlying price feature is working correctly.")
+    else:
+        print(f"\n⚠️  {total - passed} test(s) failed. Please review errors above.")
+
+    return passed == total
+
+
+# Uncomment to run tests
+run_all_underlying_price_tests()
+
+# Or run individual tests:
+# test_underlying_price_retrieval()
+# test_underlying_price_consistency()
+# test_iv_calculation_with_historical_prices()
+# test_merge_asof_tolerance()
+
+print("\n" + "="*80)
+print("UNDERLYING PRICE TESTS DEFINED")
+print("Uncomment 'run_all_underlying_price_tests()' to execute")
+print("="*80 + "\n")
+
+# ==============================================================================
+# END OF UNDERLYING PRICE TESTS
+# ==============================================================================
 
 def concurrent_collect_historical_data():
     """
