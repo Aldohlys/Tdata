@@ -205,10 +205,11 @@ test_that("getStockPrice works with symbol SPY -1",{
   expect_true(is.numeric(spy$price))
 })
 
-test_that("getStockPrice works with symbol SPY -2",{
+test_that("getStockPrice with close=TRUE uses Yahoo",{
   spy <- getStockPrice("SPY", close=TRUE)
   expect_true(all(is.character(c(spy$datetime, spy$sym))))
   expect_true(is.numeric(spy$price))
+  # Should get data from Yahoo regardless of IBKR availability
 })
 
 test_that("getStockPrice works with symbol SPY - 3",{

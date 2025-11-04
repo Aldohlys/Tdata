@@ -14,17 +14,16 @@ from tdata_py.dividend_utils import getNTMDividend
 from tdata_py.contract import getValue, getOptValue, getStraddleValue, getStrikesfromExpDate
 
 print("1. Test getValue with one symbol ===")
-getValue("SAF", close = False)
-getValue("SAF", close = True)
-getValue("ESTX50", close = True)
-getValue("SAF", "STK", "SMART", "EUR", close = False)
+getValue("SAF")
+getValue("SAF", "STK", "SMART", "EUR")
+getValue("ESTX50")
 getValue("810331198", "BILL")
 getValue("MSFZ5", secType="FUT",  expiration="20251215", exchange="CME")
 getValue("SR3Z6", secType="FUT", expiration = "202612", exchange="CME")
 getValue("MSFH6", secType="FUT", expiration="202603", exchange="CME")
 
 print("2. Test getValue with multiple symbols ==")
-getValue(["SAF", "SPY", "ESTX50", "SPX"], close = False)
+getValue(["SAF", "SPY", "ESTX50", "SPX"])
 
 print("3. Test getOptValue with one strike ===")
 getOptValue("SAF", expiration="20251017", strikes=270.0, right='P', currency="EUR")

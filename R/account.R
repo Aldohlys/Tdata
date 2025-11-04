@@ -747,8 +747,8 @@ getGonet <- function() {
   portf$heure <- format(Sys.time(),"%H:%M:%S")  ### Allows for several recordings in the same day
   portf = dplyr::left_join(portf, portf_cashflow, by = c("sym_yahoo" = "sym_yahoo"))
 
-  ### get prices from IBKR using list_sec= "STK", and otherwise values from GonetTrades
-  last_price <- tdata_py$getValue(list_sym=portf$sym_ibkr, ib=NULL, reqType=2, close=FALSE)
+  ### get prices from IBKR using reqType=2 (Frozen - most recent market data)
+  last_price <- tdata_py$getValue(list_sym=portf$sym_ibkr, ib=NULL, reqType=2)
 
   #### price_user is the subset of last_price where price = NaN, i.e. price could not be retrieved from IBKR
   price_user <- last_price[is.nan(last_price$price),]

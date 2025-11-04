@@ -46,18 +46,18 @@ from fin_logger import get_logger, log_execution_time
 logger = get_logger("tdata_py.contract")
 
 @log_execution_time
-def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=None, reqType=2, ib=None, close=True):
+def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=None, reqType=2, ib=None):
     """
-    Get current or close value for one or multiple securities from Interactive Brokers.
+    Get most recent market value for one or multiple securities from Interactive Brokers.
     Uses TickerDatabase to automatically determine security details.
-    
+
     Args:
         list_sym (str or list): Symbol(s)
         reqType (int): Market data type (1=Live, 2=Frozen, 3=Delayed, 4=Delayed Frozen)
-        close (bool): If True, returns close price; otherwise returns current price
+                      Default 2 (Frozen) returns most recent close when market is closed
 
     Returns:
-        DataFrame or int: 
+        DataFrame or int:
             - DataFrame with datetime, symbol and price if successful
             - -1 if contract does not exist
             - 0 if connection error
@@ -143,13 +143,10 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
             # Request tickers for the contracts
             tickers = ib.reqTickers(*contracts)
             logger.info("Retrieve IBKR market price for all contracts")
-            
-            # Get price data based on close parameter
-            if close:
-                values = [ticker.close for ticker in tickers]
-            else:
-                values = [ticker.marketPrice() for ticker in tickers]
-            
+
+            # Get most recent market price (uses close when market is closed with reqType=2)
+            values = [ticker.marketPrice() for ticker in tickers]
+
             # Allow time for data retrieval
             ib.sleep(1)
             

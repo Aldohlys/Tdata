@@ -424,8 +424,8 @@ getStockPrice = function(sym = NULL, close = FALSE) {
 
     ### Most recent data requested and IB is available
     else {
-      ### get prices from IBKR using list_sec= "STK", and otherwise values from GonetTrades
-      line <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=2, close=FALSE)
+      ### get prices from IBKR using reqType=2 (Frozen - most recent market data)
+      line <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=2)
       conn <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
       on.exit(DBI::dbDisconnect(conn), add=TRUE)
       safe_db_append(conn,"Prices", line)

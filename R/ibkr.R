@@ -38,14 +38,13 @@ isIBAvailable <- function() {
 #'
 #'Retrieves a price or a list of price from IBKR and
 #'returns a data frame with date and time (formatted), the list of tickers and corresponding prices, equal to Nan if no price found.
-#'Additionally it stores prices in DB Prices table (only if price different from NaN and not a close price)
+#'Additionally it stores prices in DB Prices table (only if price different from NaN)
 #'
-#'For a given ticker or a list of tickers, this function returns prices from IBKR, using also Tickers table from DB within Python code called.
+#'For a given ticker or a list of tickers, this function returns most recent market prices from IBKR,
+#'using Tickers table from DB within Python code called.
 #'If IBKR service is not available, it will return an error code and display an error message: 0 if no IBKR service, -1 if contract is unknown.
-#' if unknown then function returns -1
-#'@param sym string or vector of strings- IBKR style of ticker, if unknown then function returns -1
-#'@param reqType integer - should be either 2 or 4, default is 2
-#'@param close Boolean TRUE/FALSE, default is FALSE. if TRUE then retrieve last close price from IBKR, if FALSE then retrieve market price from IBKR
+#'@param sym string or vector of strings - IBKR style of ticker, if unknown then function returns -1
+#'@param reqType integer - Market data type: 1=Live, 2=Frozen (default), 3=Delayed, 4=Delayed Frozen
 #'@returns a data frame with the following fields: \code{datetime} (formatted date and time), \code{sym} (ticker name),
 #' \code{price} (price as double),  \code{iv180} IV for 6 months expiration, \code{iv30} IV for 1 month expiration,
 #' \code{ivp} IV percentile, \code{rv30}, realized volatility for the last month,  \code{rvp} realized volatility percentile.
@@ -53,13 +52,13 @@ isIBAvailable <- function() {
 #'\dontrun{
 #'getIBKRMetrics("SPY")
 #'getIBKRMetrics(c("ESTX50", "USO", "ABBN"))
-#'getIBKRMetrics("USO", close=TRUE)
+#'getIBKRMetrics("SPY", reqType=1)  # Live data
 #'}
 #'@export
-getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
+getIBKRMetrics <- function(sym, reqType=2) {
 
   ### This will work even if sym is a vector and not the other IBKR contract components
-  IBKRPrice <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=reqType, close=close)
+  IBKRPrice <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=reqType)
   t_log_info("Retrieved price data from IBKR: {IBKRPrice}")
 
   ### Error case do not go further on
@@ -68,54 +67,49 @@ getIBKRMetrics <- function(sym, reqType=2, close=FALSE) {
     return (IBKRPrice)
   }
 
+  ### Remove all empty prices if any, print resulting data
+  ### Only prices that are different from NaN will be stored in DB
+  LastIBKRPrice <- IBKRPrice[!is.nan(IBKRPrice$price),]
+  t_log_debug("Filtered IBKRPrice: {LastIBKRPrice}")
 
-  ### Last close price should not be stored as date and time will be wrong (IBKR returned last day close data...)
-  ### Also only prices that are different from NaN will be stored in DB
-  if (!close) {
-    ### Remove all empty prices if any, print resulting data
-    LastIBKRPrice <- IBKRPrice[!is.nan(IBKRPrice$price),]
-    t_log_debug("Filtered IBKRPrice: {LastIBKRPrice}")
+  ### Retrieve tickers returned by IBKRPrice and filter out non relevant tickers
+  tickers <- getTickers(LastIBKRPrice$sym) |> dplyr::filter(IV == "YES")
 
-    ### Retrieve tickers returned by IBKRPrice and filter out non relevant tickers
-    tickers <- getTickers(LastIBKRPrice$sym) |> dplyr::filter(IV == "YES")
+  ### Retrieve 30days IV for each ticker, each time applicable - -1 or NA if not
+  ### Do nothing if no ticker has IV
+  if (nrow(tickers) != 0) {
 
-    ### Retrieve 30days IV for each ticker, each time applicable - -1 or NA if not
-    ### Do nothing if no ticker has IV
-    if (nrow(tickers) != 0) {
+    #tickers_30d_iv <- get30dIV(tickers)
+    t_log_info("Build IV180 from near/next option chains IVs...")
+    tickers_180d_iv <- get180dIV(tickers, LastIBKRPrice)
 
-      #tickers_30d_iv <- get30dIV(tickers)
-      t_log_info("Build IV180 from near/next option chains IVs...")
-      tickers_180d_iv <- get180dIV(tickers, LastIBKRPrice)
+    t_log_info("Get IV30 and RV30 through IBKR historical data...")
+    vol_metrics <- getVolMetrics(tickers$Name)
+    ### Keep only 3 significant digits
+    tickers_vol_metrics <- dplyr::mutate(vol_metrics, dplyr::across(utils::tail(names(vol_metrics), 10), ~signif(.x, 3)))
 
-      t_log_info("Get IV30 and RV30 through IBKR historical data...")
-      vol_metrics <- getVolMetrics(tickers$Name)
-      ### Keep only 3 significant digits
-      tickers_vol_metrics <- dplyr::mutate(vol_metrics, dplyr::across(utils::tail(names(vol_metrics), 10), ~signif(.x, 3)))
+    LastIBKRPrice <- dplyr::left_join(LastIBKRPrice, tickers_180d_iv, by = dplyr::join_by(sym == Name)) |>
+      dplyr::left_join(dplyr::select(tickers_vol_metrics, symbol, iv30=current_iv, ivp=iv_percentile,
+                                     rv30=current_hv, rvp=hv_percentile),
+                       by = dplyr::join_by(sym == symbol))
 
-      LastIBKRPrice <- dplyr::left_join(LastIBKRPrice, tickers_180d_iv, by = dplyr::join_by(sym == Name)) |>
-        dplyr::left_join(dplyr::select(tickers_vol_metrics, symbol, iv30=current_iv, ivp=iv_percentile,
-                                       rv30=current_hv, rvp=hv_percentile),
-                         by = dplyr::join_by(sym == symbol))
-
-      tryCatch({
-        myconn <- safe_db_connect()
-        on.exit(DBI::dbDisconnect(myconn), add=TRUE)
-        safe_db_append(myconn, "Prices", LastIBKRPrice)
-      },
-      error = function(cond) {
-        t_log_error("Error while trying to write to DB", cond)
-        NA
-      },
-      warning = function(cond) {
-        t_log_warn(conditionMessage(cond))
-        # Choose a return value in case of warning
-        NULL
-      })
-      return(LastIBKRPrice)
-    }
-    else t_log_info("All IBKR Prices equal to NA (did not get any data from exchange) or IV set to NO")
-
+    tryCatch({
+      myconn <- safe_db_connect()
+      on.exit(DBI::dbDisconnect(myconn), add=TRUE)
+      safe_db_append(myconn, "Prices", LastIBKRPrice)
+    },
+    error = function(cond) {
+      t_log_error("Error while trying to write to DB", cond)
+      NA
+    },
+    warning = function(cond) {
+      t_log_warn(conditionMessage(cond))
+      # Choose a return value in case of warning
+      NULL
+    })
+    return(LastIBKRPrice)
   }
+  else t_log_info("All IBKR Prices equal to NA (did not get any data from exchange) or IV set to NO")
 
   ### Available readily if needed
   return(IBKRPrice)
