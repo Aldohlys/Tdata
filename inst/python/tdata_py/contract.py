@@ -62,117 +62,129 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
             - -1 if contract does not exist
             - 0 if connection error
     """
-    # Set locale for consistent formatting
-    locale.setlocale(locale.LC_ALL, '')
-    
-    # Convert single symbol to list format for uniform processing
-    if not isinstance(list_sym, list):
-        symbols = [list_sym]
-    else:
-        symbols = list_sym
-    
-    # Create contracts using ticker database for each symbol
-    contracts = []
-
-    for sym in symbols:
-      
-        ### Initialize values
-        ticker_info = ticker_db.get_ticker_info(sym)
-        sym_secType = secType
-        sym_expiration = expiration
-        sym_currency = currency
-        sym_exchange = exchange
-        
-        if ticker_info is None:
-            logger.warning(f"No ticker info found for {sym}, using defaults")
-            if sym_secType is None: sym_secType = 'STK'
-            if sym_currency is None: sym_currency = 'USD'
-            if sym_exchange is None: sym_exchange = 'SMART'
-        else:
-            if sym_secType is None: sym_secType = ticker_info.get('Type')
-            if sym_currency is None: sym_currency = ticker_info.get('Currency')
-            if sym_exchange is None: sym_exchange = ticker_info.get('Exchange')
-            if sym_expiration is None: 
-                sym_expiration = ticker_info.get('Expiration')
-                if not(math.isnan(sym_expiration)): sym_expiration = int(sym_expiration)
-
-        # Log function call
-        logger.info("getValue data", {
-            "symbol": sym,
-            "secType": sym_secType,
-            "currency": sym_currency,
-            "exchange": sym_exchange,
-            "expiration": sym_expiration
-        })
-        
-        ## For futures only sym used as local symbol
-        if (sym_secType == "FUT"):
-          contract = Future(localSymbol = sym, lastTradeDateOrContractMonth = sym_expiration, currency = sym_currency, exchange = sym_exchange)
-        
-        ### For T-Bill - conId is the symbol name (like in Reporting)
-        elif (sym_secType == "BILL"):
-          contract = Contract(secType=sym_secType, conId=sym, exchange=sym_exchange)
-
-        ### Other cases
-        else : contract = Contract(secType = sym_secType, symbol = sym, currency = sym_currency, exchange = sym_exchange)
-
-        contracts.append(contract)
-    
-    ### Print info
-    
-    
-    # Connect to Interactive Brokers if ib has not been given as argument
-    ## If ib has been given as argument - do not disconnect it
-    disconnect = True
-    if (ib is None): ib = safe_ib_connect()
-    else: disconnect= False
-    
-    # Return 0 if connection failed
-    if not ib.isConnected():
-        return 0
-    
+    # CRITICAL: Save original locale to restore it on exit
+    # Without this, locale changes leak into R and break JSON serialization
+    # Note: LC_ALL not supported on Windows, use LC_NUMERIC instead
+    original_locale = locale.getlocale(locale.LC_NUMERIC)
     try:
-        # Try to qualify contracts
-        if ib.qualifyContracts(*contracts):
-            
-            logger.info("Contracts: ", {"Contracts": [contract.conId for contract in contracts]})
-            
-            # Set market data type based on parameter
-            ib.reqMarketDataType(int(reqType))
-            
-            # Request tickers for the contracts
-            tickers = ib.reqTickers(*contracts)
-            logger.info("Retrieve IBKR market price for all contracts")
+        # Set locale for consistent formatting (only within this function)
+        locale.setlocale(locale.LC_NUMERIC, '')
 
-            # Get most recent market price (uses close when market is closed with reqType=2)
-            values = [ticker.marketPrice() for ticker in tickers]
-
-            # Allow time for data retrieval
-            ib.sleep(1)
-            
-            # Create timestamp for all data points
-            current_time = datetime.datetime.now().strftime("%Y%m%d %H:%M")
-            
-            # Create and return DataFrame with results
-            df = pd.DataFrame({
-                "datetime": [current_time] * len(values),
-                "sym": symbols,
-                "price": [round(value, 4) for value in values]
-            })
-            
-            return df
+        # Convert single symbol to list format for uniform processing
+        if not isinstance(list_sym, list):
+            symbols = [list_sym]
         else:
-            # Contracts couldn't be qualified
-            logger.error("contracts could not be qualified:", {"contracts":contracts})
+            symbols = list_sym
+
+        # Create contracts using ticker database for each symbol
+        contracts = []
+
+        for sym in symbols:
+
+            ### Initialize values
+            ticker_info = ticker_db.get_ticker_info(sym)
+            sym_secType = secType
+            sym_expiration = expiration
+            sym_currency = currency
+            sym_exchange = exchange
+
+            if ticker_info is None:
+                logger.warning(f"No ticker info found for {sym}, using defaults")
+                if sym_secType is None: sym_secType = 'STK'
+                if sym_currency is None: sym_currency = 'USD'
+                if sym_exchange is None: sym_exchange = 'SMART'
+            else:
+                if sym_secType is None: sym_secType = ticker_info.get('Type')
+                if sym_currency is None: sym_currency = ticker_info.get('Currency')
+                if sym_exchange is None: sym_exchange = ticker_info.get('Exchange')
+                if sym_expiration is None:
+                    sym_expiration = ticker_info.get('Expiration')
+                    if not(math.isnan(sym_expiration)): sym_expiration = int(sym_expiration)
+
+            # Log function call
+            logger.info("getValue data", {
+                "symbol": sym,
+                "secType": sym_secType,
+                "currency": sym_currency,
+                "exchange": sym_exchange,
+                "expiration": sym_expiration
+            })
+
+            ## For futures only sym used as local symbol
+            if (sym_secType == "FUT"):
+              contract = Future(localSymbol = sym, lastTradeDateOrContractMonth = sym_expiration, currency = sym_currency, exchange = sym_exchange)
+
+            ### For T-Bill - conId is the symbol name (like in Reporting)
+            elif (sym_secType == "BILL"):
+              contract = Contract(secType=sym_secType, conId=sym, exchange=sym_exchange)
+
+            ### Other cases
+            else : contract = Contract(secType = sym_secType, symbol = sym, currency = sym_currency, exchange = sym_exchange)
+
+            contracts.append(contract)
+
+        ### Print info
+
+
+        # Connect to Interactive Brokers if ib has not been given as argument
+        ## If ib has been given as argument - do not disconnect it
+        disconnect = True
+        if (ib is None): ib = safe_ib_connect()
+        else: disconnect= False
+
+        # Return 0 if connection failed
+        if not ib.isConnected():
+            return 0
+
+        try:
+            # Try to qualify contracts
+            if ib.qualifyContracts(*contracts):
+
+                logger.info("Contracts: ", {"Contracts": [contract.conId for contract in contracts]})
+
+                # Set market data type based on parameter
+                ib.reqMarketDataType(int(reqType))
+
+                # Request tickers for the contracts
+                tickers = ib.reqTickers(*contracts)
+                logger.info("Retrieve IBKR market price for all contracts")
+
+                # Get most recent market price (uses close when market is closed with reqType=2)
+                values = [ticker.marketPrice() for ticker in tickers]
+
+                # Allow time for data retrieval
+                ib.sleep(1)
+
+                # Create timestamp for all data points
+                current_time = datetime.datetime.now().strftime("%Y%m%d %H:%M")
+
+                # Create and return DataFrame with results
+                df = pd.DataFrame({
+                    "datetime": [current_time] * len(values),
+                    "sym": symbols,
+                    "price": [round(value, 4) for value in values]
+                })
+
+                return df
+            else:
+                # Contracts couldn't be qualified
+                logger.error("contracts could not be qualified:", {"contracts":contracts})
+                return -1
+        except Exception as e:
+            # Handle any unexpected errors
+            logger.error("Error getting values:", e)
             return -1
-    except Exception as e:
-        # Handle any unexpected errors
-        logger.error("Error getting values:", e)
-        return -1
+        finally:
+            # Ensure connection is always closed - except if ib was given as parameter
+            if disconnect:
+                ib.disconnect()
     finally:
-        # Ensure connection is always closed - except if ib was given as parameter
-        if disconnect:
-            ib.disconnect()
+        # CRITICAL: Always restore original locale
+        # This ensures locale changes don't leak out and break JSON serialization in R
+        try:
+            locale.setlocale(locale.LC_NUMERIC, original_locale)
+        except Exception as e:
+            logger.warning(f"Could not restore original locale: {e}")
 
 def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, tradingClass=None):
     """

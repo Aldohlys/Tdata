@@ -128,6 +128,20 @@ for module in modules_to_reload:  ### This removes modules_to_reload from cache 
         del sys.modules[module]
 ')
 
+    # CRITICAL FIX: Set Python locale to use period decimals (not comma)
+    # French/Swiss locale causes JSON parse errors when Python data is sent to browser
+    t_log_info("Setting Python LC_NUMERIC locale to C (period decimals)")
+    tryCatch({
+      reticulate::py_run_string('
+import locale
+old_locale = locale.getlocale(locale.LC_NUMERIC)
+locale.setlocale(locale.LC_NUMERIC, "C")
+print(f"Python LC_NUMERIC changed from {old_locale} to C")
+')
+    }, error = function(e) {
+      t_log_warn(sprintf("Could not set Python locale: %s", e$message))
+    })
+
     # Import the package
     tdata_py <- reticulate::import("tdata_py", delay_load = TRUE)
 

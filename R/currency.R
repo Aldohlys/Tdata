@@ -352,7 +352,7 @@ getLastUSDValue = function(currency) {
   price_list <- getYahooData(currency_detail$YahooName, from_date=Sys.Date()-3)
   last_nr = nrow(price_list)
 
-  if (last_nr == 0) {
+  if ((last_nr == 0) | all(is.na(price_list$Adjusted))) {
     t_log_info("No currency data for {currency} found !")
     return(data.frame(date = as.Date(""), value = NA))
   }
