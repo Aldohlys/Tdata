@@ -752,9 +752,39 @@ getGonet <- function() {
 
   #### price_user is the subset of last_price where price = NaN, i.e. price could not be retrieved from IBKR
   price_user <- last_price[is.nan(last_price$price),]
+  new_price_entries <- data.frame(sym = character(), datetime = character(), price = numeric())
 
-  ### Replace NaN values with price entered by user in price_user
-  price_user$price <- Tbasics::enter_numerical_data(price_user$sym)
+  if (nrow(price_user) > 0) {
+    ### Try to retrieve stored prices from database first
+    stored_prices <- getStoredMetrics(price_user$sym)
+
+    if (nrow(stored_prices) > 0) {
+      ### Merge stored prices with price_user
+      price_user <- dplyr::left_join(
+        dplyr::select(price_user, sym, datetime),
+        dplyr::select(stored_prices, sym, price),
+        by = "sym"
+      )
+
+      ### Only prompt user for symbols that have no stored price (still NA/NaN)
+      missing_prices <- price_user[is.na(price_user$price) | is.nan(price_user$price), ]
+
+      if (nrow(missing_prices) > 0) {
+        ### Prompt user only for truly missing prices
+        new_prices <- Tbasics::enter_numerical_data(missing_prices$sym)
+        ### Create new price entries before updating price_user
+        new_price_entries <- missing_prices
+        new_price_entries$price <- new_prices
+        ### Update price_user with newly entered prices
+        price_user$price[is.na(price_user$price) | is.nan(price_user$price)] <- new_prices
+      }
+    } else {
+      ### No stored prices available, prompt user for all missing prices
+      price_user$price <- Tbasics::enter_numerical_data(price_user$sym)
+      ### All prices are new, store them all
+      new_price_entries <- price_user
+    }
+  }
 
   ### Merge prices with value retrieved from IBKR plus prices with values entered by user
   last_price <- rbind(last_price[!is.nan(last_price$price),],
@@ -777,8 +807,10 @@ getGonet <- function() {
   ### Open connection to user DB
   conn <- safe_db_connect()
   safe_db_append(conn,"Gonet", portf)
-  ### Non NaN prices already been stored in DB by getIBKRMetrics function - so only price_user need to be stored in DB
-  safe_db_append(conn,"Prices", price_user)
+  ### Only store newly entered prices (not stored prices retrieved from DB)
+  if (nrow(new_price_entries) > 0) {
+    safe_db_append(conn,"Prices", new_price_entries)
+  }
   DBI::dbDisconnect(conn)
 }
 
