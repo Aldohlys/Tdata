@@ -762,7 +762,7 @@ getGonet <- function() {
     default_values <- numeric(nrow(price_user))
     for (i in seq_len(nrow(price_user))) {
       stored_row <- stored_prices[stored_prices$sym == price_user$sym[i], ]
-      if (nrow(stored_row) > 0) {
+      if (nrow(stored_row) > 0 && !is.na(stored_row$price[1])) {
         default_values[i] <- stored_row$price[1]
       } else {
         default_values[i] <- NA
@@ -773,10 +773,13 @@ getGonet <- function() {
     ### User can press Enter to keep default, or enter new value
     entered_prices <- Tbasics::enter_numerical_data(price_user$sym, default_values)
 
-    ### Identify which prices were actually changed (not just kept as default)
-    ### Store only the new/updated prices
+    ### Update price_user with entered prices
     price_user$price <- entered_prices
-    changed_mask <- !is.na(entered_prices) & (is.na(default_values) | entered_prices != default_values)
+
+    ### Save to database if user entered a valid price (not NA)
+    ### Don't save if user just pressed Enter and kept the stored price (no change)
+    changed_mask <- !is.na(entered_prices) &
+                    (is.na(default_values) | abs(entered_prices - default_values) > 0.0001)
 
     ### Only save newly entered or updated prices to database
     if (any(changed_mask)) {
