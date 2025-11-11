@@ -752,37 +752,35 @@ getGonet <- function() {
 
   #### price_user is the subset of last_price where price = NaN, i.e. price could not be retrieved from IBKR
   price_user <- last_price[is.nan(last_price$price),]
-  new_price_entries <- data.frame(sym = character(), datetime = character(), price = numeric())
+  new_price_entries <- data.frame(sym = character(), datetime = character(), price = numeric(), stringsAsFactors = FALSE)
 
   if (nrow(price_user) > 0) {
-    ### Try to retrieve stored prices from database first
+    ### Retrieve stored prices from database to use as defaults
     stored_prices <- getStoredMetrics(price_user$sym)
 
-    if (nrow(stored_prices) > 0) {
-      ### Merge stored prices with price_user
-      price_user <- dplyr::left_join(
-        dplyr::select(price_user, sym, datetime),
-        dplyr::select(stored_prices, sym, price),
-        by = "sym"
-      )
-
-      ### Only prompt user for symbols that have no stored price (still NA/NaN)
-      missing_prices <- price_user[is.na(price_user$price) | is.nan(price_user$price), ]
-
-      if (nrow(missing_prices) > 0) {
-        ### Prompt user only for truly missing prices
-        new_prices <- Tbasics::enter_numerical_data(missing_prices$sym)
-        ### Create new price entries before updating price_user
-        new_price_entries <- missing_prices
-        new_price_entries$price <- new_prices
-        ### Update price_user with newly entered prices
-        price_user$price[is.na(price_user$price) | is.nan(price_user$price)] <- new_prices
+    ### Create vector of default values (stored prices if available, NA otherwise)
+    default_values <- numeric(nrow(price_user))
+    for (i in seq_len(nrow(price_user))) {
+      stored_row <- stored_prices[stored_prices$sym == price_user$sym[i], ]
+      if (nrow(stored_row) > 0) {
+        default_values[i] <- stored_row$price[1]
+      } else {
+        default_values[i] <- NA
       }
-    } else {
-      ### No stored prices available, prompt user for all missing prices
-      price_user$price <- Tbasics::enter_numerical_data(price_user$sym)
-      ### All prices are new, store them all
-      new_price_entries <- price_user
+    }
+
+    ### Prompt user for all prices, showing stored values as defaults
+    ### User can press Enter to keep default, or enter new value
+    entered_prices <- Tbasics::enter_numerical_data(price_user$sym, default_values)
+
+    ### Identify which prices were actually changed (not just kept as default)
+    ### Store only the new/updated prices
+    price_user$price <- entered_prices
+    changed_mask <- !is.na(entered_prices) & (is.na(default_values) | entered_prices != default_values)
+
+    ### Only save newly entered or updated prices to database
+    if (any(changed_mask)) {
+      new_price_entries <- price_user[changed_mask, ]
     }
   }
 
