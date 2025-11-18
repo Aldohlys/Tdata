@@ -816,9 +816,41 @@ getGonet <- function() {
     safe_db_append(conn,"Prices", new_price_entries)
   }
   DBI::dbDisconnect(conn)
+  
+  ### Request Gonet cash positions from user for currency exposure tracking
+  ### Retrieve stored cash positions from database to use as defaults
+  stored_cash_query <- "SELECT CashBalanceCHF, CashBalanceUSD, CashBalanceEUR
+                        FROM account
+                        WHERE account = 'Gonet'
+                        ORDER BY date DESC, heure DESC
+                        LIMIT 1"
+  stored_cash <- tryCatch({
+    DBI::dbGetQuery(conn, stored_cash_query)
+  }, error = function(e) {
+    data.frame(CashBalanceCHF = 0, CashBalanceUSD = 0, CashBalanceEUR = 0)
+  })
+  
+  ### Prompt user for cash positions with stored values as defaults
+  cash_chf <- Tbasics::enter_numerical_data(
+    "Gonet Cash CHF",
+    ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceCHF[1], 0)
+  )
+  cash_usd <- Tbasics::enter_numerical_data(
+    "Gonet Cash USD",
+    ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceUSD[1], 0)
+  )
+  cash_eur <- Tbasics::enter_numerical_data(
+    "Gonet Cash EUR",
+    ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceEUR[1], 0)
+  )
+  
+  ### Return cash positions for getAccountGonet() to use
+  return(list(
+    cash_chf = cash_chf,
+    cash_usd = cash_usd,
+    cash_eur = cash_eur
+  ))
 }
-
-
 #'   getAccountGonet
 #'
 #'This function reads last portfolio from Gonet and then deduces account record similar to IBKR
@@ -831,9 +863,9 @@ getGonet <- function() {
 #'\dontrun{
 #'getAccountGonet()
 #'}
-getAccountGonet <- function() {
+getAccountGonet <- function(gonet_cash = NULL) {
 
-  account.var = c("account","date","heure","Currency","NetLiquidation","EquityWithLoanValue","FullAvailableFunds","FullInitMarginReq","FullMaintMarginReq","FullExcessLiquidity","OptionMarketValue","StockMarketValue","UnrealizedPnL","RealizedPnL","TotalCashBalance","CashFlow")
+  account.var = c("account","date","heure","Currency","NetLiquidation","EquityWithLoanValue","FullAvailableFunds","FullInitMarginReq","FullMaintMarginReq","FullExcessLiquidity","OptionMarketValue","StockMarketValue","UnrealizedPnL","RealizedPnL","TotalCashBalance","CashFlow","CashBalanceCHF","CashBalanceUSD","CashBalanceEUR")
   portf <- readLastPortfolio("Gonet")
 
   #### There are "portf_lines" opened positions in the GOnet portfolio (stocks)
@@ -846,20 +878,28 @@ getAccountGonet <- function() {
     Tbasics::display_error_message("Could not get a complete potfolio record - some prices are missing -> no account recorded")
   }
 
-  ### Create a cash position in Gonet where 26'000 EUR from June 1st, 2022 till March 15th
-  ### After March 15th, 2023 cash position is closed
-  Cash_EUR = xts::xts(c(rep(26000,287),rep(0,Sys.Date()-as.Date("2022-06-01")-286)),
-               order.by = seq(as.Date("2022-06-01"), length=Sys.Date() - as.Date("2022-06-01") + 1,by="days"))
-
-  #### Create a USD Cash position - closed on March 15th, 2023
-  Cash_USD = xts::xts(c(rep(33000,287), rep(0,Sys.Date()-as.Date("2022-06-01")-286)),
-               order.by = seq(as.Date("2022-06-01"), length = Sys.Date() - as.Date("2022-06-01") + 1, by="days"))
-  # names(Cash_USD)="Cash_USD"
-  # Cash_USD = data.frame(date=as.Date(zoo::index(Cash_USD)), Cash_USD=as.numeric(Cash_USD))
-
-  #### Add Cash positions to acc data frame using date as join
- cash_balance <- round(convert_to_base_date(as.numeric(Cash_EUR[Sys.Date()]), "EUR", Sys.Date()) +
-                  convert_to_base_date(as.numeric(Cash_USD[Sys.Date()]), "USD", Sys.Date()), 2)
+  ### Get cash positions from getGonet() return value, or use legacy hard-coded values if not provided
+  if (!is.null(gonet_cash)) {
+    ### Use cash positions provided by getGonet()
+    cash_chf <- gonet_cash$cash_chf
+    cash_usd <- gonet_cash$cash_usd
+    cash_eur <- gonet_cash$cash_eur
+  } else {
+    ### Legacy: Create hard-coded cash positions (for backward compatibility)
+    Cash_EUR = xts::xts(c(rep(26000,287),rep(0,Sys.Date()-as.Date("2022-06-01")-286)),
+                 order.by = seq(as.Date("2022-06-01"), length=Sys.Date() - as.Date("2022-06-01") + 1,by="days"))
+    Cash_USD = xts::xts(c(rep(33000,287), rep(0,Sys.Date()-as.Date("2022-06-01")-286)),
+                 order.by = seq(as.Date("2022-06-01"), length = Sys.Date() - as.Date("2022-06-01") + 1, by="days"))
+    cash_chf <- 0
+    cash_usd <- as.numeric(Cash_USD[Sys.Date()])
+    cash_eur <- as.numeric(Cash_EUR[Sys.Date()])
+  }
+  
+  #### Calculate total cash balance in base currency
+  cash_balance <- round(
+    convert_to_base_date(cash_chf, "CHF", Sys.Date()) +
+    convert_to_base_date(cash_usd, "USD", Sys.Date()) +
+    convert_to_base_date(cash_eur, "EUR", Sys.Date()), 2)
 
   ### convert to base currency all Gonet positions
   base_currency <- getParam("BaseCurrency")
@@ -868,6 +908,9 @@ getAccountGonet <- function() {
                     heure = format(Sys.time(),"%H:%M:%S"),
                     Currency = base_currency,
                     TotalCashBalance = cash_balance,
+                    CashBalanceCHF = cash_chf,
+                    CashBalanceUSD = cash_usd,
+                    CashBalanceEUR = cash_eur,
                     NetLiquidation = round(TotalCashBalance + StockMarketValue, 2),
                     EquityWithLoanValue = NetLiquidation,
                     FullAvailableFunds = TotalCashBalance,
@@ -997,4 +1040,193 @@ compute_margin_data <- function(portf_data, exit_code) {
 
   ### exit_code may be left unchanged if no margin data retrieved
   return(list(exit_code = exit_code, portf_data = portf_data))
+}
+
+
+#' getCurrencyExposure
+#'
+#' Computes currency exposure breakdown for a given account, including:
+#' - Cash positions by currency
+#' - Unrealized PnL by currency
+#' - Total market value by currency
+#' - All values converted to base currency
+#'
+#' This function tracks currency risk by showing exposure in CHF, USD, and EUR
+#' across both cash holdings and investment positions. Negative exposure indicates
+#' short positions (e.g., short options, sold stocks).
+#'
+#' @param account_name Account name (e.g., "U1804173", "Live", "Gonet")
+#' @param date Optional date for historical analysis (defaults to most recent)
+#'
+#' @return Data frame with columns:
+#' \describe{
+#'   \item{Currency}{Currency code (CHF, USD, EUR)}
+#'   \item{CashPosition}{Cash balance in original currency}
+#'   \item{CashPositionBase}{Cash balance in base currency}
+#'   \item{MarketValue}{Total market value of positions in original currency}
+#'   \item{MarketValueBase}{Total market value in base currency}
+#'   \item{UnrealizedPnL}{Unrealized P&L in original currency}
+#'   \item{UnrealizedPnLBase}{Unrealized P&L in base currency}
+#'   \item{TotalExposureBase}{Total exposure (cash + market value) in base currency}
+#'   \item{PercentOfPortfolio}{Percentage of total portfolio}
+#' }
+#'
+#' @note Future enhancement: Forex futures (e.g., MSF) will add synthetic currency exposure
+#'
+#' @export
+#' @examples
+#' \dontrun{
+#' getCurrencyExposure("U1804173")
+#' getCurrencyExposure("Live", date = Sys.Date() - 7)
+#' }
+getCurrencyExposure <- function(account_name, date = NULL) {
+
+  base_currency <- getParam("BaseCurrency")
+
+  ### Open database and prepare disconnection
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  ### 1. Get cash positions from account table
+  if (is.null(date)) {
+    # Get most recent account data
+    account_query <- "SELECT date, heure, CashBalanceCHF, CashBalanceUSD, CashBalanceEUR,
+                      TotalCashBalance, NetLiquidation
+                      FROM account
+                      WHERE account = ?
+                      ORDER BY date DESC, heure DESC
+                      LIMIT 1"
+    account_data <- DBI::dbGetQuery(conn, account_query, params = list(account_name))
+  } else {
+    # Get account data for specific date
+    date_int <- as.integer(format(as.Date(date), "%Y%m%d"))
+    account_query <- "SELECT date, heure, CashBalanceCHF, CashBalanceUSD, CashBalanceEUR,
+                      TotalCashBalance, NetLiquidation
+                      FROM account
+                      WHERE account = ? AND date = ?
+                      ORDER BY heure DESC
+                      LIMIT 1"
+    account_data <- DBI::dbGetQuery(conn, account_query, params = list(account_name, date_int))
+  }
+
+  if (nrow(account_data) == 0) {
+    logger::log_warn("No account data found for {account_name}", namespace = "Tdata")
+    return(data.frame())
+  }
+
+  ### 2. Get portfolio positions grouped by currency
+  if (is.null(date)) {
+    portf_query <- glue::glue("SELECT currency, SUM(mktValue) as market_value, SUM(unPnL) as unrealized_pnl
+                    FROM (
+                      SELECT currency, mktValue, unPnL
+                      FROM {`account_name`}
+                      WHERE (date, heure) = (
+                        SELECT date, heure FROM {`account_name`}
+                        ORDER BY date DESC, heure DESC LIMIT 1
+                      )
+                    )
+                    GROUP BY currency")
+  } else {
+    date_int <- as.integer(format(as.Date(date), "%Y%m%d"))
+    portf_query <- glue::glue("SELECT currency, SUM(mktValue) as market_value, SUM(unPnL) as unrealized_pnl
+                    FROM (
+                      SELECT currency, mktValue, unPnL
+                      FROM {`account_name`}
+                      WHERE date = {date_int}
+                      ORDER BY heure DESC
+                    )
+                    GROUP BY currency")
+  }
+
+  portf_data <- tryCatch({
+    DBI::dbGetQuery(conn, portf_query)
+  }, error = function(e) {
+    logger::log_debug("No portfolio table for {account_name}: {e$message}", namespace = "Tdata")
+    data.frame(currency = character(), market_value = numeric(), unrealized_pnl = numeric())
+  })
+
+  ### 3. Build cash positions data frame (only non-zero positions)
+  cash_data <- data.frame(
+    currency = c("CHF", "USD", "EUR"),
+    cash_position = c(
+      account_data$CashBalanceCHF,
+      account_data$CashBalanceUSD,
+      account_data$CashBalanceEUR
+    ),
+    stringsAsFactors = FALSE
+  )
+
+  ### Remove zero cash positions for cleaner display
+  cash_data <- cash_data[cash_data$cash_position != 0, ]
+
+  ### 4. Convert all values to base currency
+  conversion_date <- if (is.null(date)) Sys.Date() else as.Date(date)
+
+  if (nrow(cash_data) > 0) {
+    cash_data$cash_position_base <- purrr::pmap_dbl(
+      list(cash_data$cash_position, cash_data$currency, conversion_date),
+      convert_to_base_date
+    )
+  } else {
+    cash_data$cash_position_base <- numeric(0)
+  }
+
+  if (nrow(portf_data) > 0) {
+    portf_data$market_value_base <- purrr::pmap_dbl(
+      list(portf_data$market_value, portf_data$currency, conversion_date),
+      convert_to_base_date
+    )
+    portf_data$unrealized_pnl_base <- purrr::pmap_dbl(
+      list(portf_data$unrealized_pnl, portf_data$currency, conversion_date),
+      convert_to_base_date
+    )
+  }
+
+  ### 5. Merge cash and portfolio data
+  exposure <- dplyr::full_join(
+    cash_data,
+    portf_data,
+    by = "currency"
+  )
+
+  ### If no exposure data at all, return empty
+  if (nrow(exposure) == 0) {
+    return(data.frame())
+  }
+
+  ### Replace NA with 0
+  exposure$cash_position <- ifelse(is.na(exposure$cash_position), 0, exposure$cash_position)
+  exposure$cash_position_base <- ifelse(is.na(exposure$cash_position_base), 0, exposure$cash_position_base)
+  exposure$market_value <- ifelse(is.na(exposure$market_value), 0, exposure$market_value)
+  exposure$market_value_base <- ifelse(is.na(exposure$market_value_base), 0, exposure$market_value_base)
+  exposure$unrealized_pnl <- ifelse(is.na(exposure$unrealized_pnl), 0, exposure$unrealized_pnl)
+  exposure$unrealized_pnl_base <- ifelse(is.na(exposure$unrealized_pnl_base), 0, exposure$unrealized_pnl_base)
+
+  ### 6. Calculate total exposure and percentages
+  exposure <- dplyr::mutate(exposure,
+    total_exposure_base = cash_position_base + market_value_base
+  )
+
+  total_net_liquidation <- account_data$NetLiquidation
+  exposure <- dplyr::mutate(exposure,
+    pct_of_portfolio = round(total_exposure_base / total_net_liquidation * 100, 2)
+  )
+
+  ### 7. Sort by absolute total exposure (descending) to show largest exposures first
+  exposure <- dplyr::arrange(exposure, dplyr::desc(abs(total_exposure_base)))
+
+  ### 8. Select and rename columns for output
+  exposure <- dplyr::select(exposure,
+    Currency = currency,
+    CashPosition = cash_position,
+    CashPositionBase = cash_position_base,
+    MarketValue = market_value,
+    MarketValueBase = market_value_base,
+    UnrealizedPnL = unrealized_pnl,
+    UnrealizedPnLBase = unrealized_pnl_base,
+    TotalExposureBase = total_exposure_base,
+    PercentOfPortfolio = pct_of_portfolio
+  )
+
+  return(exposure)
 }
