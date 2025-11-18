@@ -386,7 +386,7 @@ setTicker = function(Name, ...) {
   params <- update_ticker_params(Name, ...)
 
   if (length(params$updates) == 0) {
-    logger::log_info("No valid update parameters provided", namespace="Tdata", namespace="Tdata")
+    logger::log_info("No valid update parameters provided", namespace="Tdata")
     return(0)
   }
 

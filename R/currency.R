@@ -279,9 +279,9 @@ getLastCHFValue <- function(currency) {
       # Update DB if needed
       if(nrow(updates_needed) > 0) {
         safe_db_append(conn, "ConvertToCHF", updates_needed)
-        logger::log_info("Updated {nrow(updates_needed)} CHF currency rates", namespace = "Tdata", namespace="Tdata")
+        logger::log_info("Updated {nrow(updates_needed)} CHF currency rates", namespace="Tdata")
       } else {
-        logger::log_info("No CHF updates needed - stored data is current", namespace = "Tdata", namespace="Tdata")
+        logger::log_info("No CHF updates needed - stored data is current", namespace="Tdata")
       }
     }
 
@@ -679,7 +679,7 @@ convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
     return(numeric(0))
   }
 
-  logger::log_debug("Unique lookups: {nrow(unique_lookups)} rows", namespace = "Tdata", namespace="Tdata")
+  logger::log_debug("Unique lookups: {nrow(unique_lookups)} rows", namespace="Tdata")
 
   # Connect to database and execute optimized SQL query
   conn <- safe_db_connect()
@@ -689,7 +689,7 @@ convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
   temp_table_name <- paste0("temp_lookup_", as.integer(Sys.time()), "_", sample(1000:9999, 1))
   DBI::dbWriteTable(conn, temp_table_name, unique_lookups, temporary = TRUE)
 
-  logger::log_debug("Created temp table: {temp_table_name}", namespace = "Tdata", namespace="Tdata")
+  logger::log_debug("Created temp table: {temp_table_name}", namespace="Tdata")
 
   # Use simple query with temp table
   query <- sprintf("
@@ -710,7 +710,7 @@ convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
     WHERE rn = 1",
                    temp_table_name)
 
-  logger::log_debug("Generated query: {query}", namespace = "Tdata", namespace="Tdata")
+  logger::log_debug("Generated query: {query}", namespace="Tdata")
 
   chf_rates <- DBI::dbGetQuery(conn, query)
 
