@@ -1132,8 +1132,11 @@ getCurrencyExposure <- function(account_name, date = NULL) {
                     FROM (
                       SELECT currency, mktValue, unPnL
                       FROM {`account_name`}
-                      WHERE date = {date_int}
-                      ORDER BY heure DESC
+                      WHERE (date, heure) = (
+                        SELECT date, heure FROM {`account_name`}
+                        WHERE date = {date_int}
+                        ORDER BY heure DESC LIMIT 1
+                      )
                     )
                     GROUP BY currency")
   }
