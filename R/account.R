@@ -396,7 +396,7 @@ greeksNet = function(portf) {
 
     dplyr::summarize(portf_extended,
               delta=sum(dnet,na.rm=FALSE),
-              deltadollars=sum(ddnet,na.rm=FALSE),
+              deltanotional=sum(ddnet,na.rm=FALSE),
               gamma=sum(gnet,na.rm=FALSE),
               theta=sum(tnet,na.rm=FALSE),
               vega=sum(vnet,na.rm=FALSE)
