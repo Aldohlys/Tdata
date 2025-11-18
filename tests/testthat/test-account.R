@@ -63,7 +63,7 @@ test_that("readAccount Simu  returns some data and columns look good", {
     identical(colnames(acc),  c("date", "heure", "Currency", "NetLiquidation",	"EquityWithLoanValue",	"FullAvailableFunds",
                                 "FullInitMarginReq",	"FullMaintMarginReq", "FullExcessLiquidity",
                                 "OptionMarketValue",	"StockMarketValue",	"UnrealizedPnL",
-                                "RealizedPnL",	"TotalCashBalance", "CashFlow")) &&
+                                "RealizedPnL",	"TotalCashBalance", "CashBalanceCHF", "CashBalanceEUR", "CashBalanceUSD", "CashFlow")) &&
       nrow(acc) >1
   })
 })
@@ -75,7 +75,7 @@ test_that("readAccount Gonet  returns some data and columns look good", {
     identical(colnames(acc),  c("date","heure", "Currency", "NetLiquidation",	"EquityWithLoanValue",	"FullAvailableFunds",
                                 "FullInitMarginReq",	"FullMaintMarginReq", "FullExcessLiquidity",
                                 "OptionMarketValue",	"StockMarketValue",	"UnrealizedPnL",
-                                "RealizedPnL",	"TotalCashBalance", "CashFlow")) &&
+                                "RealizedPnL",	"TotalCashBalance", "CashBalanceCHF", "CashBalanceEUR", "CashBalanceUSD","CashFlow")) &&
       nrow(acc) >1
   })
 })
