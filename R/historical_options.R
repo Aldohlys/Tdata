@@ -83,13 +83,13 @@ get_or_retrieve_option_historical <- function(
   # Input validation
   if (missing(symbol) || missing(trading_class) || missing(expiration) ||
       missing(strike) || missing(right)) {
-    t_log_error("Missing required parameters: symbol, trading_class, expiration, strike, right")
+    logger::log_error("Missing required parameters: symbol, trading_class, expiration, strike, right", namespace="Tdata")
     return(NULL)
   }
 
   # Validate right parameter
   if (!right %in% c("C", "P", "Call", "Put")) {
-    t_log_error("Invalid 'right' parameter. Must be 'C', 'P', 'Call', or 'Put'")
+    logger::log_error("Invalid 'right' parameter. Must be 'C', 'P', 'Call', or 'Put'", namespace="Tdata")
     return(NULL)
   }
 
@@ -98,20 +98,20 @@ get_or_retrieve_option_historical <- function(
 
   # Validate data_type
   if (!data_type %in% c("historical", "intraday", "combined")) {
-    t_log_error("Invalid 'data_type'. Must be 'historical', 'intraday', or 'combined'")
+    logger::log_error("Invalid 'data_type'. Must be 'historical', 'intraday', or 'combined'", namespace="Tdata")
     return(NULL)
   }
 
   tryCatch({
     # Import Python module
     if (!reticulate::py_module_available("tdata_py")) {
-      t_log_error("Python module 'tdata_py' not available")
+      logger::log_error("Python module 'tdata_py' not available", namespace="Tdata")
       return(NULL)
     }
 
     tdata_py <- reticulate::import("tdata_py")
 
-    t_log_info(paste0(
+    logger::log_info(paste0(
       "Retrieving option data: ", symbol, " ", strike, right_normalized, " ", expiration,
       " (data_type=", data_type, ", force_refresh=", force_refresh, ")"
     ))
@@ -133,7 +133,7 @@ get_or_retrieve_option_historical <- function(
 
     # Check if result is NULL or None
     if (is.null(result)) {
-      t_log_warn("No data returned from Python function")
+      logger::log_warn("No data returned from Python function", namespace="Tdata")
       return(NULL)
     }
 
@@ -145,12 +145,12 @@ get_or_retrieve_option_historical <- function(
       data_tibble <- tibble::as_tibble(reticulate::py_to_r(result))
     }
 
-    t_log_info(paste0("Retrieved ", nrow(data_tibble), " data points"))
+    logger::log_info(paste0("Retrieved ", nrow(data_tibble), " data points"), namespace="Tdata")
 
     return(data_tibble)
 
   }, error = function(e) {
-    t_log_error(paste0("Error in get_or_retrieve_option_historical: ", e$message))
+    logger::log_error(paste0("Error in get_or_retrieve_option_historical: ", e$message), namespace="Tdata")
     return(NULL)
   })
 }
@@ -187,13 +187,13 @@ clear_on_demand_cache <- function(symbol = NULL, older_than_days = 30) {
   tryCatch({
     # Import Python module
     if (!reticulate::py_module_available("tdata_py")) {
-      t_log_error("Python module 'tdata_py' not available")
+      logger::log_error("Python module 'tdata_py' not available", namespace="Tdata")
       return(list(error = "Python module not available"))
     }
 
     tdata_py <- reticulate::import("tdata_py")
 
-    t_log_info(paste0(
+    logger::log_info(paste0(
       "Clearing on-demand cache",
       if (!is.null(symbol)) paste0(" for symbol: ", symbol) else "",
       " (older than ", older_than_days, " days)"
@@ -208,7 +208,7 @@ clear_on_demand_cache <- function(symbol = NULL, older_than_days = 30) {
     # Convert result to R list
     result_list <- reticulate::py_to_r(result)
 
-    t_log_info(paste0(
+    logger::log_info(paste0(
       "Cache cleanup complete: ",
       result_list$files_removed, " files removed, ",
       result_list$space_freed_mb, " MB freed"
@@ -217,7 +217,7 @@ clear_on_demand_cache <- function(symbol = NULL, older_than_days = 30) {
     return(result_list)
 
   }, error = function(e) {
-    t_log_error(paste0("Error in clear_on_demand_cache: ", e$message))
+    logger::log_error(paste0("Error in clear_on_demand_cache: ", e$message), namespace="Tdata")
     return(list(error = e$message))
   })
 }

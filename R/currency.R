@@ -219,7 +219,7 @@ getLastCHFValue <- function(currency) {
     price_list <- getYahooData(yahoo_tickers, from_date = Sys.Date() - 3)
 
     if (nrow(price_list) == 0) {
-      t_log_info("No currency data found!")
+      logger::log_info("No currency data found!", namespace="Tdata")
       return(data.frame(date = as.Date(""), chf_value = NA))
     }
 
@@ -240,7 +240,7 @@ getLastCHFValue <- function(currency) {
       ticker_data <- last_price |> dplyr::filter(ticker == expected_ticker)
 
       if (nrow(ticker_data) == 0) {
-        t_log_warn("No data for {curr}")
+        logger::log_warn("No data for {curr}", namespace="Tdata")
         next
       }
 
@@ -279,9 +279,9 @@ getLastCHFValue <- function(currency) {
       # Update DB if needed
       if(nrow(updates_needed) > 0) {
         safe_db_append(conn, "ConvertToCHF", updates_needed)
-        logger::log_info("Updated {nrow(updates_needed)} CHF currency rates", namespace = "Tdata")
+        logger::log_info("Updated {nrow(updates_needed)} CHF currency rates", namespace = "Tdata", namespace="Tdata")
       } else {
-        logger::log_info("No CHF updates needed - stored data is current", namespace = "Tdata")
+        logger::log_info("No CHF updates needed - stored data is current", namespace = "Tdata", namespace="Tdata")
       }
     }
 
@@ -353,7 +353,7 @@ getLastUSDValue = function(currency) {
   last_nr = nrow(price_list)
 
   if ((last_nr == 0) | all(is.na(price_list$Adjusted))) {
-    t_log_info("No currency data for {currency} found !")
+    logger::log_info("No currency data for {currency} found !", namespace="Tdata")
     return(data.frame(date = as.Date(""), value = NA))
   }
 
@@ -385,11 +385,11 @@ getLastUSDValue = function(currency) {
   # Insert/update records if any updates needed
   if(nrow(updates_needed) > 0) {
     safe_db_append(conn, "ConvertToUSD", updates_needed)
-    t_log_info("Updated {nrow(updates_needed)} currency rates")
+    logger::log_info("Updated {nrow(updates_needed)} currency rates", namespace="Tdata")
   }
 
   else {
-    t_log_info("No updates needed - stored data is current")
+    logger::log_info("No updates needed - stored data is current", namespace="Tdata")
   }
 
   ### DB is now up to date using Yahoo data - retrieve last values
@@ -482,12 +482,12 @@ base_currency_format <- function(amount) {
     },
 
     error = function(cond) {
-      logger::log_error("Currency formatting error: {cond}")
+      logger::log_error("Currency formatting error: {cond}", namespace="Tdata")
       NA
     },
 
     warning = function(cond) {
-      logger::log_warn("Currency formatting warning: {cond}")
+      logger::log_warn("Currency formatting warning: {cond}", namespace="Tdata")
       NA
     }
   )
@@ -548,12 +548,12 @@ currency_format = function(amount, currency){
     },
 
     error = function(cond) {
-     logger::log_error("Currency formatting error: {cond}")
+     logger::log_error("Currency formatting error: {cond}", namespace="Tdata")
       NA
     },
 
     warning = function(cond) {
-      logger::log_warn("Currency formatting warning: {cond}")
+      logger::log_warn("Currency formatting warning: {cond}", namespace="Tdata")
       NA
     }
   )
@@ -679,7 +679,7 @@ convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
     return(numeric(0))
   }
 
-  logger::log_debug("Unique lookups: {nrow(unique_lookups)} rows", namespace = "Tdata")
+  logger::log_debug("Unique lookups: {nrow(unique_lookups)} rows", namespace = "Tdata", namespace="Tdata")
 
   # Connect to database and execute optimized SQL query
   conn <- safe_db_connect()
@@ -689,7 +689,7 @@ convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
   temp_table_name <- paste0("temp_lookup_", as.integer(Sys.time()), "_", sample(1000:9999, 1))
   DBI::dbWriteTable(conn, temp_table_name, unique_lookups, temporary = TRUE)
 
-  logger::log_debug("Created temp table: {temp_table_name}", namespace = "Tdata")
+  logger::log_debug("Created temp table: {temp_table_name}", namespace = "Tdata", namespace="Tdata")
 
   # Use simple query with temp table
   query <- sprintf("
@@ -710,7 +710,7 @@ convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
     WHERE rn = 1",
                    temp_table_name)
 
-  logger::log_debug("Generated query: {query}", namespace = "Tdata")
+  logger::log_debug("Generated query: {query}", namespace = "Tdata", namespace="Tdata")
 
   chf_rates <- DBI::dbGetQuery(conn, query)
 

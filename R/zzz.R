@@ -102,14 +102,14 @@ if '%s' not in sys.path:
     }
 
     if (!python_initialized) {
-      t_log_error("Could not initialize any Python environment")
+      logger::log_error("Could not initialize any Python environment", namespace="Tdata")
       return(FALSE)
     }
 
     # Find Python directory
     python_dir <- system.file("python", package = pkgname)
     if (!dir.exists(python_dir)) {
-      t_log_error(sprintf("Python directory not found in %s", path))
+      logger::log_error(sprintf("Python directory not found in %s", path), namespace="Tdata")
       return(FALSE)
     }
 
@@ -130,7 +130,7 @@ for module in modules_to_reload:  ### This removes modules_to_reload from cache 
 
     # CRITICAL FIX: Set Python locale to use period decimals (not comma)
     # French/Swiss locale causes JSON parse errors when Python data is sent to browser
-    t_log_info("Setting Python LC_NUMERIC locale to C (period decimals)")
+    logger::log_info("Setting Python LC_NUMERIC locale to C (period decimals)", namespace="Tdata")
     tryCatch({
       reticulate::py_run_string('
 import locale
@@ -139,7 +139,7 @@ locale.setlocale(locale.LC_NUMERIC, "C")
 print(f"Python LC_NUMERIC changed from {old_locale} to C")
 ')
     }, error = function(e) {
-      t_log_warn(sprintf("Could not set Python locale: %s", e$message))
+      logger::log_warn(sprintf("Could not set Python locale: %s", e$message), namespace="Tdata")
     })
 
     # Import the package
@@ -150,18 +150,18 @@ print(f"Python LC_NUMERIC changed from {old_locale} to C")
     assign("tdata_py", tdata_py, envir = asNamespace(pkgname))
 
     # Verify assignment
-    t_log_debug(sprintf("tdata_py assigned to namespace: %s",
-                        environmentName(asNamespace(pkgname))))
+    logger::log_debug(sprintf("tdata_py assigned to namespace: %s",
+                        environmentName(asNamespace(pkgname))), namespace="Tdata")
 
     # Log success
-    t_log_info("Python environment initialized successfully, not loaded yet")
+    logger::log_info("Python environment initialized successfully, not loaded yet", namespace="Tdata")
 
         return(TRUE)
 
   }, error = function(e) {
     # Then use directly Tbasics with specified module
-    t_log_error(sprintf("Failed to initialize Python environment: %s",
-                           e$message))
+    logger::log_error(sprintf("Failed to initialize Python environment: %s",
+                           e$message), namespace="Tdata")
 
     # Display detailed Python error
     tryCatch({

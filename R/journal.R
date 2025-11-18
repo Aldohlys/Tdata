@@ -82,7 +82,7 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
   ### Initialize update string and params list
   sql <- ""
   params <- list()
-  t_log_debug("entryId: {entryId}")
+  logger::log_debug("entryId: {entryId}", namespace="Tdata")
 
   #### Local functions
   validate_arg <- function(x) {
@@ -93,15 +93,15 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
     if (validate_arg(data[[mod_param]])) {
       if (nchar(sql) == 0) {
         sql <- paste0("UPDATE Journal SET ", mod_param, " = ?")
-        t_log_debug("param: {mod_param} sql:{sql}")
+        logger::log_debug("param: {mod_param} sql:{sql}", namespace="Tdata")
         params <- list(data[[mod_param]])
-        t_log_debug("param: {mod_param} params_list: {paste(unlist(params) , collapse=\" \")}")
+        logger::log_debug("param: {mod_param} params_list: {paste(unlist(params) , collapse=\" \")}", namespace="Tdata")
       }
       else {
         sql <- paste(sql, ", ", mod_param ,"= ?")
-        t_log_debug("param: {mod_param} sql:{sql}")
+        logger::log_debug("param: {mod_param} sql:{sql}", namespace="Tdata")
         params <- append(params, list(data[[mod_param]]))
-        t_log_debug("param: {mod_param} params_list: {paste(unlist(params) , collapse=\" \")}")
+        logger::log_debug("param: {mod_param} params_list: {paste(unlist(params) , collapse=\" \")}", namespace="Tdata")
       }
     }
     return(list(sql=sql, params=params))
@@ -119,18 +119,18 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
 
     ## COmplete SQL statement
     sql <- paste(sql, "WHERE entryID = ?;")
-    t_log_debug(sql)
+    logger::log_debug(sql, namespace="Tdata")
 
     ### Complete params as well
     params <- append(params, list(entryId))
-    t_log_debug("EntryId added: {paste(unlist(params), collapse=\" \")}")
+    logger::log_debug("EntryId added: {paste(unlist(params), collapse=\" \")}", namespace="Tdata")
 
     conn <- safe_db_connect()
     on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
     ### In case DB cannot be accessed - locked for instance
     tryCatch(DBI::dbExecute(conn, sql, params), error = function(e) {
-      t_log_error("Error while trying to update Journal DB: ", e)
+      logger::log_error("Error while trying to update Journal DB: ", e, namespace="Tdata")
       return(0)}
       )
   }
@@ -147,7 +147,7 @@ modifyJournalEntry <- function(entryId, theme=NULL, date=NULL, sym=NULL, close=N
 #'@param entryId, integer - entry key for the entry to be removed
 #'@export
 deleteJournalEntry <- function(entryId) {
-  t_log_debug("deleteJournalentry: entryId {entryId}")
+  logger::log_debug("deleteJournalentry: entryId {entryId}", namespace="Tdata")
   conn <- safe_db_connect()
   status <- DBI::dbExecute(conn, "DELETE FROM Journal WHERE entryId = ?;",
                            params=list(entryId))

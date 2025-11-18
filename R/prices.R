@@ -31,7 +31,7 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date(), sym_yahoo=NU
   }
 
   if (length(sym) != length(sym_yahoo)) {
-    t_log_error("sym_yahoo and sym must have the same length!!")
+    logger::log_error("sym_yahoo and sym must have the same length!!", namespace="Tdata")
     return(NA)
   }
 
@@ -40,7 +40,7 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date(), sym_yahoo=NU
   # if (any(is.na(sym_yahoo))) {
   #   ### This assumes that sym order is the same as sym_yahoo order - i.e. sapply does not change order, should be Ok
   #   sym_list = paste(sym[is.na(sym_yahoo)], collapse = ", ")
-  #   t_log_info("One or several tickers cannot be analyzed through Yahoo service: {sym_list}")
+  #   logger::log_info("One or several tickers cannot be analyzed through Yahoo service: {sym_list}", namespace="Tdata")
   #   return(NA)
   # }
 
@@ -51,7 +51,7 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date(), sym_yahoo=NU
     names(lookup_table) <- sym_yahoo
 
     df <- getYahooData(sym_yahoo, from_date, to_date)
-    t_log_debug("Yahoo Data:", df)
+    logger::log_debug("Yahoo Data:", df, namespace="Tdata")
     # Replace symbols using vector indexing - ticker is returned by YahooData function
     return(dplyr::mutate(df, ticker = lookup_table[ticker]))
   }
@@ -84,7 +84,7 @@ getSymMetricIntervalDate = function(sym, from_date, to_date = Sys.Date(), metric
 
   ### Retrieve first Yahoo data
   res = getSymIntervalDate(sym, from_date, to_date, sym_yahoo)
-  t_log_debug("getSymMetricIntervalDate: ", res)
+  logger::log_debug("getSymMetricIntervalDate: ", res, namespace="Tdata")
 
   # ### Build NA data for non-Yahoo symbols - recycling NA and date
   # sub_na <- dplyr::tibble(date = Sys.Date(), ticker=sym[is.na(sym_yahoo)],
@@ -166,7 +166,7 @@ getSymPrice = function(sym, report_date = Sys.Date() - 1, metric = "Adjusted"){
     else prices_list <- getSymMetricIntervalDate(one_sym, one_date - 5, one_date + 2, metric)
 
     prices_list_pasted <- glue::glue_collapse(prices_list, sep=', ')
-    t_log_debug("Prices returned by getSymMetricIntervalDate: {prices_list_pasted}")
+    logger::log_debug("Prices returned by getSymMetricIntervalDate: {prices_list_pasted}", namespace="Tdata")
     ### Find nearest date to one_date, one_date becomes the nearest recorded day in Yahoo
     ### Monday date will be taken for Sunday, and Friday for Saturday
     one_date = Tbasics::findNearestNumberOrDate(prices_list$date, one_date)
@@ -212,7 +212,7 @@ getLastSymPrice <- function(sym) {
   data = getSymIntervalDate(sym, from_date=Sys.Date()-5)
 
   if (all(is.na(data))) {
-    t_log_info("Yahoo service did not find any data for: {paste(sym, collapse=', ')}")
+    logger::log_info("Yahoo service did not find any data for: {paste(sym, collapse=', ')}", namespace="Tdata")
     line <- data.frame(
       datetime = format(Sys.Date(),"%Y-%m-%d"),
       sym = sym,
@@ -356,7 +356,7 @@ getStockPrice = function(sym = NULL, close = FALSE) {
 
   if (is.null(sym) || all(is.na(sym)) || any(!is.character(sym)) ||
       any(sym %in% c("", "All", "STOCK"))){
-    t_log_info("getStockPrice: There must be at least one valid ticker name")
+    logger::log_info("getStockPrice: There must be at least one valid ticker name", namespace="Tdata")
     return(NA)
   }
 
@@ -368,7 +368,7 @@ getStockPrice = function(sym = NULL, close = FALSE) {
       else return(getLastAdjustedPrice(s))
     })
 
-    t_log_debug("prices_list: {paste(prices_list, collapse=', ')}")
+    logger::log_debug("prices_list: {paste(prices_list, collapse=', ')}", namespace="Tdata")
 
     ### Initialize all lines with data from Yahoo,
     ###   dated yesterday close of business for US stocks (maybe different for European stocks)
@@ -419,7 +419,7 @@ getStockPrice = function(sym = NULL, close = FALSE) {
                             price = dplyr::coalesce(price.y, price.x))
 
       line <- dplyr::select(line, datetime, sym, price)
-      t_log_debug("From DB: ", line)
+      logger::log_debug("From DB: ", line, namespace="Tdata")
     }
 
     ### Most recent data requested and IB is available
@@ -433,8 +433,8 @@ getStockPrice = function(sym = NULL, close = FALSE) {
 
   }
 
-  if (nrow(line) != 0) t_log_info("Most recent price either Yahoo or stored in DB:", line)
-  else  t_log_info("No data retrieved for: ", paste(sym, collapse=', '))
+  if (nrow(line) != 0) logger::log_info("Most recent price either Yahoo or stored in DB:", line, namespace="Tdata")
+  else  logger::log_info("No data retrieved for: ", paste(sym, collapse=', '), namespace="Tdata")
 
 
   return(line)
@@ -537,12 +537,12 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
   # Process each chunk
   for (chunk_idx in seq_along(ticker_chunks)) {
     chunk <- ticker_chunks[[chunk_idx]]
-    t_log_debug(sprintf("Processing chunk %d of %d (%d tickers)",
+    logger::log_debug(sprintf("Processing chunk %d of %d (%d tickers)",
                         chunk_idx, length(ticker_chunks), length(chunk)))
 
     # Process each ticker in the chunk
     for (ticker in chunk) {
-      t_log_debug(sprintf("  Fetching %s... ", ticker))
+      logger::log_debug(sprintf("  Fetching %s... ", ticker), namespace="Tdata")
 
       # Skip invalid ticker values immediately
       if (is.na(ticker) || ticker == "All" || ticker == "STOCK") {
@@ -562,7 +562,7 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
           options(timeout = timeout * attempt)
         }
 
-        t_log_debug(sprintf("    Attempt %d for %s", attempt, ticker))
+        logger::log_debug(sprintf("    Attempt %d for %s", attempt, ticker), namespace="Tdata")
 
         # Try to get data - if Yahoo raises an error/warning, exit immediately
         attempt_result <- tryCatch({
@@ -575,10 +575,10 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
           # If we get here, Yahoo didn't raise an error - process the data
           if (is.null(ticker_data) || nrow(ticker_data) == 0) {
             all_results[[ticker]] <- NA
-            t_log_debug(sprintf("Empty dataset for %s - storing NA", ticker))
+            logger::log_debug(sprintf("Empty dataset for %s - storing NA", ticker), namespace="Tdata")
           } else {
             all_results[[ticker]] <- ticker_data
-            t_log_debug(sprintf("Success for %s", ticker))
+            logger::log_debug(sprintf("Success for %s", ticker), namespace="Tdata")
           }
 
           # Data retrieved successfully (even if empty) - exit retry loop
@@ -588,7 +588,7 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
         warning = function(w) {
           # Yahoo raised a warning - this means ticker is invalid/not found
           warning_msg <- conditionMessage(w)
-          t_log_debug(sprintf("Yahoo warning for %s: %s", ticker, warning_msg))
+          logger::log_debug(sprintf("Yahoo warning for %s: %s", ticker, warning_msg), namespace="Tdata")
           all_results[[ticker]] <<- NA
           "yahoo_error"  # Exit retry loop - don't retry on Yahoo warnings
         },
@@ -602,12 +602,12 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
 
           if (is_yahoo_error) {
             # Yahoo says ticker is invalid - don't retry
-            t_log_debug(sprintf("Yahoo error for %s: %s", ticker, error_msg))
+            logger::log_debug(sprintf("Yahoo error for %s: %s", ticker, error_msg), namespace="Tdata")
             all_results[[ticker]] <<- NA
             "yahoo_error"  # Exit retry loop
           } else {
             # Network/timeout error - can retry
-            t_log_debug(sprintf("Network error attempt %d for %s: %s", attempt, ticker, error_msg))
+            logger::log_debug(sprintf("Network error attempt %d for %s: %s", attempt, ticker, error_msg), namespace="Tdata")
             if (attempt >= max_retries) {
               # Max retries reached
               failed_tickers <<- c(failed_tickers, ticker)
@@ -651,12 +651,12 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
     return(TRUE)
   }))
   success_rate <- valid_data_count / length(ticker_names)
-  t_log_debug(sprintf("Retrieved data for %.1f%% of tickers (%d/%d)",
+  logger::log_debug(sprintf("Retrieved data for %.1f%% of tickers (%d/%d)",
                       success_rate * 100,
                       valid_data_count,
                       length(ticker_names)))
   if (length(failed_tickers) > 0)
-    t_log_debug(sprintf("Failed tickers: %s", paste(failed_tickers, collapse=', ')))
+    logger::log_debug(sprintf("Failed tickers: %s", paste(failed_tickers, collapse=', ')), namespace="Tdata")
 
   # Create an empty list to store data frames
   all_ticker_data <- list()

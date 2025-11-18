@@ -511,7 +511,7 @@
     },
     "Tlogger": {
       "Package": "Tlogger",
-      "Version": "0.3.4",
+      "Version": "0.3.5",
       "Source": "Local",
       "Type": "Package",
       "Title": "What the Package Does (Title Case)",
@@ -536,7 +536,7 @@
       "Author": "Alexis Martin [aut, cre]",
       "Maintainer": "Alexis Martin <aldohlys@gmail.com>",
       "RemoteType": "local",
-      "RemoteUrl": "C:/Users/aldoh/Documents/RApplication/Tlogger_0.3.4.tar.gz"
+      "RemoteUrl": "C:/Users/aldoh/Documents/RApplication/Tlogger_0.3.5.tar.gz"
     },
     "XML": {
       "Package": "XML",

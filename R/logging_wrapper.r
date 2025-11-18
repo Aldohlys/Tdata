@@ -9,50 +9,18 @@ set_log_level <- function(level, console_only = FALSE, file_only = FALSE) {
   Tlogger::update_log_level("Tdata", level, console_only, file_only)
 }
 
-#' @title Log a debug message
-#' @description Convenience function to log at DEBUG level
-#' @param msg Message to log
-#' @noRd
-#' @keywords internal
-t_log_debug <- function(msg,...) {
-  # Evaluate glue string in calling environment
-  evaluated_msg <- glue::glue(msg, .envir = parent.frame())
-  logger::log_debug(evaluated_msg, ..., namespace = "Tdata")
-}
-
-#' @title Log an info message
-#' @description Convenience function to log at INFO level
-#' @param msg Message to log
-#' @keywords internal
-#' @noRd
-t_log_info <- function(msg, ...) {
-  # Evaluate glue string in calling environment
-  evaluated_msg <- glue::glue(msg, .envir = parent.frame())
-  logger::log_info(evaluated_msg, ..., namespace = "Tdata")
-}
-
-#' @title Log an error message
-#' @description Convenience function to log at ERROR level
-#' @param msg Message to log
-#' @keywords internal
-#' @noRd
-t_log_error <- function(msg, ...) {
-  # Evaluate glue string in calling environment
-  evaluated_msg <- glue::glue(msg, .envir = parent.frame())
-  logger::log_error(evaluated_msg, ..., namespace = "Tdata")
-}
-
-#' @title Log a warning message
-#' @description Convenience function to log at WARN level
-#' @param msg Message to log
-#' @keywords internal
-#' @noRd
-t_log_warn <- function(msg, ...) {
-  # Evaluate glue string in calling environment
-  evaluated_msg <- glue::glue(msg, .envir = parent.frame())
-  logger::log_warn(evaluated_msg, ..., namespace = "Tdata")
-}
-
+# Logging is done directly with logger::log_* functions with namespace="Tdata"
+# Example usage:
+#   logger::log_info("Message {variable}", namespace="Tdata")
+#   logger::log_debug("Debug info", namespace="Tdata")
+#   logger::log_warn("Warning", namespace="Tdata")
+#   logger::log_error("Error occurred", error_obj, namespace="Tdata")
+#
+# Tlogger's formatter handles glue interpolation and supports:
+# - Simple strings
+# - Glue syntax with {variable} interpolation
+# - Multiple arguments (passed as additional params)
+# - Complex objects (formatted with pander)
 
 
 #' #' @title Log an exception with details

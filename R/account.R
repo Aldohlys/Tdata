@@ -27,9 +27,9 @@ readAccount = function(account_name) {
 
   base_currency <- getParam("BaseCurrency")
 
-  ### Should not be needd - just in case no access to DB was possible ###
+  ### Should not be needed - just in case no access to DB was possible ###
   if (!(base_currency %in% c("USD", "CHF"))) {
-    logger::log_error("Could not find base currency equal to CHF or USD")
+    logger::log_error("Could not find base currency equal to CHF or USD", namespace="Tdata")
     Tbasics::display_message("Could not find base currency equal to CHF or USD!")
     return(data.frame())
   }
@@ -50,6 +50,9 @@ readAccount = function(account_name) {
       UnrealizedPnL * ", conversion_column, " AS UnrealizedPnL,
       RealizedPnL * ", conversion_column, " AS RealizedPnL,
       TotalCashBalance * ", conversion_column, " AS TotalCashBalance,
+      CashBalanceCHF * ", conversion_column, " AS CashBalanceCHF,
+      CashBalanceEUR * ", conversion_column, " AS CashBalanceEUR,
+      CashBalanceUSD * ", conversion_column, " AS CashBalanceUSD,
       CashFlow * ", conversion_column, " AS CashFlow
   FROM AccountWithConversionRate
   WHERE account = ?")
@@ -442,8 +445,8 @@ getIBKR <- function() {
   #### 1. Process new account data
   account_data = l[[1]]
 
-  ### No data retrieved
-  if (nrow(account_data) == 0) return(exit_code)
+  ### There should be exactly 1 line retrieved for one account
+  if (nrow(account_data) != 1) return(exit_code)
 
   ### Open connection to user DB and prepare for exit properly
   conn <- safe_db_connect()
@@ -545,7 +548,7 @@ getIBKR <- function() {
   ### If it is not the case then display a warning message to end-user
   if (any(is.na(portf_data$TradeNr))) {
     unmatched_instruments = portf_data[is.na(portf_data$TradeNr),"Instrument"]
-    t_log_info("One or several instruments could not be matched in DB Trades table : {unmatched_instruments}")
+    logger::log_info("One or several instruments could not be matched in DB Trades table : {unmatched_instruments}", namespace="Tdata")
   }
 
   ### Append to DB - with or without margin data retrieved from IBKR

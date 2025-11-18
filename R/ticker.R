@@ -331,7 +331,7 @@ removeTicker = function(name) {
 getYahooName <- function(sym) {
 
   sym_yahoo = purrr::map_chr(sym, \(x){
-    t_log_debug("ticker: {x}")
+    logger::log_debug("ticker: {x}", namespace="Tdata")
 
     ## Case where x=NA
     if (is.na(x)) return(NA)
@@ -340,7 +340,7 @@ getYahooName <- function(sym) {
 
     ### If ticker does not exist in Ticker table then return NA - nothing can be done
     if (nrow(ticker) == 0) {
-      t_log_debug("Ticker {x} is not in Ticker DB")
+      logger::log_debug("Ticker {x} is not in Ticker DB", namespace="Tdata")
       return(NA)
     }
 
@@ -353,12 +353,12 @@ getYahooName <- function(sym) {
 
     ### Else no Yahoo search possible or does not make sense (i.e. T-Bill)
     else {
-      t_log_debug("Ticker type {ticker$Type} is outside of allowed types for Yahoo search")
+      logger::log_debug("Ticker type {ticker$Type} is outside of allowed types for Yahoo search", namespace="Tdata")
       return (NA)
     }
   })
 
-  t_log_debug("(getYahooName) Yahoo retrieved/taken : {sym_yahoo}")
+  logger::log_debug("(getYahooName) Yahoo retrieved/taken : {sym_yahoo}", namespace="Tdata")
   return(sym_yahoo)
 }
 
@@ -386,7 +386,7 @@ setTicker = function(Name, ...) {
   params <- update_ticker_params(Name, ...)
 
   if (length(params$updates) == 0) {
-    logger::log_info("No valid update parameters provided", namespace="Tdata")
+    logger::log_info("No valid update parameters provided", namespace="Tdata", namespace="Tdata")
     return(0)
   }
 

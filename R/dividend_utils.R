@@ -6,14 +6,14 @@ getSingleDivYield <- function(type="STK", name=NA, yahoo_name=NA, currency="USD"
 
   ### test first that correct arguments were given, if not returns -1 - name is mandatory to retrieve a price
   if ((length(type) != 1) | (length(name) != 1)| (length(yahoo_name) != 1) | is.na(name)) {
-    t_log_info("getSingleDivYield does not have the right arguments: type={type}, name={name}, yahoo_name={yahoo_name}")
+    logger::log_info("getSingleDivYield does not have the right arguments: type={type}, name={name}, yahoo_name={yahoo_name}", namespace="Tdata")
     return (-1)
   }
   price_data <- getStockPrice(name)
-  t_log_debug("Price data {price_data}")
+  logger::log_debug("Price data {price_data}", namespace="Tdata")
 
   if (is.null(price_data) || is.na(price_data$price) || price_data$price <= 0) {
-    t_log_error("Invalid {name} price - returns -1")
+    logger::log_error("Invalid {name} price - returns -1", namespace="Tdata")
     return(-1)
   }
 
@@ -31,14 +31,14 @@ getSingleDivYield <- function(type="STK", name=NA, yahoo_name=NA, currency="USD"
           sum_div <- sum(quantmod::getDividends(yahoo_name, from = Sys.Date() - 365, to = Sys.Date()))
         }, error = function(e) {
           # This will execute instead
-          t_log_error("Error with Yahoo in getSingleDivYield for", list(name=name))
+          logger::log_error("Error with Yahoo in getSingleDivYield for", list(name=name), namespace="Tdata")
           return(-1)
         })
       }
 
       #### Data is rounded to 2 decimals - x.yz% expected
       result <- round(100*sum_div / price_data$price, 2)
-      t_log_debug("dividend yield: type={type}, result={result}")
+      logger::log_debug("dividend yield: type={type}, result={result}", namespace="Tdata")
       return(result)
   }
 
@@ -50,13 +50,13 @@ getSingleDivYield <- function(type="STK", name=NA, yahoo_name=NA, currency="USD"
                      XSP= round(7.1655/5.2641, 2), ### Using SPY ETF as approximation
                      -1 ### Unknown index
     )
-    t_log_debug("dividend yield: type={type}, result={result}")
+    logger::log_debug("dividend yield: type={type}, result={result}", namespace="Tdata")
     return(result)
   }
 
   ### Other cases like TBILL, FUT, CASH,... - normally should not be sent
   else {
-    t_log_info("type {type} different from STK and IND - no dividend")
+    logger::log_info("type {type} different from STK and IND - no dividend", namespace="Tdata")
     return(0)
   }
 }
@@ -75,7 +75,7 @@ getDividendYield <- function(tickers) {
   if (!is.data.frame(tickers) || (!all(c("Type", "Name", "YahooName") %in% names(tickers))) || nrow(tickers) == 0) return (NA)
 
   ##
-  t_log_debug("Tickers:", tickers)
+  logger::log_debug("Tickers:", tickers, namespace="Tdata")
 
   if (nrow(tickers) == 1) {
     return(getSingleDivYield(type=tickers$Type, name=tickers$Name, yahoo_name=tickers$YahooName,

@@ -114,10 +114,11 @@ def retrieveAccountData(ib):
     UnrealizedPnL = df[(df['tag'] == 'UnrealizedPnL') & (df['currency'] == 'BASE')].iloc[0,2]
     RealizedPnL = df[(df['tag'] == 'RealizedPnL') & (df['currency'] == 'BASE')].iloc[0,2]
     TotalCashBalance = df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'BASE')].iloc[0,2]
-    # TotalCashBalanceCHF = df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'CHF')].iloc[0,2]
-    # TotalCashBalanceEUR = df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'EUR')].iloc[0,2]
-    
-    #### Looks only on the first account
+    CashBalanceCHF = df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'CHF')].iloc[0,2]
+    CashBalanceEUR = df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'EUR')].iloc[0,2]
+    CashBalanceUSD = df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'USD')].iloc[0,2]
+
+    #### Looks only on the first element
     account = ib.managedAccounts()[0]
     
     #### Takes integer type of date
@@ -138,9 +139,10 @@ def retrieveAccountData(ib):
                       'UnrealizedPnL': [UnrealizedPnL],
                       'RealizedPnL': [RealizedPnL],
                       'TotalCashBalance': [TotalCashBalance],
-                      'CashFlow': 0
-                      # 'TotalCashBalanceCHF': [TotalCashBalanceCHF],
-                      # 'TotalCashBalanceEUR': [TotalCashBalanceEUR]
+                      'CashFlow': 0,
+                      'CashBalanceCHF': [CashBalanceCHF],
+                      'CashBalanceEUR': [CashBalanceEUR],
+                      'CashBalanceUSD': [CashBalanceUSD]
                      })
     return df
 

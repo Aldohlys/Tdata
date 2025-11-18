@@ -250,7 +250,7 @@ get30dIV <- function(tickers, LastIBKRPrice) {
   for (i in seq_len(nrow(tickers))) {
     name = tickers[i,1]
     last_ibkr_price = LastIBKRPrice[i,"price"]
-    iv30 = getIV_DTE(tickers[i,], last_ibkr_price, 30)
+    iv30 = getIV_DTE(tickers[i, "Name"], tickers[i, "Currency"], last_ibkr_price, 30)
     if (is.list(iv30)) iv30 = signif_na(iv30$v)
     else iv30 = NA
     res <- res |> dplyr::add_row(Name=name, iv30=iv30)
@@ -283,7 +283,7 @@ get180dIV <- function(tickers, LastIBKRPrice) {
   for (i in seq_len(nrow(tickers))) {
     name = tickers[i,1]
     last_ibkr_price = LastIBKRPrice[i,"price"]
-    iv180 = getIV_DTE(tickers[i,], last_ibkr_price, 180)
+    iv180 = getIV_DTE(tickers[i, "Name"], tickers[i, "Currency"], last_ibkr_price, 180)
     if (is.list(iv180)) iv180 = signif_na(iv180$v)
     else iv180 = NA
     res <- res |> dplyr::add_row(Name=name, iv180=iv180)
@@ -331,16 +331,16 @@ get180dIV <- function(tickers, LastIBKRPrice) {
 getVolMetrics <- function(sym_list) {
 
   if (!all(is.character(sym_list))) {
-    t_log_info("getVolMetrics: argument is not all character: {sym_list}")
+    logger::log_info("getVolMetrics: argument is not all character: {sym_list}", namespace="Tdata")
     return(NA)
   }
 
   conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add=TRUE)
 
-  purrr::walk(sym_list, \(sym) {
+  purrr::map_df(sym_list, \(sym) {
 
-    t_log_info("Retrieve vol and price data from IBKR for {sym}")
+    logger::log_info("Retrieve vol and price data from IBKR for {sym}", namespace="Tdata")
 
     ibkr_data <- as.data.frame(tdata_py$get_volatility_metrics(sym=sym, lookback_days=252, hist=TRUE, price = TRUE))
     ibkr_data = dplyr::mutate(ibkr_data, dplyr::across(c(current_iv, current_hv), \(x) {round(x, 4)}))
@@ -359,7 +359,7 @@ getVolMetrics <- function(sym_list) {
     iv180_data <- getIV_DTE(sym, currency, metrics$price, 180)
     metrics$iv180 <- round(iv180_data$v, 4)
     ### Append to DB - with or without margin data retrieved from IBKR
-    safe_db_append(conn, "Prices",metrics)
+    safe_db_append(conn, "Prices",metrics); metrics
   })
 }
 
@@ -390,7 +390,7 @@ getIV_DTE <- function(sym, currency, spot_price, DTE=30){
 
   ### Only one symbol
   if (length(sym) > 1 || length(currency) > 1 || length(spot_price) > 1) {
-    Tbasics::display_error_message(paste0("No proper format for ", ticker,"\n"))
+    Tbasics::display_error_message(paste0("No proper format for ", sym,"\n"))
     return(NA)
   }
 
@@ -448,9 +448,9 @@ getIV_DTE <- function(sym, currency, spot_price, DTE=30){
   next_strikes <- tdata_py$getStrikesfromExpDate(sym=sym, expdate=next_expiry)
   next_strikes <- Tbasics::get_nearest_values(next_strikes, next_forward_price, n_below = 2, n_above = 2)
 
-  t_log_info("Retrieve option prices for {near_expiry}...")
+  logger::log_info("Retrieve option prices for {near_expiry}...", namespace="Tdata")
   near_option_prices <- getOptionPrices(sym, near_strikes, near_expiry)
-  t_log_info("Retrieve option prices for {next_expiry}...")
+  logger::log_info("Retrieve option prices for {next_expiry}...", namespace="Tdata")
   next_option_prices <- getOptionPrices(sym, next_strikes, next_expiry)
 
   if( (nrow(near_option_prices$unmatched_calls) != 0) | (nrow(near_option_prices$unmatched_puts) != 0)) {
@@ -523,13 +523,13 @@ getOptionPrices <- function(sym, strikes, expiration) {
   else if (inherits(expiration,"Date")) expiration = format(expiration,"%Y%m%d")
   else if (!is.character(expiration)) stop("expiration date must be either a date, a number or a character string!")
 
-  t_log_info("Retrieve put data for {sym} at {expiration} for", strikes)
+  logger::log_info("Retrieve put data for {sym} at {expiration} for", strikes, namespace="Tdata")
   df_put = tdata_py$getOptValue(sym = sym, expiration = expiration, strikes = strikes, right="P") |>
     dplyr::rename(put_value = value, put_bid = bid, put_ask = ask, put_iv = impliedvol, put_delta = delta) |>
     dplyr::mutate(put_iv = signif_na(put_iv))
   df_put <- df_put |> dplyr::mutate(put_mid = (put_bid + put_ask)/2)
 
-  t_log_info("Retrieve call data for {sym} at {expiration} for", strikes)
+  logger::log_info("Retrieve call data for {sym} at {expiration} for", strikes, namespace="Tdata")
   df_call = tdata_py$getOptValue(sym = sym, expiration = expiration, strikes = strikes, right = "C") |>
     dplyr::rename(call_value = value, call_bid = bid, call_ask = ask, call_iv = impliedvol, call_delta = delta) |>
     dplyr::mutate(call_iv = signif_na(call_iv))

@@ -15,7 +15,7 @@
 isIBAvailable <- function() {
   ### Check if tdata_py is available (Python module loaded successfully)
   if (is.null(tdata_py)) {
-    t_log_warn("tdata_py Python module not available - Python environment not initialized")
+    logger::log_warn("tdata_py Python module not available - Python environment not initialized", namespace="Tdata")
     return(FALSE)
   }
 
@@ -23,11 +23,11 @@ isIBAvailable <- function() {
   is_api_available <- tdata_py$isIBAvailable()
 
   if (is_api_available) {
-    t_log_debug("Getting IBKR TWS API Access: IBKR_API={is_api_available}")
-    t_log_info("Connected")
+    logger::log_debug("Getting IBKR TWS API Access: IBKR_API={is_api_available}", namespace="Tdata")
+    logger::log_info("Connected", namespace="Tdata")
   }
 
-  else t_log_info("No IBKR TWS API Access: IBKR_API={is_api_available}")
+  else logger::log_info("No IBKR TWS API Access: IBKR_API={is_api_available}", namespace="Tdata")
   return(is_api_available)
 }
 
@@ -59,18 +59,18 @@ getIBKRMetrics <- function(sym, reqType=2) {
 
   ### This will work even if sym is a vector and not the other IBKR contract components
   IBKRPrice <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=reqType)
-  t_log_info("Retrieved price data from IBKR: {IBKRPrice}")
+  logger::log_info("Retrieved price data from IBKR: {IBKRPrice}", namespace="Tdata")
 
   ### Error case do not go further on
   if (length(IBKRPrice) == 1) {
-    t_log_warn("IBKR data retrieval did not work - either no connection or contract does not exist")
+    logger::log_warn("IBKR data retrieval did not work - either no connection or contract does not exist", namespace="Tdata")
     return (IBKRPrice)
   }
 
   ### Remove all empty prices if any, print resulting data
   ### Only prices that are different from NaN will be stored in DB
   LastIBKRPrice <- IBKRPrice[!is.nan(IBKRPrice$price),]
-  t_log_debug("Filtered IBKRPrice: {LastIBKRPrice}")
+  logger::log_debug("Filtered IBKRPrice: {LastIBKRPrice}", namespace="Tdata")
 
   ### Retrieve tickers returned by IBKRPrice and filter out non relevant tickers
   tickers <- getTickers(LastIBKRPrice$sym) |> dplyr::filter(IV == "YES")
@@ -80,18 +80,18 @@ getIBKRMetrics <- function(sym, reqType=2) {
   if (nrow(tickers) != 0) {
 
     #tickers_30d_iv <- get30dIV(tickers)
-    t_log_info("Build IV180 from near/next option chains IVs...")
+    logger::log_info("Build IV180 from near/next option chains IVs...", namespace="Tdata")
     tickers_180d_iv <- get180dIV(tickers, LastIBKRPrice)
 
-    t_log_info("Get IV30 and RV30 through IBKR historical data...")
+    logger::log_info("Get IV30 and RV30 through IBKR historical data...", namespace="Tdata")
     vol_metrics <- getVolMetrics(tickers$Name)
     ### Keep only 3 significant digits
-    tickers_vol_metrics <- dplyr::mutate(vol_metrics, dplyr::across(utils::tail(names(vol_metrics), 10), ~signif(.x, 3)))
+    tickers_vol_metrics <- dplyr::mutate(vol_metrics, dplyr::across(where(is.numeric), ~signif(.x, 3)))
 
     LastIBKRPrice <- dplyr::left_join(LastIBKRPrice, tickers_180d_iv, by = dplyr::join_by(sym == Name)) |>
-      dplyr::left_join(dplyr::select(tickers_vol_metrics, symbol, iv30=current_iv, ivp=iv_percentile,
-                                     rv30=current_hv, rvp=hv_percentile),
-                       by = dplyr::join_by(sym == symbol))
+      dplyr::left_join(dplyr::select(tickers_vol_metrics, sym, iv30, ivp,
+                                     rv30, rvp),
+                       by = dplyr::join_by(sym))
 
     tryCatch({
       myconn <- safe_db_connect()
@@ -99,17 +99,17 @@ getIBKRMetrics <- function(sym, reqType=2) {
       safe_db_append(myconn, "Prices", LastIBKRPrice)
     },
     error = function(cond) {
-      t_log_error("Error while trying to write to DB", cond)
+      logger::log_error("Error while trying to write to DB", cond, namespace="Tdata")
       NA
     },
     warning = function(cond) {
-      t_log_warn(conditionMessage(cond))
+      logger::log_warn(conditionMessage(cond), namespace="Tdata")
       # Choose a return value in case of warning
       NULL
     })
     return(LastIBKRPrice)
   }
-  else t_log_info("All IBKR Prices equal to NA (did not get any data from exchange) or IV set to NO")
+  else logger::log_info("All IBKR Prices equal to NA (did not get any data from exchange) or IV set to NO", namespace="Tdata")
 
   ### Available readily if needed
   return(IBKRPrice)
