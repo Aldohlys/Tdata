@@ -726,6 +726,16 @@ convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
   result_df <- data.frame(currency = currency, date = numeric_date, amount = amount) |>
     dplyr::left_join(lookup_table, by = c("currency", "date" = "lookup_date"))
 
+  # DEFENSIVE: Check data types before multiplication
+  if (!is.numeric(result_df$amount)) {
+    logger::log_error("result_df$amount is not numeric! Class: {class(result_df$amount)}, Values: {paste(head(result_df$amount), collapse=', ')}", namespace="Tdata")
+    stop("result_df$amount must be numeric but got ", class(result_df$amount))
+  }
+  if (!is.numeric(result_df$chf_value)) {
+    logger::log_error("result_df$chf_value is not numeric! Class: {class(result_df$chf_value)}, Values: {paste(head(result_df$chf_value), collapse=', ')}", namespace="Tdata")
+    stop("result_df$chf_value must be numeric but got ", class(result_df$chf_value))
+  }
+
   # Return vectorized conversion maintaining input order
   return(as.numeric(result_df$amount * result_df$chf_value))
 }
