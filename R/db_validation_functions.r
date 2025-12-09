@@ -98,12 +98,18 @@ validate_portfolio_data <- function(data) {
       data[[col]] <- standardize_date_integer(data[[col]])
 
   # Ensure integer columns
-  integer_columns <- c("TradeNr",  "pos","multiplier" )
+  integer_columns <- c("TradeNr", "multiplier" )
   for (col in integer_columns) {
     if (col %in% names(data)) {
         # Integer columns
         data[[col]] <- suppressWarnings(as.integer(data[[col]]))
     }
+  }
+
+  # CRITICAL: pos should be numeric, not integer, to preserve decimal currency amounts
+  # (e.g., 12154.52 EUR not truncated to 12154)
+  if ("pos" %in% names(data)) {
+    data$pos <- standardize_numeric(data$pos)
   }
 
     # Ensure numeric columns
@@ -131,11 +137,18 @@ validate_trades_data <- function(data) {
   }
 
   # Other Integer columns
-  int_cols <- c("TradeNr", "Pos")
+  int_cols <- c("TradeNr")
   for (col in int_cols) {
     if (col %in% names(data)) {
       data[[col]] <- suppressWarnings(as.integer(data[[col]]))
     }
+  }
+
+  # CRITICAL: Pos should be numeric, not integer, to preserve decimal currency amounts
+  # For CASH positions, Pos represents currency units which can be fractional
+  # (e.g., 12154.52 EUR not truncated to 12154)
+  if ("Pos" %in% names(data)) {
+    data$Pos <- standardize_numeric(data$Pos)
   }
 
   # Numeric columns
@@ -274,7 +287,7 @@ validate_prices_data <- function(data) {
 #' \code{\link[config]{get}} for configuration management
 #'
 #' @export
-safe_db_connect <- function() {
+safe_db_connect <- function(check_lock = TRUE, max_retries = 2) {
   if (Sys.getenv("_R_CHECK_PACKAGE_NAME_", "") != "" &&
       !identical(Sys.getenv("TESTTHAT"), "true")) {
     stop("Database operations not available during package check", call. = FALSE)
@@ -297,12 +310,68 @@ safe_db_connect <- function() {
          call. = FALSE)
   }
 
-  # Establish database connection
-  tryCatch({
-    DBI::dbConnect(RSQLite::SQLite(), db_path)
-  }, error = function(e) {
-    stop("Failed to connect to database: ", e$message, call. = FALSE)
-  })
+  # Helper to check if error is DB lock
+  is_db_locked <- function(error) {
+    error_msg <- tolower(as.character(error))
+    grepl("database is locked", error_msg) || grepl("database locked", error_msg)
+  }
+
+  # Attempt connection with optional lock detection
+  for (attempt in 1:max_retries) {
+    conn <- tryCatch({
+      conn_obj <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+
+      # Optional: Test if DB is actually accessible (not just connected)
+      if (check_lock) {
+        # Quick test query to detect lock early
+        tryCatch({
+          DBI::dbGetQuery(conn_obj, "SELECT 1")
+        }, error = function(e) {
+          DBI::dbDisconnect(conn_obj)
+          stop(e)
+        })
+      }
+
+      return(conn_obj)
+
+    }, error = function(e) {
+      if (is_db_locked(e)) {
+        logger::log_warn("Database locked on connection attempt {attempt}/{max_retries}",
+                        namespace = "Tdata")
+
+        if (attempt < max_retries) {
+          Sys.sleep(1)
+          return(NULL)  # Signal to retry
+        } else {
+          # Final attempt - notify user
+          error_msg <- paste0(
+            "Database is locked and cannot be accessed.\n\n",
+            "The database file is currently in use by another application.\n",
+            "Please close any other R sessions or applications accessing the database.\n\n",
+            "Database: ", db_path, "\n\n",
+            "Click OK after closing other applications."
+          )
+
+          Tbasics::display_error_message(error_msg)
+          logger::log_error("Database locked: {e$message}", namespace = "Tdata")
+          stop("Database is locked. Please close other applications accessing the database.",
+               call. = FALSE)
+        }
+      } else {
+        # Different error
+        logger::log_error("Failed to connect to database: {e$message}", namespace = "Tdata")
+        stop("Failed to connect to database: ", e$message, call. = FALSE)
+      }
+    })
+
+    # If we got a connection, return it
+    if (!is.null(conn)) {
+      return(conn)
+    }
+  }
+
+  # Should not reach here
+  stop("Failed to connect to database after all retries", call. = FALSE)
 }
 
 #' Safe database write with type validation
@@ -318,32 +387,104 @@ safe_db_connect <- function() {
 #' @param ... Additional arguments passed to dbWriteTable/dbAppendTable
 #' @return Result from database write operation
 #' @export
-safe_db_write <- function(conn, table_name, data, append = FALSE, temporary = FALSE, ...) {
+safe_db_write <- function(conn, table_name, data, append = FALSE, temporary = FALSE,
+                          max_retries = 3, retry_delay = 2, ...) {
 
-  # Skip validation for temporary tables
-  if (temporary) {
-    if (append) {
-      result <- DBI::dbAppendTable(conn, table_name, data, ...)
-    } else {
-      # For temporary tables, always overwrite
-      result <- DBI::dbWriteTable(conn, table_name, data, temporary = TRUE, overwrite = TRUE, append = FALSE, ...)
+  # Helper function to check if error is DB lock
+  is_db_locked <- function(error) {
+    error_msg <- tolower(as.character(error))
+    grepl("database is locked", error_msg) || grepl("database locked", error_msg)
+  }
+
+  # Helper function to attempt write
+  attempt_write <- function() {
+    # Skip validation for temporary tables
+    if (temporary) {
+      if (append) {
+        return(DBI::dbAppendTable(conn, table_name, data, ...))
+      } else {
+        # For temporary tables, always overwrite
+        return(DBI::dbWriteTable(conn, table_name, data, temporary = TRUE,
+                                overwrite = TRUE, append = FALSE, ...))
+      }
     }
-    return(result)
+
+    # Validate data types before writing
+    validated_data <- validate_db_types(data, table_name)
+
+    # Write to database
+    if (append) {
+      return(DBI::dbAppendTable(conn, table_name, validated_data, ...))
+    } else {
+      # Explicitly set both overwrite and append to avoid ambiguity
+      return(DBI::dbWriteTable(conn, table_name, validated_data,
+                              overwrite = TRUE, append = FALSE, ...))
+    }
   }
 
-  # Validate data types before writing
-  validated_data <- validate_db_types(data, table_name)
+  # Attempt write with retry logic
+  for (attempt in 1:max_retries) {
+    result <- tryCatch(
+      {
+        attempt_write()
+      },
+      error = function(e) {
+        if (is_db_locked(e)) {
+          # Database is locked
+          logger::log_warn("Database locked on attempt {attempt}/{max_retries} for table '{table_name}'",
+                          namespace = "Tdata")
 
-  # Write to database
-  if (append) {
-    result <- DBI::dbAppendTable(conn, table_name, validated_data, ...)
-  } else {
-    # Explicitly set both overwrite and append to avoid ambiguity
-    result <- DBI::dbWriteTable(conn, table_name, validated_data,
-                                overwrite = TRUE, append = FALSE, ...)
+          if (attempt < max_retries) {
+            # Retry after delay
+            Sys.sleep(retry_delay)
+            return(NULL)  # Signal to retry
+          } else {
+            # Final attempt failed - notify user
+            error_msg <- paste0(
+              "Database is locked and cannot be accessed.\n\n",
+              "The database file is currently in use by another application.\n",
+              "Please close any other R sessions or applications that may be accessing the database.\n\n",
+              "Table: ", table_name, "\n",
+              "Operation: ", if(append) "APPEND" else "WRITE", "\n\n",
+              "Click OK after closing other applications to retry, or Cancel to abort."
+            )
+
+            # Display message to user
+            Tbasics::display_error_message(error_msg)
+
+            # Give user time to close other apps, then retry once more
+            logger::log_info("Waiting for user to resolve DB lock...", namespace = "Tdata")
+            Sys.sleep(3)
+
+            # Final retry
+            return(tryCatch(
+              attempt_write(),
+              error = function(e2) {
+                # Still locked - give up
+                logger::log_error("Database still locked after user intervention: {e2$message}",
+                                namespace = "Tdata")
+                stop(paste0("Database remains locked. Please ensure no other applications are using the database.\n",
+                           "Error: ", e2$message))
+              }
+            ))
+          }
+        } else {
+          # Different error - propagate immediately
+          logger::log_error("Database write error for table '{table_name}': {e$message}",
+                          namespace = "Tdata")
+          stop(e)
+        }
+      }
+    )
+
+    # Check if we got a result (not NULL from retry signal)
+    if (!is.null(result)) {
+      return(result)
+    }
   }
 
-  return(result)
+  # Should not reach here, but safety fallback
+  stop("Database write failed after all retries")
 }
 
 #' Safe database append with validation

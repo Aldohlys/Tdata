@@ -258,23 +258,43 @@ def retrievePortfolioData(ib, df):
 def getIBKRData():
     """
     Retrieve account and portfolio data from Interactive Brokers.
-    
+
     Returns:
-        list: A list containing account_data and portfolio_data DataFrames
+        list: A list containing account_data, portfolio_data, and currency_balances DataFrames
               or 0 if connection fails
     """
     # Use safe_ib_connect instead of direct connection
     ib = safe_ib_connect()
 
     # If connection not available return None
-    if not ib.isConnected(): 
+    if not ib.isConnected():
         return 0
 
     #### Get account related data #########
     print("\n#####  Retrieving account data...\n")
-    
+
     account_data = retrieveAccountData(ib)
     print(account_data)
+
+    ### Extract currency balances for CASH position tracking
+    ### Use accountSummary for comprehensive currency balance data
+    print("\n#####  Extracting currency balances...\n")
+
+    account_summary_df = util.df(ib.accountSummary())
+
+    # Filter for TotalCashBalance tag and extract all currencies
+    cash_balances = account_summary_df[account_summary_df['tag'] == 'TotalCashBalance']
+
+    # Create currency_balances DataFrame with currency and balance columns
+    currency_balances = pd.DataFrame({
+        'currency': cash_balances['currency'].values,
+        'balance': pd.to_numeric(cash_balances['value']).values
+    })
+
+    # Filter out zero or near-zero balances
+    currency_balances = currency_balances[abs(currency_balances['balance']) >= 0.01]
+
+    print(currency_balances)
 
     ### Store portfolio in df, then split contract definition (first column) into multiple columns
     ### Merge resulting split with the other columns
@@ -282,16 +302,16 @@ def getIBKRData():
     #### For options, get the list of contract definitions
     #### i index is necessary to iterate over df
     #### Consider only row that are of secType = OPT
-    ###  Extract only 'contract' column in row 
+    ###  Extract only 'contract' column in row
 
     print("\n#####  Retrieving portfolio data... \n")
-    
+
     df = util.df(ib.portfolio())
-    
+
     ### Initialize portf data and contract definition variables
     c_def = pd.DataFrame()
     portf_data = pd.DataFrame()
-    
+
     ### First check if data retrieved is not None
     if df is not None:
 
@@ -306,10 +326,10 @@ def getIBKRData():
 
         ### Wait until all data has been received
         ib.sleep(1)
-        
+
         print(portf_data)
 
     #### IB connection no more needed
     ib.disconnect()
-    
-    return [account_data, portf_data]
+
+    return [account_data, portf_data, currency_balances]

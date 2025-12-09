@@ -374,21 +374,23 @@ greeksNet = function(portf) {
                                    dnet=dplyr::case_when(
                                      (type=="Stock"| type=="Future") ~ 1*pos,
                                      (type=="Call" | type=="Put") ~ multiplier*delta*pos,
+                                     type=="CASH" ~ 1*pos,  # CASH: linear exposure to FX rate
                                      TRUE ~ 0),
                                    ddnet=dplyr::case_when(
                                      type=="Stock" ~ 1*pos*mktPrice,
                                      type=="Future" ~ multiplier*pos*uPrice,
                                      (type=="Call" | type=="Put") ~ multiplier*delta*pos*uPrice,
+                                     type=="CASH" ~ mktValue,  # CASH: use market value in base currency
                                      TRUE ~ 0),
                                    gnet=dplyr::if_else((type=="Call" | type=="Put"),
                                                        multiplier*gamma*pos,
-                                                       0),
+                                                       0),  # CASH: no gamma
                                    tnet=dplyr::if_else((type=="Call" | type=="Put"),
                                                        multiplier*theta*pos,
-                                                       0),
+                                                       0),  # CASH: no theta
                                    vnet=dplyr::if_else((type=="Call" | type=="Put"),
                                                        multiplier*vega*pos,
-                                                       0))
+                                                       0))  # CASH: no vega
 
     if (any(is.na(portf_extended[,c("dnet", "ddnet", "gnet", "tnet", "vnet")]))) {
       logger::log_warn("Greeks computation returns NA because one or several positions Greeks are NA", namespace="Tdata")
@@ -459,11 +461,17 @@ getIBKR <- function() {
   ### New account data retrieved properly, update exit code
   exit_code = 1
 
-  #### Process portfolio last position
+  #### 2. Process portfolio last position
   portf_data = l[[2]]
 
   ### Test if no data then exit the function
   if (nrow(portf_data) == 0) return(exit_code)
+
+  #### 3. Process currency balances for CASH positions
+  currency_balances = l[[3]]
+
+  ### Initialize empty CASH portfolio data
+  cash_portf_data = data.frame()
 
   ### Following Python extract, all fields are either double or character
   portf_data = dplyr::mutate(portf_data,
@@ -551,7 +559,53 @@ getIBKR <- function() {
     logger::log_info("One or several instruments could not be matched in DB Trades table : {unmatched_instruments}", namespace="Tdata")
   }
 
-  ### Append to DB - with or without margin data retrieved from IBKR
+  #### Process currency balances and create CASH portfolio rows
+  if (!is.null(currency_balances) && nrow(currency_balances) > 0) {
+    logger::log_debug("Processing {nrow(currency_balances)} currency balances for CASH positions", namespace="Tdata")
+
+    base_currency <- getParam("BaseCurrency")
+
+    ### Create CASH portfolio rows for non-base currencies
+    cash_rows <- lapply(seq_len(nrow(currency_balances)), function(i) {
+      curr <- currency_balances$currency[i]
+      bal <- currency_balances$balance[i]
+
+      # Skip base currency, BASE total, or near-zero balances
+      if (curr %in% c(base_currency, "BASE") || abs(bal) < 0.01) {
+        return(NULL)
+      }
+
+      create_cash_portfolio_row(
+        currency = curr,
+        balance = bal,
+        date = Sys.Date(),
+        account_table = account_data$account
+      )
+    })
+
+    ### Combine CASH rows and append to portfolio
+    cash_df <- do.call(rbind, Filter(Negate(is.null), cash_rows))
+
+    if (!is.null(cash_df) && nrow(cash_df) > 0) {
+      logger::log_info("Adding {nrow(cash_df)} CASH positions to portfolio", namespace="Tdata")
+
+      ### Ensure type compatibility before rbind
+      # Convert expdate column to match portf_data type (character from Python)
+      if ("expdate" %in% colnames(portf_data) && "expdate" %in% colnames(cash_df)) {
+        # Match the type from portf_data
+        if (is.character(portf_data$expdate)) {
+          cash_df$expdate <- as.character(cash_df$expdate)
+        } else if (is.integer(portf_data$expdate)) {
+          portf_data$expdate <- as.integer(portf_data$expdate)
+        }
+      }
+
+      ### Append CASH rows to portfolio data
+      portf_data <- rbind(portf_data, cash_df)
+    }
+  }
+
+  ### Append combined portfolio (stocks + options + CASH) to DB
   safe_db_append(conn,account_data$account,portf_data)
 
   ### Account data, portfolio data and potentially margin data retrieved and stored
