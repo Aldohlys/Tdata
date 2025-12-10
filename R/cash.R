@@ -194,19 +194,20 @@ get_cash_positions <- function(account) {
 #'
 #' @param currency Currency code (e.g., "CHF", "USD", "EUR")
 #' @param balance Currency balance (units)
-#' @param date Date for exchange rate lookup
+#' @param snapshot_date Portfolio snapshot date (integer YYYYMMDD format)
+#' @param snapshot_heure Portfolio snapshot time (HH:MM:SS format)
 #' @param account_table Account code for linking (optional)
 #' @return Data frame with single portfolio row, or NULL if base currency/zero balance
 #'
 #' @details
 #' Creates a portfolio row for non-base currency balances. Skips base currency
-#' and zero balances. The avgCost field uses current exchange rate by default;
-#' for accurate P&L tracking, link to trades table via TradeNr.
+#' and zero balances. CRITICAL: Uses the same snapshot_date and snapshot_heure
+#' as the regular portfolio to ensure readLastPortfolio() returns all positions.
 #'
 #' Uses existing currency conversion functions from currency.R for exchange rates.
 #'
 #' @keywords internal
-create_cash_portfolio_row <- function(currency, balance, date, account_table = NULL) {
+create_cash_portfolio_row <- function(currency, balance, snapshot_date, snapshot_heure, account_table = NULL) {
   base_currency <- getParam("BaseCurrency")  # e.g., "CHF"
 
   # Skip if base currency (CHF) or zero balance
@@ -214,9 +215,12 @@ create_cash_portfolio_row <- function(currency, balance, date, account_table = N
     return(NULL)
   }
 
+  # Convert snapshot_date to Date for exchange rate lookup
+  rate_date <- as.Date(as.character(snapshot_date), "%Y%m%d")
+
   # Get current exchange rate using existing function from currency.R
   # Convert 1 unit of currency to base currency
-  exchange_rate <- convert_to_base_date(amount = 1, currency = currency, convert_date = date)
+  exchange_rate <- convert_to_base_date(amount = 1, currency = currency, convert_date = rate_date)
 
   # Calculate market value in base currency
   mkt_value <- balance * exchange_rate
@@ -250,10 +254,11 @@ create_cash_portfolio_row <- function(currency, balance, date, account_table = N
   unrealized_pnl <- (exchange_rate - trade_cost_basis) * balance
 
   # Create portfolio row matching table structure
+  # CRITICAL: Use snapshot_date and snapshot_heure from regular portfolio
   row <- data.frame(
     TradeNr = trade_nr,              # Link to trade if found
-    date = as.integer(format(date, "%Y%m%d")),
-    heure = format(Sys.time(), "%H:%M:%S"),
+    date = snapshot_date,            # Same as regular portfolio (YYYYMMDD integer)
+    heure = snapshot_heure,          # Same as regular portfolio (HH:MM:SS)
     symbol = currency,               # Currency code (join key with Instrument)
     expdate = NA_integer_,
     strike = NA_real_,

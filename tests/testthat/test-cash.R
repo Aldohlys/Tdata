@@ -124,7 +124,8 @@ test_that("create_cash_portfolio_row skips base currency", {
   result <- create_cash_portfolio_row(
     currency = base_curr,
     balance = 1000,
-    date = Sys.Date()
+    snapshot_date = as.integer(format(Sys.Date(), "%Y%m%d")),
+    snapshot_heure = format(Sys.time(), "%H:%M:%S")
   )
 
   expect_null(result)
@@ -139,7 +140,8 @@ test_that("create_cash_portfolio_row skips zero balance", {
   result <- create_cash_portfolio_row(
     currency = "USD",
     balance = 0.001,
-    date = Sys.Date()
+    snapshot_date = as.integer(format(Sys.Date(), "%Y%m%d")),
+    snapshot_heure = format(Sys.time(), "%H:%M:%S")
   )
 
   expect_null(result)
@@ -158,7 +160,8 @@ test_that("create_cash_portfolio_row creates valid row for non-base currency (in
   result <- create_cash_portfolio_row(
     currency = test_currency,
     balance = 45000,
-    date = Sys.Date()
+    snapshot_date = as.integer(format(Sys.Date(), "%Y%m%d")),
+    snapshot_heure = format(Sys.time(), "%H:%M:%S")
   )
 
   expect_false(is.null(result))
@@ -197,7 +200,8 @@ test_that("create_cash_portfolio_row calculates P&L with linked trade (integrati
   result_eur <- create_cash_portfolio_row(
     currency = "EUR",
     balance = 12154.52,
-    date = Sys.Date(),
+    snapshot_date = as.integer(format(Sys.Date(), "%Y%m%d")),
+    snapshot_heure = format(Sys.time(), "%H:%M:%S"),
     account_table = default_account
   )
 

@@ -565,6 +565,10 @@ getIBKR <- function() {
 
     base_currency <- getParam("BaseCurrency")
 
+    # Get snapshot timestamp from regular portfolio (CRITICAL: must match for readLastPortfolio)
+    snapshot_date <- portf_data$date[1]  # Already in YYYYMMDD integer format from Python
+    snapshot_heure <- portf_data$heure[1]  # Already in HH:MM:SS format from Python
+
     ### Create CASH portfolio rows for non-base currencies
     cash_rows <- lapply(seq_len(nrow(currency_balances)), function(i) {
       curr <- currency_balances$currency[i]
@@ -578,7 +582,8 @@ getIBKR <- function() {
       create_cash_portfolio_row(
         currency = curr,
         balance = bal,
-        date = Sys.Date(),
+        snapshot_date = snapshot_date,
+        snapshot_heure = snapshot_heure,
         account_table = account_data$account
       )
     })
