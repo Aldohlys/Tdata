@@ -172,6 +172,43 @@ test_that("create_cash_portfolio_row creates valid row for non-base currency (in
   expect_equal(result$gamma, 0)
   expect_equal(result$vega, 0)
   expect_equal(result$theta, 0)
+  # When no trade is linked, avgCost = mktPrice and unPnL = 0
+  expect_equal(result$avgCost, result$mktPrice)
+  expect_equal(result$unPnL, 0)
+})
+
+test_that("create_cash_portfolio_row calculates P&L with linked trade (integration test)", {
+  skip_if_not(DBI::dbCanConnect(RSQLite::SQLite(), Sys.getenv("R_DB_PATH")),
+              "Database not available")
+  skip_if(is.null(try(getParam("BaseCurrency"), silent = TRUE)),
+          "BaseCurrency not configured")
+
+  # This test verifies P&L calculation when CASH position links to existing trade
+  # Uses existing trades 659 (EUR) and 660 (USD) from database
+
+  base_curr <- getParam("BaseCurrency")
+  skip_if(base_curr != "CHF", "Test designed for CHF base currency")
+
+  # Get default account
+  default_account <- getParam("DefaultAccount")
+  skip_if(is.null(default_account), "No default account configured")
+
+  # Test with EUR (should link to TradeNr 659)
+  result_eur <- create_cash_portfolio_row(
+    currency = "EUR",
+    balance = 12154.52,
+    date = Sys.Date(),
+    account_table = default_account
+  )
+
+  expect_false(is.null(result_eur))
+  expect_equal(result_eur$symbol, "EUR")
+  expect_equal(result_eur$TradeNr, 659)  # Should link to existing trade
+  # avgCost should come from trade, not current rate
+  expect_true(result_eur$avgCost != result_eur$mktPrice || abs(result_eur$unPnL) < 0.01)
+  # unPnL should be calculated: (mktPrice - avgCost) * pos
+  expected_pnl <- (result_eur$mktPrice - result_eur$avgCost) * result_eur$pos
+  expect_equal(result_eur$unPnL, expected_pnl, tolerance = 0.01)
 })
 
 test_that("reconcile_cash_positions works with real data (unit test with inline data)", {

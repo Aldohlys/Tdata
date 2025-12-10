@@ -221,25 +221,33 @@ create_cash_portfolio_row <- function(currency, balance, date, account_table = N
   # Calculate market value in base currency
   mkt_value <- balance * exchange_rate
 
-  # Try to link to existing CASH trade
+  # Try to link to existing CASH trade and get cost basis
   trade_nr <- NA_integer_
+  trade_cost_basis <- exchange_rate  # Default to current rate if no trade found
+
   if (!is.null(account_table)) {
     tryCatch({
       conn <- safe_db_connect()
       on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
-      query <- "SELECT TradeNr FROM Trades
+      query <- "SELECT TradeNr, Prix FROM Trades
                 WHERE Account = ? AND Instrument = ? AND Ssjacent = 'CASH' AND Statut = 'Ouvert'
                 ORDER BY TradeDate DESC LIMIT 1"
       result <- DBI::dbGetQuery(conn, query, params = list(account_table, currency))
 
       if (nrow(result) > 0) {
         trade_nr <- result$TradeNr[1]
+        trade_cost_basis <- result$Prix[1]
+        logger::log_debug("Linked CASH position {currency} to TradeNr {trade_nr}, cost basis: {trade_cost_basis}",
+                         namespace = "Tdata")
       }
     }, error = function(e) {
       logger::log_warn("Could not link CASH position to trade: {e$message}", namespace = "Tdata")
     })
   }
+
+  # Calculate unrealized P&L using trade cost basis
+  unrealized_pnl <- (exchange_rate - trade_cost_basis) * balance
 
   # Create portfolio row matching table structure
   row <- data.frame(
@@ -253,8 +261,8 @@ create_cash_portfolio_row <- function(currency, balance, date, account_table = N
     mktPrice = exchange_rate,        # Current rate in base currency
     optPrice = NA_real_,
     mktValue = mkt_value,            # Value in base currency
-    avgCost = exchange_rate,         # Current rate (TODO: link to trades for accurate cost basis)
-    unPnL = 0,                       # TODO: Calculate if avgCost tracked from trades
+    avgCost = trade_cost_basis,      # Cost basis from linked trade (or current rate if no trade)
+    unPnL = unrealized_pnl,          # P&L from exchange rate movement
     IV = NA_real_,
     pvDividend = NA_real_,
     delta = 1.0,                     # Linear exposure to FX rate
