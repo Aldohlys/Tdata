@@ -336,12 +336,60 @@ getYahooName <- function(sym) {
     ## Case where x=NA
     if (is.na(x)) return(NA)
 
+    # Check if symbol is the base currency (no conversion needed)
+    # This check must happen BEFORE getTicker to avoid returning exchange rates for base currency
+    if (grepl("^[A-Z]{3}$", x)) {
+      base_currency <- getParam("BaseCurrency")
+      if (x == base_currency) {
+        logger::log_debug("Symbol {x} is the base currency, no conversion needed", namespace="Tdata")
+        return(NA)
+      }
+    }
+
     ticker <- getTicker(x)
 
-    ### If ticker does not exist in Ticker table then return NA - nothing can be done
+    ### If ticker does not exist in Ticker table, try currency pair format if applicable
     if (nrow(ticker) == 0) {
       logger::log_debug("Ticker {x} is not in Ticker DB", namespace="Tdata")
-      return(NA)
+
+      # If symbol looks like a currency code (3 uppercase letters), try currency pair
+      if (grepl("^[A-Z]{3}$", x)) {
+        # Get base currency from config (already retrieved above, but keep for clarity)
+        base_currency <- getParam("BaseCurrency")
+
+        # First try: symbol.BaseCurrency (e.g., USD.CHF if BaseCurrency is CHF)
+        logger::log_debug("Symbol {x} looks like currency, trying {x}.{base_currency}", namespace="Tdata")
+        currency_pair <- paste0(x, ".", base_currency)
+        ticker <- getTicker(currency_pair)
+
+        # Second try: inverse pair (e.g., CHF.USD instead of USD.CHF)
+        # Note: Caller will need to invert the rate (rate_inverse = 1 / rate)
+        if (nrow(ticker) == 0) {
+          inverse_pair <- paste0(base_currency, ".", x)
+          logger::log_debug("Currency pair {currency_pair} not found, trying inverse {inverse_pair}", namespace="Tdata")
+          ticker <- getTicker(inverse_pair)
+          if (nrow(ticker) > 0) {
+            logger::log_warn("Using inverse pair {inverse_pair} - caller should invert rates", namespace="Tdata")
+          }
+        }
+
+        # Third try: symbol.USD (fallback, most Yahoo pairs are quoted against USD)
+        if (nrow(ticker) == 0 && base_currency != "USD") {
+          logger::log_debug("Inverse pair not found, trying {x}.USD as fallback", namespace="Tdata")
+          currency_pair <- paste0(x, ".USD")
+          ticker <- getTicker(currency_pair)
+        }
+
+        if (nrow(ticker) > 0) {
+          logger::log_debug("Found currency pair {currency_pair} in Ticker DB", namespace="Tdata")
+          # Continue with this ticker (don't return yet, check Type and YahooName below)
+        } else {
+          logger::log_debug("No currency pair found for {x}", namespace="Tdata")
+          return(NA)
+        }
+      } else {
+        return(NA)
+      }
     }
 
     ### One ticker has been found - if type equals FUT or TBILL no Yahoo search
