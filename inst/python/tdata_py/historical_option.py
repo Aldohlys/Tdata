@@ -154,8 +154,9 @@ class HistoricalStorage:
         if existing_data is not None and not existing_data.empty:
             combined_data = pd.concat([existing_data, new_combined_data], ignore_index=True)
             # Deduplicate by datetime and what_to_show
-            # Use 'first' to preserve original historical values, only add new timestamps
-            combined_data = combined_data.drop_duplicates(subset=['datetime', 'what_to_show'], keep='first')
+            # Use 'last' to update with new data while preserving old historical values
+            # This allows: (1) keeping old data IBKR no longer provides, (2) updating with fresh data
+            combined_data = combined_data.drop_duplicates(subset=['datetime', 'what_to_show'], keep='last')
             combined_data = combined_data.sort_values(['datetime', 'what_to_show'])
         else:
             combined_data = new_combined_data

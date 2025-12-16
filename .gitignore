@@ -40,5 +40,6 @@ tests/test-results-1
 *.html
 
 *.md
+!CHANGELOG.md
 
 historical_config.json
