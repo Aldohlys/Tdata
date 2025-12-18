@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.54] - 2025-12-18
+
+### Added
+- **reloadTickerCache()**: New function to refresh Python ticker cache without R restart
+  - **Problem**: Tickers added to database after R session start weren't recognized by Python code
+  - **Impact**: Python functions (getValue, updateTicker, etc.) defaulted to USD for new tickers, causing IBKR contract qualification failures
+  - **Solution**: Exposes Python's `ticker_db.load_tickers()` method to R
+  - **Usage**: Call after `addTicker()` or manual database updates
+  - **Benefits**: No R session restart required, immediate ticker availability
+  - **Location**: R/ticker.R:520-540
+
 ## [5.7.53] - 2025-12-16
 
 ### Fixed

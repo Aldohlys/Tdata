@@ -497,3 +497,44 @@ update_ticker_params <- function(Name, ...) {
     updates = valid_updates
   ))
 }
+
+#' Reload Ticker Cache from Database
+#'
+#' Forces the Python ticker cache to reload from the database.
+#' Call this function after adding or updating tickers to make them
+#' immediately available to Python-based functions without restarting R.
+#'
+#' @return Logical. TRUE if reload successful, FALSE otherwise.
+#' @export
+#' @examples
+#' \dontrun{
+#' # Add a new ticker
+#' addTicker("GTT", "Gonet SA", "STK", "SMART", "EUR")
+#'
+#' # Reload cache to recognize new ticker
+#' reloadTickerCache()
+#'
+#' # Now Python functions can access GTT
+#' updateTicker("GTT")
+#' }
+reloadTickerCache <- function() {
+  # Check if Python module is available
+  if (is.null(tdata_py)) {
+    logger::log_error("Python module not available - cannot reload ticker cache",
+                     namespace = "Tdata")
+    return(FALSE)
+  }
+
+  # Call Python method to reload tickers
+  tryCatch({
+    tdata_py$core$ticker_db$load_tickers()
+    ticker_count <- length(tdata_py$core$ticker_db$tickers)
+    logger::log_info(paste0("Reloaded ticker cache: ", ticker_count, " tickers"),
+                    namespace = "Tdata")
+    return(TRUE)
+  }, error = function(e) {
+    logger::log_error(paste0("Failed to reload ticker cache: ", e$message),
+                     namespace = "Tdata")
+    return(FALSE)
+  })
+}
