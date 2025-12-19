@@ -1,6 +1,33 @@
 
 ###################  Retrieve prices functions
 
+#' Determine appropriate market data request type based on exchange
+#'
+#' Helper function to automatically select reqType for getValue() based on ticker exchange.
+#' Returns reqType=4 (Delayed Frozen) for LSEETF exchange (no subscription required),
+#' and reqType=2 (Frozen) for other exchanges.
+#'
+#' @param sym Character vector of ticker symbols
+#' @return Integer: 4 for LSEETF tickers, 2 for others
+#' @keywords internal
+determine_req_type <- function(sym) {
+  req_type <- 2  # Default: Frozen (real-time with subscription)
+
+  # Exchanges that require delayed data (no subscription available)
+  delayed_exchanges <- c("LSEETF", "EBS", "ALLFUNDS")
+
+  # Check if any symbol uses an exchange that requires delayed data
+  for (s in sym) {
+    ticker <- getTicker(s)
+    if (nrow(ticker) > 0 && !is.na(ticker$Exchange) && ticker$Exchange %in% delayed_exchanges) {
+      req_type <- 4  # Delayed Frozen (no subscription needed)
+      break
+    }
+  }
+
+  return(req_type)
+}
+
 #'   getSymIntervalDate
 #'
 #'This function gets from Yahoo service all values (Open, High, Low, Close, Volume and Adjusted)
@@ -424,8 +451,11 @@ getStockPrice = function(sym = NULL, close = FALSE) {
 
     ### Most recent data requested and IB is available
     else {
-      ### get prices from IBKR using reqType=2 (Frozen - most recent market data)
-      line <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=2)
+      ### Determine reqType based on exchange (delayed data for LSEETF, frozen for others)
+      req_type <- determine_req_type(sym)
+
+      ### get prices from IBKR
+      line <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=req_type)
       conn <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
       on.exit(DBI::dbDisconnect(conn), add=TRUE)
       safe_db_append(conn,"Prices", line)

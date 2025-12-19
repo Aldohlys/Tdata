@@ -809,8 +809,38 @@ getGonet <- function() {
   portf$heure <- format(Sys.time(),"%H:%M:%S")  ### Allows for several recordings in the same day
   portf = dplyr::left_join(portf, portf_cashflow, by = c("sym_yahoo" = "sym_yahoo"))
 
-  ### get prices from IBKR using reqType=2 (Frozen - most recent market data)
-  last_price <- tdata_py$getValue(list_sym=portf$sym_ibkr, ib=NULL, reqType=2)
+  ### get prices from IBKR - split by exchange type to use correct reqType
+  ### Some exchanges (LSEETF, EBS, ALLFUNDS) require delayed data (reqType=4)
+  ### while others use frozen data (reqType=2)
+
+  delayed_exchanges <- c("LSEETF", "EBS", "ALLFUNDS")
+
+  # Identify which symbols need delayed data
+  symbols_delayed <- character()
+  symbols_regular <- character()
+
+  for (s in portf$sym_ibkr) {
+    ticker <- getTicker(s)
+    if (nrow(ticker) > 0 && !is.na(ticker$Exchange) && ticker$Exchange %in% delayed_exchanges) {
+      symbols_delayed <- c(symbols_delayed, s)
+    } else {
+      symbols_regular <- c(symbols_regular, s)
+    }
+  }
+
+  # Call getValue() separately for each group
+  last_price_list <- list()
+
+  if (length(symbols_delayed) > 0) {
+    last_price_list[[1]] <- tdata_py$getValue(list_sym=symbols_delayed, ib=NULL, reqType=4)
+  }
+
+  if (length(symbols_regular) > 0) {
+    last_price_list[[2]] <- tdata_py$getValue(list_sym=symbols_regular, ib=NULL, reqType=2)
+  }
+
+  # Combine results
+  last_price <- do.call(rbind, last_price_list)
 
   #### price_user is the subset of last_price where price = NaN, i.e. price could not be retrieved from IBKR
   price_user <- last_price[is.nan(last_price$price),]
@@ -874,10 +904,9 @@ getGonet <- function() {
   if (nrow(new_price_entries) > 0) {
     safe_db_append(conn,"Prices", new_price_entries)
   }
-  DBI::dbDisconnect(conn)
-  
-  ### Request Gonet cash positions from user for currency exposure tracking
+
   ### Retrieve stored cash positions from database to use as defaults
+  ### IMPORTANT: Query BEFORE disconnecting
   stored_cash_query <- "SELECT CashBalanceCHF, CashBalanceUSD, CashBalanceEUR
                         FROM account
                         WHERE account = 'Gonet'
@@ -888,6 +917,9 @@ getGonet <- function() {
   }, error = function(e) {
     data.frame(CashBalanceCHF = 0, CashBalanceUSD = 0, CashBalanceEUR = 0)
   })
+
+  ### Now disconnect after all queries are complete
+  DBI::dbDisconnect(conn)
   
   ### Prompt user for cash positions with stored values as defaults
   cash_chf <- Tbasics::enter_numerical_data(
@@ -902,13 +934,19 @@ getGonet <- function() {
     "Gonet Cash EUR",
     ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceEUR[1], 0)
   )
-  
-  ### Return cash positions for getAccountGonet() to use
-  return(list(
+
+  ### Automatically call getAccountGonet() to write account data
+  cash_values <- list(
     cash_chf = cash_chf,
     cash_usd = cash_usd,
     cash_eur = cash_eur
-  ))
+  )
+
+  ### Write account data including cash balances
+  getAccountGonet(gonet_cash = cash_values)
+
+  ### Return cash values for backward compatibility (if needed)
+  invisible(cash_values)
 }
 #'   getAccountGonet
 #'

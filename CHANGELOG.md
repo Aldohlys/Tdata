@@ -16,6 +16,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Benefits**: No R session restart required, immediate ticker availability
   - **Location**: R/ticker.R:520-540
 
+- **Contract ID (ConId) Support**: Full support for ISIN-based securities like funds
+  - **Problem**: ISIN codes (e.g., IE00B67T5G21) don't work as symbols in IBKR API
+  - **Solution**: Added ConId column to Tickers database and implemented contract ID-based qualification
+  - **Implementation**:
+    1. Added ConId INTEGER column to Tickers database table
+    2. Updated Python getValue() to use Stock(conId=...) when ConId available
+    3. Added ConId parameter to addTicker() function (optional)
+    4. Added ConId to setTicker() updatable columns
+    5. TickerDatabase automatically loads ConId (no changes needed - uses SELECT *)
+  - **Usage**: `addTicker("IE00B67T5G21", "NUCL Fund", "STK", "ALLFUNDS", "EUR", ConId = 433080107)`
+  - **Benefits**: Supports funds and securities without simple ticker symbols
+  - **Location**:
+    - Database: Tickers table ConId column
+    - Python: inst/python/tdata_py/contract.py:104-140
+    - R: R/ticker.R:47,91,490
+
+### Changed
+- **getStockPrice()**: Automatic delayed market data for LSEETF and ALLFUNDS exchanges
+  - **Problem**: Some exchanges (LSEETF, ALLFUNDS) require real-time subscription (Error 354) not available to all users
+  - **Solution**: Automatically uses reqType=4 (Delayed Frozen) instead of reqType=2 (Frozen) for these exchanges
+  - **Benefits**: Funds and ETFs on these exchanges can retrieve delayed price data without subscription
+  - **Impact**: 15-20 minute delayed data for LSEETF/ALLFUNDS, real-time for SMART
+  - **Exchanges**:
+    - LSEETF (NUCL, DTLA, TRE7): Delayed data working
+    - ALLFUNDS (IE00B67T5G21): Delayed data working with ConId
+    - EBS (CSBGU0): Listed for reqType=4 attempt, but requires subscription (see Known Limitations)
+  - **Location**: R/prices.R:13-29
+
+- **getGonet()**: Automatically calls getAccountGonet() at end
+  - **Problem**: Cash balances weren't stored unless user manually called getAccountGonet()
+  - **Solution**: getGonet() now automatically calls getAccountGonet(cash_values) after prompting for cash
+  - **Benefits**: Simplified workflow - just call getGonet() once instead of two functions
+  - **Impact**: Cash balances are now stored automatically and appear as defaults on next run
+  - **Location**: R/account.R:909-920
+
+### Fixed
+- **getGonet()**: Fixed cash balance prompts always showing 0 as default
+  - **Problem**: Database query for stored cash balances executed AFTER connection was closed
+  - **Root cause**: `DBI::dbDisconnect(conn)` at line 878, then `DBI::dbGetQuery(conn, ...)` at line 888
+  - **Impact**: tryCatch caught error and returned default dataframe with all zeros
+  - **Solution**: Moved stored_cash query before dbDisconnect() call
+  - **Result**: User now sees previously entered cash balances as defaults
+  - **Location**: R/account.R:879-893
+
+- **getValue()**: Fixed async data retrieval and fund price handling
+  - **Problem**: Called `ticker.marketPrice()` before waiting for IBKR data, causing nan for funds
+  - **Root cause**: `ib.sleep(1)` was AFTER accessing ticker data (line 156), should be before
+  - **Impact**: Funds like NUCL (ALLFUNDS exchange) returned nan prices
+  - **Solution**:
+    1. Moved `ib.sleep(0.5)` before accessing ticker data (now line 153)
+    2. Added fallback to `ticker.close` when `marketPrice()` returns nan
+  - **Result**: Funds now return close price (NAV) correctly
+  - **Location**: inst/python/tdata_py/contract.py:148-162
+
+- **getGonet()**: Fixed mixed exchange batching causing Error 354
+  - **Problem**: Using reqType=4 for ALL symbols when only SOME need delayed data caused errors for regular exchanges
+  - **Root cause**: Single getValue() call with mixed delayed/regular exchanges
+  - **Impact**: Regular exchange symbols (SMART) failed with Error 354 when batched with delayed exchange symbols
+  - **Solution**: Split symbols by exchange type, call getValue() separately with appropriate reqType
+  - **Implementation**:
+    1. Identify delayed exchanges (LSEETF, EBS, ALLFUNDS) vs regular exchanges (SMART, etc.)
+    2. Create two symbol lists: symbols_delayed and symbols_regular
+    3. Call getValue(reqType=4) for delayed exchanges
+    4. Call getValue(reqType=2) for regular exchanges
+    5. Combine results from both calls
+  - **Result**:
+    - LSEETF exchanges (NUCL, DTLA, TRE7): Working with delayed data
+    - ALLFUNDS exchanges (IE00B67T5G21): Working with ConId + delayed data
+    - SMART exchanges: Working with frozen data
+    - EBS exchange (CSBGU0): Error 354 logged (expected - see Known Limitations)
+  - **Location**: R/account.R:812-843
+
+### Known Limitations
+- **EBS Exchange (CSBGU0)**: Does not support delayed market data, requires subscription
+  - Error 354 will be logged but is expected behavior
+  - getGonet() handles this gracefully via manual price entry workflow
+  - Stored prices from database shown as defaults
+  - User can press Enter to keep stored price or enter new value
+  - This is the correct workflow for subscription-required securities
+
 ## [5.7.53] - 2025-12-16
 
 ### Fixed

@@ -55,7 +55,12 @@ isIBAvailable <- function() {
 #'getIBKRMetrics("SPY", reqType=1)  # Live data
 #'}
 #'@export
-getIBKRMetrics <- function(sym, reqType=2) {
+getIBKRMetrics <- function(sym, reqType=NULL) {
+
+  ### Automatically determine reqType if not provided (delayed data for LSEETF exchange)
+  if (is.null(reqType)) {
+    reqType <- determine_req_type(sym)
+  }
 
   ### This will work even if sym is a vector and not the other IBKR contract components
   IBKRPrice <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=reqType)

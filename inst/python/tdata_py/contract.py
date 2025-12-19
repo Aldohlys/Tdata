@@ -101,13 +101,24 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
                     sym_expiration = ticker_info.get('Expiration')
                     if not(math.isnan(sym_expiration)): sym_expiration = int(sym_expiration)
 
+            # Check if ticker has ConId (for ISIN-based securities like funds)
+            sym_conId = None
+            if ticker_info is not None:
+                sym_conId = ticker_info.get('ConId')
+                # Convert to int if valid, otherwise set to None
+                if sym_conId is not None and not (isinstance(sym_conId, float) and math.isnan(sym_conId)):
+                    sym_conId = int(sym_conId)
+                else:
+                    sym_conId = None
+
             # Log function call
             logger.info("getValue data", {
                 "symbol": sym,
                 "secType": sym_secType,
                 "currency": sym_currency,
                 "exchange": sym_exchange,
-                "expiration": sym_expiration
+                "expiration": sym_expiration,
+                "conId": sym_conId
             })
 
             ## For futures only sym used as local symbol
@@ -118,7 +129,12 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
             elif (sym_secType == "BILL"):
               contract = Contract(secType=sym_secType, conId=sym, exchange=sym_exchange)
 
-            ### Other cases
+            ### If ConId is provided, use it (for ISIN-based securities)
+            elif (sym_conId is not None):
+              contract = Stock(conId=sym_conId, exchange=sym_exchange, currency=sym_currency)
+              logger.info(f"Using ConId {sym_conId} for {sym}")
+
+            ### Other cases - use symbol
             else : contract = Contract(secType = sym_secType, symbol = sym, currency = sym_currency, exchange = sym_exchange)
 
             contracts.append(contract)
@@ -149,11 +165,17 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
                 tickers = ib.reqTickers(*contracts)
                 logger.info("Retrieve IBKR market price for all contracts")
 
-                # Get most recent market price (uses close when market is closed with reqType=2)
-                values = [ticker.marketPrice() for ticker in tickers]
+                # Allow time for data retrieval (BEFORE accessing ticker data)
+                ib.sleep(0.5)
 
-                # Allow time for data retrieval
-                ib.sleep(1)
+                # Get most recent market price
+                # For funds: marketPrice() returns nan, use close price instead
+                values = []
+                for ticker in tickers:
+                    price = ticker.marketPrice()
+                    if price != price:  # Check for nan
+                        price = ticker.close
+                    values.append(price)
 
                 # Create timestamp for all data points
                 current_time = datetime.datetime.now().strftime("%Y%m%d %H:%M")

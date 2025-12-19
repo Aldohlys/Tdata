@@ -44,7 +44,7 @@ getAllTickers = function() {
 #'}
 #'@export
 addTicker <- function(name, yahoo_name, sector, trading_class, multiplier = 100, type="STK",
-                      currency="USD", exchange="SMART", opt_exchange="SMART", IV="YES", expiration = "") {
+                      currency="USD", exchange="SMART", opt_exchange="SMART", IV="YES", expiration = "", ConId = NULL) {
 
   conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
@@ -87,7 +87,8 @@ addTicker <- function(name, yahoo_name, sector, trading_class, multiplier = 100,
                    Div_yield = div_yield,
                    Beta_1y = round(beta$beta_1y, 4), Beta_3y = round(beta$beta_3y, 4),
                    IV = IV, Expiration = expiration,
-                   LastUpdate = format(Sys.time(), "%Y%m%d %H:%M"))
+                   LastUpdate = format(Sys.time(), "%Y%m%d %H:%M"),
+                   ConId = if (!is.null(ConId)) as.integer(ConId) else NA_integer_)
 
   result <- safe_db_append(conn, "Tickers", df)
   # Check how many row were added
@@ -486,7 +487,7 @@ update_ticker_params <- function(Name, ...) {
   updatable_columns <- c(
     "YahooName", "Type", "Sector", "Currency", "TradingClass",
     "Multiplier", "Exchange", "OptExchange", "Beta_3m", "Beta_6m",
-    "Div_yield", "Beta_1y", "Beta_3y", "IV", "Expiration"
+    "Div_yield", "Beta_1y", "Beta_3y", "IV", "Expiration", "ConId"
   )
 
   # Filter to only valid columns - exact match required
