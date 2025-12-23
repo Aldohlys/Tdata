@@ -343,7 +343,7 @@ getYahooName <- function(sym) {
       base_currency <- getParam("BaseCurrency")
       if (x == base_currency) {
         logger::log_debug("Symbol {x} is the base currency, no conversion needed", namespace="Tdata")
-        return(NA)
+        return("BASE_CURRENCY")  # Return special marker instead of NA
       }
     }
 

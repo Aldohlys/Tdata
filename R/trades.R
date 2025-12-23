@@ -11,7 +11,7 @@
 #' * Integer for \code{TradeNr} and \code{Pos}
 #' * Real (double) for \code{Prix, Comm., Total, Risk, Reward, PnL}
 #'@param trades data frame with the following fields:
-#'\code{TradeNr, Account, TradeDate, Strategy, Instrument, Ssjacent, Pos, Prix,
+#'\code{TradeNr, Account, TradeDate, DateTime, TimeZoneSource, Strategy, Instrument, Ssjacent, Pos, Prix,
 #'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
 #'@return No value or Error code from dbWriteTable
 #'@export
@@ -26,6 +26,8 @@ saveTrades = function(trades) {
   conn <- safe_db_connect()
   safe_db_write(conn, "Trades", trades, #### This will overwrite table in DB
                     field.types=c("TradeNr"=	"INTEGER","TradeDate"	= "INTEGER",
+                                  "DateTime" = "TEXT",
+                                  "TimeZoneSource" = "TEXT",
                                   "Pos"	= "INTEGER",
                                   "Prix" =	"REAL",
                                   "Comm." =	"REAL",
@@ -45,7 +47,7 @@ saveTrades = function(trades) {
 #' It verifies that \code{TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward, PnL} are all numeric,
 #' and if not, displays an error message and converts them
 #'@return All trades stored in Trades table from mydb DB. Format is the following:
-#'\code{TradeNr, Account, TradeDate, Strategy, Instrument, Ssjacent, Pos, Prix,
+#'\code{TradeNr, Account, TradeDate, DateTime, TimeZoneSource, Strategy, Instrument, Ssjacent, Pos, Prix,
 #'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
 #'@export
 getAllTrades = function() {
@@ -91,7 +93,7 @@ getActiveTradeQuery <- function(account) {
 #' and if not, displays an error message and converts them
 #'@param account string, account name
 #'@return All trades related to active position stored in Trades table from mydb DB. Format is the following:
-#'\code{TradeNr, Account, TradeDate, Strategy, Instrument, Ssjacent, Pos, Prix,
+#'\code{TradeNr, Account, TradeDate, DateTime, TimeZoneSource, Strategy, Instrument, Ssjacent, Pos, Prix,
 #'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
 #'@examples
 #'\dontrun{
@@ -123,7 +125,7 @@ getActiveTrades = function(account) {
 #'@param account string, account name
 #'@param windowDate date, only records whose original date is greater than window date will be returned. Default value is today minus 200 days.
 #'@return All trades related to closed position stored in Trades table from mydb DB. Format is the following:
-#'\code{TradeNr, Account, TradeDate, Strategy, Instrument, Ssjacent, Pos, Prix,
+#'\code{TradeNr, Account, TradeDate, DateTime, TimeZoneSource, Strategy, Instrument, Ssjacent, Pos, Prix,
 #'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
 #'@export
 #'@examples
@@ -169,8 +171,8 @@ getClosedTrades = function(account, windowDate = Sys.Date()-200) {
   ### By comparing all trade data with trade opening date (orig_date)
   ###   we make sure that all trade data belong to trades whose opening date is posterior to window date
   closed_trades <- dplyr::left_join(closed_trades, window_date_info, by = "TradeNr") |>
-                   dplyr::filter(orig_date >= as.Date(as.character(windowDate),"%Y%m%d")) |>
-                   dplyr::select(-c(strategy, exp_date, orig_date, last_date))
+                   dplyr::filter(orig_datetime >= as.Date(as.character(windowDate),"%Y%m%d")) |>
+                   dplyr::select(-c(strategy, exp_datetime, orig_datetime, last_datetime))
   closed_trades
 }
 
@@ -310,6 +312,8 @@ getTradeDataQuery <- function(conn, params) {
 #' \item{TradeNr}
 #' \item{Account: Simu/Live}
 #' \item{TradeDate: YYYYMMDD}
+#' \item{DateTime: UTC timestamp (YYYY-MM-DD HH:MM:SS)}
+#' \item{TimeZoneSource: Source timezone (e.g., "America/New_York", "Manual")}
 #' \item{Strategy TBILL, OFI, WHEEL, A14,... NA also possible}
 #' \item{Instrument}
 #' \item{Ssjacent: a.k.a symbol}
@@ -432,9 +436,9 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
 #'@return a data frame including:
 #'* `TradeNr` trade number, an integer
 #'* `strategy` a string, the strategy that was used: can be "BOT", "BPT", "OFI", "CS". or even "Erreur"
-#'* `exp_date` the first still active expiration date  - only for opened/adjusted trades
-#'* `orig_date`  the original opening trade date (even if corresponding instrument part of the trade has been closed since)
-#'* `last_date` the last trading date on the trade - will be the close date if the trade is closed
+#'* `exp_datetime` the first still active expiration date  - only for opened/adjusted trades
+#'* `orig_datetime`  the original opening trade datetime (UTC POSIXct) (even if corresponding instrument part of the trade has been closed since)
+#'* `last_datetime` the last trading datetime (UTC POSIXct) on the trade - will be the close date if the trade is closed
 #'@export
 getTradeDates = function(trade_nr) {
 
@@ -461,23 +465,23 @@ getTradeDates = function(trade_nr) {
   ### Keep only trade data related to trade_nr - we know they all exist
   ### trades is grouped by TradeNr & Instrument for summarize to use TradeNr and Instrument as grouping keys
   ### Retrieve initial opening date for each trade
-  ### orig_date is the oldest date recorded for the trade -
-  ### last_date is the most recent date recorded for the trade
+  ### orig_datetime is the oldest date recorded for the trade -
+  ### last_datetime is the most recent date recorded for the trade
 
   all_dates_data = trades[trades$TradeNr %in% trade_nr,] |>
-            dplyr::mutate(TradeDate = as.Date(as.character(TradeDate),format="%Y%m%d"),
-                          Exp.Date = dplyr::if_else(Exp.Date == "NA", as.Date(NA), as.Date(Exp.Date,format="%d.%m.%Y"))) |>
+            dplyr::mutate(DateTime = lubridate::ymd_hms(DateTime, tz = "UTC"),
+                          exp_datetime = dplyr::if_else(Exp.Date == "NA" | is.na(Exp.Date), as.POSIXct(NA, tz="UTC"), lubridate::with_tz(lubridate::force_tz(lubridate::ymd_hms(paste(format(lubridate::dmy(Exp.Date)), "16:00:00")), "America/New_York"), "UTC"))) |>
             dplyr::group_by(TradeNr, Instrument) |>
             #### Result will still be grouped by TradeNr - 1 line per Instrument
-            dplyr::summarize(orig_date=min(TradeDate),
-                     last_date=max(TradeDate),
-                     Exp.Date=dplyr::first(Exp.Date),
+            dplyr::summarize(orig_datetime=min(DateTime),
+                     last_datetime=max(DateTime),
+                     exp_datetime=dplyr::first(exp_datetime),
                      Pos=sum(Pos),
                      strategy=dplyr::first(Strategy))
 
   ### Verify that for all non 0 positions, Exp.Date is greater than today if it exists
   wrong_trades = all_dates_data[all_dates_data$Pos!=0,] |>
-                 dplyr::filter(!is.na(Exp.Date), Exp.Date < getToday())
+                 dplyr::filter(!is.na(exp_datetime), exp_datetime < getToday())
 
   if (nrow(wrong_trades) > 0) {
     pasted_msg <- paste(unique(wrong_trades$TradeNr), collapse=", ")
@@ -493,25 +497,28 @@ getTradeDates = function(trade_nr) {
 
   ### Prepare result ###
   ### Grouping key is TradeNr - now only 1 line per trade
-  result <- dplyr::summarize(all_dates_data,
-                      orig_date = min(orig_date),
-                      last_date = max(last_date),
-                      strategy = dplyr::first(strategy))
+  result <- all_dates_data |>
+    dplyr::group_by(TradeNr) |>
+    dplyr::summarize(orig_datetime = min(orig_datetime),
+                     last_datetime = max(last_datetime),
+                     strategy = dplyr::first(strategy))
 
   ### TradeNr is used as grouping key for summarize
-  ## only Instruments whose position is not 0 are taken into account and Exp.Date is not NA
+  ## only Instruments whose position is not 0 are taken into account and exp_datetime is not NA
   ### Take the first date to come in those trades
-  trade_exp_date = all_dates_data[all_dates_data$Pos!=0 & !is.na(all_dates_data$Exp.Date),
-                                   !names(all_dates_data) %in% c("Instrument", "Pos")]
+  trade_exp_data = all_dates_data[all_dates_data$Pos!=0 & !is.na(all_dates_data$exp_datetime),
+                                  !names(all_dates_data) %in% c("Instrument", "Pos")]
 
-  if (nrow(trade_exp_date) > 0) {
-    trade_exp_date = dplyr::summarize(trade_exp_date, exp_date = min(Exp.Date, na.rm=TRUE))
-    result <- suppressMessages(dplyr::left_join(result, trade_exp_date)) |>
-      dplyr::select(TradeNr, strategy, exp_date,  orig_date, last_date)
+  if (nrow(trade_exp_data) > 0) {
+    trade_exp_datetime = trade_exp_data |>
+      dplyr::group_by(TradeNr) |>
+      dplyr::summarize(exp_datetime = min(exp_datetime, na.rm=TRUE))
+    result <- suppressMessages(dplyr::left_join(result, trade_exp_datetime)) |>
+      dplyr::select(TradeNr, strategy, exp_datetime,  orig_datetime, last_datetime)
   }
 
-  else result = dplyr::mutate(result, exp_date=as.Date(NA)) |>
-         dplyr::select(TradeNr, strategy, exp_date,  orig_date, last_date)
+  else result = dplyr::mutate(result, exp_datetime=as.POSIXct(NA, tz="UTC")) |>
+         dplyr::select(TradeNr, strategy, exp_datetime,  orig_datetime, last_datetime)
 
   ### This tibble is grouped by TradeNr for future handling
   result <- dplyr::group_by(result, TradeNr)

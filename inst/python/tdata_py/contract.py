@@ -46,7 +46,7 @@ from fin_logger import get_logger, log_execution_time
 logger = get_logger("tdata_py.contract")
 
 @log_execution_time
-def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=None, reqType=2, ib=None):
+def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=None, reqType=2, conId=None, ib=None):
     """
     Get most recent market value for one or multiple securities from Interactive Brokers.
     Uses TickerDatabase to automatically determine security details.
@@ -87,12 +87,16 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
             sym_expiration = expiration
             sym_currency = currency
             sym_exchange = exchange
+            sym_conId = conId
 
             if ticker_info is None:
-                logger.warning(f"No ticker info found for {sym}, using defaults")
-                if sym_secType is None: sym_secType = 'STK'
-                if sym_currency is None: sym_currency = 'USD'
-                if sym_exchange is None: sym_exchange = 'SMART'
+                if sym_conId is None:
+                    logger.warning(f"No ticker info found for {sym}, using defaults")
+                    if sym_secType is None: sym_secType = 'STK'
+                    if sym_currency is None: sym_currency = 'USD'
+                    if sym_exchange is None: sym_exchange = 'SMART'
+                else: logger.warning(f"Using contract Id: {sym_conId}")
+            ### Ticker present in DB
             else:
                 if sym_secType is None: sym_secType = ticker_info.get('Type')
                 if sym_currency is None: sym_currency = ticker_info.get('Currency')
@@ -100,16 +104,11 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
                 if sym_expiration is None:
                     sym_expiration = ticker_info.get('Expiration')
                     if not(math.isnan(sym_expiration)): sym_expiration = int(sym_expiration)
-
-            # Check if ticker has ConId (for ISIN-based securities like funds)
-            sym_conId = None
-            if ticker_info is not None:
-                sym_conId = ticker_info.get('ConId')
-                # Convert to int if valid, otherwise set to None
-                if sym_conId is not None and not (isinstance(sym_conId, float) and math.isnan(sym_conId)):
-                    sym_conId = int(sym_conId)
-                else:
-                    sym_conId = None
+                if sym_conId is None:
+                    conId = ticker_info.get('ConId')
+                    # Check if ticker has ConId (for ISIN-based securities like funds or futures)
+                    if conId is not None and not (isinstance(conId, float) and math.isnan(conId)):
+                        sym_conId = int(conId)
 
             # Log function call
             logger.info("getValue data", {
@@ -121,16 +120,19 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
                 "conId": sym_conId
             })
 
-            ## For futures only sym used as local symbol
             if (sym_secType == "FUT"):
-              contract = Future(localSymbol = sym, lastTradeDateOrContractMonth = sym_expiration, currency = sym_currency, exchange = sym_exchange)
+              if sym_conId is not None and not (isinstance(sym_conId, float) and math.isnan(sym_conId)):
+              ### General solution, use contract Id - no need for symbol
+                contract = Future(currency = sym_currency, exchange = sym_exchange, conId=sym_conId)
+              ## Backup solution: sym used as local symbol
+              else: contract = Future(localSymbol = sym, lastTradeDateOrContractMonth = sym_expiration, currency = sym_currency, exchange = sym_exchange)
 
             ### For T-Bill - conId is the symbol name (like in Reporting)
             elif (sym_secType == "BILL"):
               contract = Contract(secType=sym_secType, conId=sym, exchange=sym_exchange)
 
-            ### If ConId is provided, use it (for ISIN-based securities)
-            elif (sym_conId is not None):
+            ### If ConId is provided and different from nan, use it (for ISIN-based securities)
+            elif (sym_conId is not None and not (isinstance(sym_conId, float) and math.isnan(sym_conId))):
               contract = Stock(conId=sym_conId, exchange=sym_exchange, currency=sym_currency)
               logger.info(f"Using ConId {sym_conId} for {sym}")
 

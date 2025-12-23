@@ -53,7 +53,34 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date(), sym_yahoo=NU
   ### Get sym_yahoo if not already provided
   if (is.null(sym_yahoo)) {
     sym_yahoo <- getYahooName(sym)
-    ### Replace all NA values by original sym value
+
+    ### Handle base currency case - return data frame with all values = 1.0
+    if (any(sym_yahoo == "BASE_CURRENCY", na.rm = TRUE)) {
+      base_idx <- which(sym_yahoo == "BASE_CURRENCY")
+      # Create data frame for base currency with rate = 1.0 for all dates
+      dates <- seq(from_date, to_date, by = "day")
+      base_data <- purrr::map_dfr(base_idx, function(i) {
+        data.frame(
+          date = dates,
+          ticker = sym[i],
+          Open = 1.0,
+          High = 1.0,
+          Low = 1.0,
+          Close = 1.0,
+          Adjusted = 1.0,
+          Volume = 0
+        )
+      })
+
+      # If ALL symbols are base currency, return immediately
+      if (length(base_idx) == length(sym)) return(base_data)
+
+      # Otherwise, process non-base-currency symbols and combine later
+      sym <- sym[-base_idx]
+      sym_yahoo <- sym_yahoo[-base_idx]
+    }
+
+    ### Replace all NA values by original sym value (for tickers not in DB)
     if (any(is.na(sym_yahoo))) sym_yahoo[is.na(sym_yahoo)] <- sym[is.na(sym_yahoo)]
   }
 
@@ -80,7 +107,14 @@ getSymIntervalDate = function(sym, from_date, to_date = Sys.Date(), sym_yahoo=NU
     df <- getYahooData(sym_yahoo, from_date, to_date)
     logger::log_debug("Yahoo Data:", df, namespace="Tdata")
     # Replace symbols using vector indexing - ticker is returned by YahooData function
-    return(dplyr::mutate(df, ticker = lookup_table[ticker]))
+    df <- dplyr::mutate(df, ticker = lookup_table[ticker])
+
+    # Combine with base currency data if exists
+    if (exists("base_data")) {
+      df <- dplyr::bind_rows(base_data, df)
+    }
+
+    return(df)
   }
 
 }
@@ -550,6 +584,50 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
   # If any duplicate then stop - there should be no duplicate in call
   if (any(duplicated(ticker_names))) stop("Tickers cannot be duplicated")
 
+  # Convert base currency ticker names to BASE_CURRENCY marker
+  # But preserve original names for output
+  base_currency <- getParam("BaseCurrency")
+  is_base_currency <- grepl("^[A-Z]{3}$", ticker_names) & ticker_names == base_currency
+  original_base_tickers <- NULL
+  if (any(is_base_currency, na.rm = TRUE)) {
+    original_base_tickers <- ticker_names[is_base_currency]  # Save original names
+    ticker_names[is_base_currency] <- "BASE_CURRENCY"
+    logger::log_debug(paste0("Converted base currency ticker(s) to BASE_CURRENCY marker: ",
+                             paste(original_base_tickers, collapse=", ")),
+                     namespace="Tdata")
+  }
+
+  # Handle BASE_CURRENCY special marker
+  base_currency_mask <- ticker_names == "BASE_CURRENCY"
+  if (any(base_currency_mask, na.rm = TRUE)) {
+    base_idx <- which(base_currency_mask)
+    # Use original ticker names in output, not "BASE_CURRENCY"
+    base_tickers <- if (!is.null(original_base_tickers)) original_base_tickers else ticker_names[base_idx]
+
+    # Create base currency data with rate = 1.0
+    dates <- seq(from_date, to_date, by = "day")
+    base_results <- lapply(base_tickers, function(t) {
+      data.frame(
+        date = dates,
+        ticker = t,
+        Open = 1.0,
+        High = 1.0,
+        Low = 1.0,
+        Close = 1.0,
+        Adjusted = 1.0,
+        Volume = 0
+      )
+    })
+
+    # If ALL tickers are base currency, return immediately
+    if (length(base_idx) == length(ticker_names)) {
+      return(dplyr::bind_rows(base_results))
+    }
+
+    # Otherwise, remove base currency tickers and process the rest
+    ticker_names <- ticker_names[-base_idx]
+  }
+
   # Store original timeout setting
   original_timeout <- getOption("timeout")
   on.exit(options(timeout = original_timeout), add = TRUE)
@@ -769,6 +847,12 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
 
   # Combine all data frames
   combined_df <- do.call(rbind, all_ticker_data)
+
+  # Add base currency results if they exist
+  if (exists("base_results")) {
+    base_df <- dplyr::bind_rows(base_results)
+    combined_df <- rbind(combined_df, base_df)
+  }
 
   # Arrange columns in requested order
   col_order <- c("date", "ticker", "Open", "High", "Low", "Close", "Adjusted", "Volume")
