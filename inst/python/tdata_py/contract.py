@@ -105,10 +105,10 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
                     sym_expiration = ticker_info.get('Expiration')
                     if not(math.isnan(sym_expiration)): sym_expiration = int(sym_expiration)
                 if sym_conId is None:
-                    conId = ticker_info.get('ConId')
+                    db_conId = ticker_info.get('ConId')
                     # Check if ticker has ConId (for ISIN-based securities like funds or futures)
-                    if conId is not None and not (isinstance(conId, float) and math.isnan(conId)):
-                        sym_conId = int(conId)
+                    if db_conId is not None and not (isinstance(db_conId, float) and math.isnan(db_conId)):
+                        sym_conId = int(db_conId)
 
             # Log function call
             logger.info("getValue data", {

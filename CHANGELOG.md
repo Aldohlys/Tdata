@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.57] - 2025-12-24
+
+### Fixed
+- **getValue()**: Fixed critical variable shadowing bug causing contract qualification failures
+  - **Problem**: ConId values became NaN for all symbols after the first one, causing IBKR errors "No security definition has been found"
+  - **Root cause**: Local variable `conId` on line 108 shadowed function parameter `conId`, leaking across loop iterations
+  - **Impact**: Second and subsequent symbols in batch getValue() calls failed with Error 200 or Error 321
+  - **Example failure**: IE00B67T5G21 showed `conId=433080107` (correct) in first position, but `conId=nan` (wrong) in subsequent calls
+  - **Solution**: Renamed local variable from `conId` to `db_conId` to avoid parameter shadowing
+  - **Location**: inst/python/tdata_py/contract.py:108-111
+  - **Regression introduced in**: v5.7.56 (commit 1702c07)
+
 ## [5.7.54] - 2025-12-18
 
 ### Added

@@ -471,7 +471,7 @@
     },
     "Tbasics": {
       "Package": "Tbasics",
-      "Version": "1.5.3",
+      "Version": "1.5.5",
       "Source": "Local",
       "Type": "Package",
       "Title": "Basic trading utilities and computation",
@@ -507,7 +507,7 @@
       "Author": "Alexis Martin [aut, cre]",
       "Maintainer": "Alexis Martin <aldohlys@gmail.com>",
       "RemoteType": "local",
-      "RemoteUrl": "C:/Users/aldoh/Documents/RApplication/Tbasics_1.5.3.tar.gz"
+      "RemoteUrl": "C:/Users/aldoh/Documents/RApplication/Tbasics_1.5.5.tar.gz"
     },
     "Tlogger": {
       "Package": "Tlogger",
