@@ -809,26 +809,6 @@ getGonet <- function() {
   portf$heure <- format(Sys.time(),"%H:%M:%S")  ### Allows for several recordings in the same day
   portf = dplyr::left_join(portf, portf_cashflow, by = c("sym_yahoo" = "sym_yahoo"))
 
-  ### Handle precious metals positions (gold coins, etc.) with web-based pricing
-  ### Identify positions with type == "Precious Metals" and URL in exchange field
-  ### Update sym_ibkr BEFORE IBKR price fetch to avoid fetching NA symbols
-  precious_metals_mask <- !is.na(portf$type) & portf$type == "Precious Metals"
-  
-  if (any(precious_metals_mask)) {
-    for (i in which(precious_metals_mask)) {
-      url <- portf$exchange[i]
-      
-      ### Extract identifier from URL (FI_ID_NOTATION parameter)
-      url_id <- sub(".*FI_ID_NOTATION=([0-9]+).*", "\\1", url)
-      
-      ### Create unique symbol identifier and update portf
-      pm_symbol <- paste0("PM_", url_id)
-      portf$sym_ibkr[i] <- pm_symbol
-      
-      logger::log_info("Found precious metal position: {pm_symbol}", namespace = "Tdata")
-    }
-  }
-
   ### get prices from IBKR - split by exchange type to use correct reqType
   ### Some exchanges (LSEETF, EBS, ALLFUNDS) require delayed data (reqType=4)
   ### while others use frozen data (reqType=2)
@@ -836,16 +816,10 @@ getGonet <- function() {
   delayed_exchanges <- c("LSEETF", "EBS", "ALLFUNDS")
 
   # Identify which symbols need delayed data
-  # Exclude precious metals symbols (start with PM_) from IBKR fetch
   symbols_delayed <- character()
   symbols_regular <- character()
 
   for (s in portf$sym_ibkr) {
-    ### Skip precious metals - they have web-based pricing
-    if (!is.na(s) && grepl("^PM_", s)) {
-      next
-    }
-    
     ticker <- getTicker(s)
     if (nrow(ticker) > 0 && !is.na(ticker$Exchange) && ticker$Exchange %in% delayed_exchanges) {
       symbols_delayed <- c(symbols_delayed, s)
@@ -867,60 +841,6 @@ getGonet <- function() {
 
   # Combine results
   last_price <- do.call(rbind, last_price_list)
-
-  ### Fetch prices for precious metals from web sources
-  if (any(precious_metals_mask)) {
-    for (i in which(precious_metals_mask)) {
-      url <- portf$exchange[i]
-      sym_for_price <- portf$sym_ibkr[i]  # Use sym_ibkr from GonetTrades.csv (e.g., "PM_15606539")
-      
-      logger::log_info("Fetching precious metal price from {url}", namespace = "Tdata")
-      
-      price_result <- tryCatch({
-        ### Fetch the webpage content
-        response <- httr::GET(url, httr::timeout(10))
-        
-        if (httr::status_code(response) != 200) {
-          logger::log_warn("HTTP error {httr::status_code(response)} fetching precious metal price", namespace = "Tdata")
-          return(NA_real_)
-        }
-        
-        content_text <- httr::content(response, as = "text", encoding = "UTF-8")
-        
-        ### Extract price - look for "Mittelkurs" followed by the price value
-        ### Pattern: Find "Mittelkurs" and extract following number (e.g., "662.80")
-        price_pattern <- "Mittelkurs[^0-9]*(\\d+\\.\\d+)"
-        price_match <- regmatches(content_text, regexec(price_pattern, content_text))
-        
-        if (length(price_match[[1]]) >= 2) {
-          price_value <- as.numeric(price_match[[1]][2])
-          
-          if (!is.na(price_value) && price_value > 0) {
-            logger::log_info("Retrieved price {price_value} CHF from ZKB website", namespace = "Tdata")
-            price_value
-          } else {
-            logger::log_warn("Invalid price value extracted: {price_value}", namespace = "Tdata")
-            NA_real_
-          }
-        } else {
-          logger::log_warn("Could not find price pattern in webpage", namespace = "Tdata")
-          NA_real_
-        }
-      }, error = function(e) {
-        logger::log_warn("Error fetching precious metal price: {e$message}", namespace = "Tdata")
-        NA_real_
-      })
-      
-      ### Add to last_price data frame (with NaN if fetch failed, so user can enter manually)
-      pm_price_row <- data.frame(
-        sym = sym_for_price,
-        datetime = format(Sys.time(), "%Y%m%d %H:%M:%S"),
-        price = if (is.na(price_result)) NaN else price_result,
-        stringsAsFactors = FALSE
-      )
-      last_price <- rbind(last_price, pm_price_row)
-    }
-  }
 
   #### price_user is the subset of last_price where price = NaN, i.e. price could not be retrieved from IBKR
   price_user <- last_price[is.nan(last_price$price),]
@@ -967,7 +887,7 @@ getGonet <- function() {
   portf = dplyr::left_join(portf, last_price, by = c("sym_ibkr"="sym"))
 
   ### Compute all necessary fields for storing in CSV/DB
-  portf <- dplyr::mutate(portf, symbol=sym_ibkr, pos=position,
+  portf <- dplyr::mutate(portf, symbol=sym_ibkr, pos=position, type="Stock",
                     mktPrice=price, mktValue=round(pos*mktPrice,2),
                     unPnL=price*pos+cost,
                     avgCost=round(-cost/pos,2))

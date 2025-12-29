@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.58] - 2025-12-29
+
+### Added
+- **getGonet()**: Automatic price fetching for precious metals from ZKB website
+  - **Problem**: Gold coins and other precious metals not available in IBKR or Yahoo Finance
+  - **Solution**: Added web scraping for positions with type "Precious Metals" 
+  - **Implementation**:
+    1. Identifies positions with type == "Precious Metals" in GonetPos.csv
+    2. Extracts URL from exchange field (e.g., ZKB finance URL)
+    3. Fetches price using httr::GET() and regex pattern matching
+    4. Adds price to last_price data frame for portfolio calculations
+    5. Falls back to manual entry if web fetch fails
+    6. Updates sym_ibkr to PM_[ID] before IBKR price fetch to avoid NA symbol warnings
+    7. Preserves original type field (e.g., "Precious Metals") instead of hardcoding "Stock"
+    8. IBKR price fetch skips PM_ symbols to prevent unnecessary API calls
+  - **Usage**: Store URL in exchange field of GonetPos.csv, use "PM_" prefix for sym_ibkr in GonetTrades.csv
+  - **Example**: 67 gold coins with URL https://zkb-finance.mdgms.com/home/commodities/metals/detail.html?FI_ID_NOTATION=15606539
+  - **Location**: R/account.R:811-818, 844-897
+  - **Dependencies**: Requires httr package
+
 ## [5.7.57] - 2025-12-24
 
 ### Fixed
