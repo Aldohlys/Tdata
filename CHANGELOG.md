@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.65] - 2025-12-30
+
+### Fixed
+- **getTradeDates()**: Added backward-compatible date columns to fix displaytradeUI errors
+  - **Problem**: "Unknown column: exp_date/orig_date" errors in Tuser modules (displaytradeUI.R:151-152, displaysymUI.R:245-246, symf.R:234, strategief.R:23, portf.R:144)
+  - **Root cause**: Function returns `exp_datetime`, `orig_datetime`, `last_datetime` (POSIXct) but calling code expects `exp_date`, `orig_date`, `last_date` (Date)
+  - **Solution**: Added as.Date() conversions at end of function to provide both datetime and date columns (R/trades.R:523-530)
+  - **Impact**: Fixes "time left" table in displaytradeUI and other portfolio displays
+  - **Backward compatible**: Existing code using *_datetime columns unaffected
+
+## [5.7.64] - 2025-12-30
+
+### Fixed
+- **create_cash_portfolio_row()**: Changed Statut filter to include adjusted CASH trades
+  - Changed query filter from `Statut = 'Ouvert'` to `Statut != 'Fermé'`
+  - Fixes: USD CASH position (TradeNr 660) not showing TradeNr after adjustment
+  - Impact: CASH positions with 'Ajusté' status now correctly link to their trades
+  - File: R/cash.R:244-246
+
+## [5.7.63] - 2025-12-30
+
+### Fixed
+- **create_cash_portfolio_row()**: Added account code conversion for CASH trade queries
+  - Added switch statement to convert U1804173→Live, DU5221795→Simu before database query
+  - Fixes: CASH positions not finding their TradeNr due to account field mismatch
+  - Impact: USD and EUR CASH positions now correctly display their TradeNr
+  - File: R/cash.R:237-242
+
+## [5.7.62] - 2025-12-30
+
+### Changed
+- **getYahooData()**: Internal refactoring for price retrieval logic
+
 ## [5.7.61] - 2025-12-30
 
 ### Fixed

@@ -268,8 +268,13 @@ test_that("getTradeDates works with a closed trade", {
     getAllTrades = getTestTrades,
     getToday = function()(as.Date("2024-04-04")), {
         expect_equal(as.data.frame(getTradeDates(300)),
-             data.frame(TradeNr=300,strategy="BOT",exp_datetime=as.POSIXct(NA, tz="UTC"),
-                        orig_datetime=as.POSIXct("2023-08-02", tz="UTC"),last_datetime=as.POSIXct("2023-08-29", tz="UTC")))
+             data.frame(TradeNr=300,strategy="BOT",
+                        exp_datetime=as.POSIXct(NA, tz="UTC"),
+                        orig_datetime=as.POSIXct("2023-08-02", tz="UTC"),
+                        last_datetime=as.POSIXct("2023-08-29", tz="UTC"),
+                        exp_date=as.Date(NA),
+                        orig_date=as.Date("2023-08-02"),
+                        last_date=as.Date("2023-08-29")))
     })
 })
 
@@ -289,9 +294,13 @@ test_that("getTradeDates works with a opened trade", {
       print(getTradeDates(399))
       expect_equal(as.data.frame(getTradeDates(399)),
                    ### Notice that during DST 4:00pm ET is actually 20:00 UTC..
-                   data.frame(TradeNr=399, strategy="BPT", exp_datetime=as.POSIXct("2024-04-19 20:00:00", tz="UTC"),
+                   data.frame(TradeNr=399, strategy="BPT",
+                              exp_datetime=as.POSIXct("2024-04-19 20:00:00", tz="UTC"),
                               orig_datetime=as.POSIXct("2024-03-21", tz="UTC"),
-                              last_datetime=as.POSIXct("2024-03-21", tz="UTC")))
+                              last_datetime=as.POSIXct("2024-03-21", tz="UTC"),
+                              exp_date=as.Date("2024-04-19"),
+                              orig_date=as.Date("2024-03-21"),
+                              last_date=as.Date("2024-03-21")))
     })
 })
 
@@ -303,7 +312,10 @@ test_that("getTradeDates works with opened and closed trades, opened trade with 
                    data.frame(TradeNr=c(367,370,392),strategy=c("OFI","BPT","OFI"),
                               exp_datetime=c(as.POSIXct(NA, tz="UTC"),as.POSIXct("2025-12-19 21:00:00", tz="UTC"),as.POSIXct("2024-04-19 20:00:00", tz="UTC")),
                               orig_datetime=c(as.POSIXct("2023-12-14", tz="UTC"),as.POSIXct("2023-12-21", tz="UTC"),as.POSIXct("2024-02-23", tz="UTC")),
-                              last_datetime=c(as.POSIXct("2024-02-08 00:00:00", tz="UTC"),as.POSIXct("2024-03-21 00:00:00", tz="UTC"),as.POSIXct("2024-02-23 00:00:00", tz="UTC"))))
+                              last_datetime=c(as.POSIXct("2024-02-08 00:00:00", tz="UTC"),as.POSIXct("2024-03-21 00:00:00", tz="UTC"),as.POSIXct("2024-02-23 00:00:00", tz="UTC")),
+                              exp_date=c(as.Date(NA),as.Date("2025-12-19"),as.Date("2024-04-19")),
+                              orig_date=c(as.Date("2023-12-14"),as.Date("2023-12-21"),as.Date("2024-02-23")),
+                              last_date=c(as.Date("2024-02-08"),as.Date("2024-03-21"),as.Date("2024-02-23"))))
     })
 })
 

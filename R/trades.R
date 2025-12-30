@@ -520,6 +520,15 @@ getTradeDates = function(trade_nr) {
   else result = dplyr::mutate(result, exp_datetime=as.POSIXct(NA, tz="UTC")) |>
          dplyr::select(TradeNr, strategy, exp_datetime,  orig_datetime, last_datetime)
 
+  ### Add Date versions for backward compatibility with existing code
+  ### Many Tuser modules expect exp_date, orig_date, last_date (Date objects)
+  result <- result |>
+    dplyr::mutate(
+      exp_date = as.Date(exp_datetime),
+      orig_date = as.Date(orig_datetime),
+      last_date = as.Date(last_datetime)
+    )
+
   ### This tibble is grouped by TradeNr for future handling
   result <- dplyr::group_by(result, TradeNr)
 
