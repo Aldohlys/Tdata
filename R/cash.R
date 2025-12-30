@@ -234,10 +234,17 @@ create_cash_portfolio_row <- function(currency, balance, snapshot_date, snapshot
       conn <- safe_db_connect()
       on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
+      # Convert account code to database format (Live/Simu)
+      # Database stores "Live"/"Simu" (old design), not actual IBKR account codes
+      account_db <- switch(account_table,
+                          "U1804173" = "Live",
+                          "DU5221795" = "Simu",
+                          account_table)  # Pass through if already in correct format
+
       query <- "SELECT TradeNr, Prix FROM Trades
                 WHERE Account = ? AND Instrument = ? AND Ssjacent = 'CASH' AND Statut = 'Ouvert'
                 ORDER BY TradeDate DESC LIMIT 1"
-      result <- DBI::dbGetQuery(conn, query, params = list(account_table, currency))
+      result <- DBI::dbGetQuery(conn, query, params = list(account_db, currency))
 
       if (nrow(result) > 0) {
         trade_nr <- result$TradeNr[1]
