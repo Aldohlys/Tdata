@@ -584,6 +584,31 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
   # If any duplicate then stop - there should be no duplicate in call
   if (any(duplicated(ticker_names))) stop("Tickers cannot be duplicated")
 
+  # Convert 3-letter currency codes to proper Yahoo tickers
+  # This handles cases where symbols like "USD", "EUR" are passed directly
+  # instead of their Yahoo equivalents like "USDCHF=X", "EURCHF=X"
+  currency_code_mask <- grepl("^[A-Z]{3}$", ticker_names)
+  if (any(currency_code_mask)) {
+    currency_codes <- ticker_names[currency_code_mask]
+    logger::log_debug(paste0("Detecting potential currency codes: ",
+                            paste(currency_codes, collapse=", ")),
+                     namespace="Tdata")
+
+    # Convert each potential currency code to Yahoo ticker name
+    for (i in which(currency_code_mask)) {
+      original_ticker <- ticker_names[i]
+      yahoo_ticker <- getYahooName(original_ticker)
+
+      # Only replace if getYahooName returned something different
+      if (!is.na(yahoo_ticker) && yahoo_ticker != original_ticker && yahoo_ticker != "BASE_CURRENCY") {
+        logger::log_debug(paste0("Converting currency code '", original_ticker,
+                                "' to Yahoo ticker '", yahoo_ticker, "'"),
+                         namespace="Tdata")
+        ticker_names[i] <- yahoo_ticker
+      }
+    }
+  }
+
   # Convert base currency ticker names to BASE_CURRENCY marker
   # But preserve original names for output
   base_currency <- getParam("BaseCurrency")

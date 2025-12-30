@@ -8,18 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [5.7.61] - 2025-12-30
 
 ### Fixed
-- **getYahooName()**: Fixed base currency check preventing CHF ticker lookup
-  - **Problem**: "Failed to retrieve CHF after 5 attempts: Unable to import CHF" when loading Portfolio tab with CHF options
-  - **Root cause**: `getYahooName("CHF")` checked if symbol equals base currency BEFORE checking Tickers table, returning "BASE_CURRENCY" instead of "CHFUSD=X"
-  - **Impact**: Portfolio with CHF options (symbol="CHF", type=Put/Call on CHF futures) failed to load prices correctly
-  - **Why it happened**: After currency exposure fix (v5.7.60), CHF appears in exposure breakdown, triggering price lookups for all symbols including "CHF"
-  - **Solution**: Reordered logic to check Tickers table FIRST, only treat as base currency if ticker not found
-  - **Implementation**:
-    - Moved `getTicker(x)` call before base currency check (line 341)
-    - Base currency check now only applies when ticker NOT in Tickers table (lines 349-356)
-    - Preserves "BASE_CURRENCY" marker for actual currency codes not in Tickers
-  - **Location**: R/ticker.R:340-357
-  - **Backward compatible**: Existing logic preserved, just reordered for correct precedence
+- **getYahooName() and getYahooData()**: Fixed currency code handling to prevent Yahoo Finance errors
+  - **Problem**: "Failed to retrieve EUR/USD after 5 attempts: Unable to import" when loading Portfolio tab; wrong forex rates (54.51 instead of 0.79)
+  - **Root causes**:
+    1. `getYahooName("CHF")` checked base currency BEFORE Tickers table, returning "BASE_CURRENCY" instead of "CHFUSD=X" for CHF options
+    2. Code calling `getYahooData("USD")` directly without converting to "USDCHF=X", causing Yahoo to return wrong ticker data
+  - **Impact**: Portfolio with CHF options failed to load; incorrect forex rates displayed
+  - **Solutions**:
+    1. **getYahooName()**: Reordered to check Tickers table FIRST, only treat as base currency if ticker not found (R/ticker.R:340-357)
+    2. **getYahooData()**: Auto-converts 3-letter currency codes to Yahoo tickers via getYahooName() before fetching (R/prices.R:587-610)
+  - **Test results**:
+    - `getYahooData("USD")` now returns 0.788 (correct) instead of 54.51 (wrong stock ticker)
+    - `getYahooData("EUR")` now returns forex data instead of failing
+    - `getYahooData("CHF")` returns base currency rate 1.0 (correct)
+  - **Backward compatible**: Transparent conversion, no API changes
 
 ## [5.7.60] - 2025-12-30
 
