@@ -1292,10 +1292,18 @@ getCurrencyExposure <- function(account_name, date = NULL) {
   }
 
   ### 2. Get portfolio positions grouped by currency
+  ### CRITICAL: For CASH positions, group by symbol (trading currency) instead of currency field
+  ### to correctly attribute USD/EUR cash to their respective currency exposures
   if (is.null(date)) {
-    portf_query <- glue::glue("SELECT currency, SUM(mktValue) as market_value, SUM(unPnL) as unrealized_pnl
+    portf_query <- glue::glue("SELECT
+                      CASE
+                        WHEN type = 'CASH' THEN symbol
+                        ELSE currency
+                      END as currency,
+                      SUM(mktValue) as market_value,
+                      SUM(unPnL) as unrealized_pnl
                     FROM (
-                      SELECT currency, mktValue, unPnL
+                      SELECT type, symbol, currency, mktValue, unPnL
                       FROM {`account_name`}
                       WHERE (date, heure) = (
                         SELECT date, heure FROM {`account_name`}
@@ -1305,9 +1313,15 @@ getCurrencyExposure <- function(account_name, date = NULL) {
                     GROUP BY currency")
   } else {
     date_int <- as.integer(format(as.Date(date), "%Y%m%d"))
-    portf_query <- glue::glue("SELECT currency, SUM(mktValue) as market_value, SUM(unPnL) as unrealized_pnl
+    portf_query <- glue::glue("SELECT
+                      CASE
+                        WHEN type = 'CASH' THEN symbol
+                        ELSE currency
+                      END as currency,
+                      SUM(mktValue) as market_value,
+                      SUM(unPnL) as unrealized_pnl
                     FROM (
-                      SELECT currency, mktValue, unPnL
+                      SELECT type, symbol, currency, mktValue, unPnL
                       FROM {`account_name`}
                       WHERE (date, heure) = (
                         SELECT date, heure FROM {`account_name`}

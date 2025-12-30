@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.59] - 2025-12-30
+
+### Fixed
+- **getCurrencyExposure()**: Fixed CASH position currency misattribution in exposure analysis
+  - **Problem**: USD and EUR cash balances were incorrectly grouped under CHF exposure instead of their respective currencies
+  - **Root cause**: CASH positions stored `currency = base_currency` (CHF) instead of trading currency, causing GROUP BY to misattribute foreign cash
+  - **Impact**: Currency exposure breakdown showed inflated CHF exposure and deflated USD/EUR exposure by the amount of foreign currency cash holdings
+  - **Example**: 42,012.64 USD cash + 7,154.52 EUR cash (worth 40,139.83 CHF total) appeared in CHF row instead of USD/EUR rows
+  - **Solution**: Modified SQL query to use CASE statement - CASH positions grouped by `symbol` (trading currency), other positions by `currency` field
+  - **Implementation**:
+    - Added CASE WHEN type = 'CASH' THEN symbol ELSE currency END for GROUP BY clause
+    - Preserves P&L calculations (CASH unPnL already in base currency, no conversion needed)
+    - Handles negative market values correctly (short options)
+    - Works for both current and historical date queries
+  - **Location**: R/account.R:1298-1332
+  - **Testing**: test_currency_exposure_fix.R verifies CASH grouping, negative values, and data integrity
+  - **Backward compatible**: No schema changes, UI rendering unchanged
+
 ## [5.7.58] - 2025-12-29
 
 ### Added
