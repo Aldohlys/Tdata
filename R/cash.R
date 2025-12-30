@@ -242,7 +242,7 @@ create_cash_portfolio_row <- function(currency, balance, snapshot_date, snapshot
                           account_table)  # Pass through if already in correct format
 
       query <- "SELECT TradeNr, Prix FROM Trades
-                WHERE Account = ? AND Instrument = ? AND Ssjacent = 'CASH' AND Statut = 'Ouvert'
+                WHERE Account = ? AND Instrument = ? AND Ssjacent = 'CASH' AND Statut != 'Fermé'
                 ORDER BY TradeDate DESC LIMIT 1"
       result <- DBI::dbGetQuery(conn, query, params = list(account_db, currency))
 
