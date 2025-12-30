@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.61] - 2025-12-30
+
+### Fixed
+- **getYahooName()**: Fixed base currency check preventing CHF ticker lookup
+  - **Problem**: "Failed to retrieve CHF after 5 attempts: Unable to import CHF" when loading Portfolio tab with CHF options
+  - **Root cause**: `getYahooName("CHF")` checked if symbol equals base currency BEFORE checking Tickers table, returning "BASE_CURRENCY" instead of "CHFUSD=X"
+  - **Impact**: Portfolio with CHF options (symbol="CHF", type=Put/Call on CHF futures) failed to load prices correctly
+  - **Why it happened**: After currency exposure fix (v5.7.60), CHF appears in exposure breakdown, triggering price lookups for all symbols including "CHF"
+  - **Solution**: Reordered logic to check Tickers table FIRST, only treat as base currency if ticker not found
+  - **Implementation**:
+    - Moved `getTicker(x)` call before base currency check (line 341)
+    - Base currency check now only applies when ticker NOT in Tickers table (lines 349-356)
+    - Preserves "BASE_CURRENCY" marker for actual currency codes not in Tickers
+  - **Location**: R/ticker.R:340-357
+  - **Backward compatible**: Existing logic preserved, just reordered for correct precedence
+
+## [5.7.60] - 2025-12-30
+
+### Fixed
+- **getCurrencyExposure()**: Fixed GROUP BY bug causing duplicate currency rows
+  - **Problem**: Changed `GROUP BY currency` to `GROUP BY 1` to group by CASE result instead of original currency column
+  - **Impact**: Eliminated duplicate rows when CASH and non-CASH positions existed in same trading currency
+  - **Location**: R/account.R:1313, 1332
+
 ## [5.7.59] - 2025-12-30
 
 ### Fixed

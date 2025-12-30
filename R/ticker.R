@@ -337,17 +337,24 @@ getYahooName <- function(sym) {
     ## Case where x=NA
     if (is.na(x)) return(NA)
 
-    # Check if symbol is the base currency (no conversion needed)
-    # This check must happen BEFORE getTicker to avoid returning exchange rates for base currency
-    if (grepl("^[A-Z]{3}$", x)) {
-      base_currency <- getParam("BaseCurrency")
-      if (x == base_currency) {
-        logger::log_debug("Symbol {x} is the base currency, no conversion needed", namespace="Tdata")
-        return("BASE_CURRENCY")  # Return special marker instead of NA
+    # First, try to find the ticker in the Tickers table
+    ticker <- getTicker(x)
+
+    # If ticker exists, we'll use it (even if it matches base currency name)
+    # This handles cases like CHF options where "CHF" is a valid ticker symbol
+    if (nrow(ticker) > 0) {
+      # Ticker found - will process it below (after currency pair fallback logic)
+      logger::log_debug("Found ticker {x} in Tickers table", namespace="Tdata")
+    } else {
+      # Ticker not found - check if it's the base currency
+      if (grepl("^[A-Z]{3}$", x)) {
+        base_currency <- getParam("BaseCurrency")
+        if (x == base_currency) {
+          logger::log_debug("Symbol {x} is the base currency (not in Tickers), no conversion needed", namespace="Tdata")
+          return("BASE_CURRENCY")  # Return special marker instead of NA
+        }
       }
     }
-
-    ticker <- getTicker(x)
 
     ### If ticker does not exist in Ticker table, try currency pair format if applicable
     if (nrow(ticker) == 0) {
