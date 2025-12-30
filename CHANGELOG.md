@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.66] - 2025-12-30
+
+### Fixed
+- **getTradeDates()**: Fixed "2 failed to parse" warning for CASH trades without expiration dates
+  - **Problem**: Warning "2 failed to parse" in dplyr::mutate when processing trades with empty Exp.Date
+  - **Root cause**: Condition checked for "NA" string and is.na() but not empty string ""
+  - **Solution**: Added `| Exp.Date == ""` check before attempting date parsing (R/trades.R:473)
+  - **Impact**: Eliminates parsing warnings when getTradeDates() processes CASH trades
+  - **Affected trades**: CASH positions (TradeNr 660, 659) which have no expiration date
+
 ## [5.7.65] - 2025-12-30
 
 ### Fixed

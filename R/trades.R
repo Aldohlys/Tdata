@@ -470,7 +470,7 @@ getTradeDates = function(trade_nr) {
 
   all_dates_data = trades[trades$TradeNr %in% trade_nr,] |>
             dplyr::mutate(DateTime = lubridate::ymd_hms(DateTime, tz = "UTC"),
-                          exp_datetime = dplyr::if_else(Exp.Date == "NA" | is.na(Exp.Date), as.POSIXct(NA, tz="UTC"), lubridate::with_tz(lubridate::force_tz(lubridate::ymd_hms(paste(format(lubridate::dmy(Exp.Date)), "16:00:00")), "America/New_York"), "UTC"))) |>
+                          exp_datetime = dplyr::if_else(Exp.Date == "NA" | is.na(Exp.Date) | Exp.Date == "", as.POSIXct(NA, tz="UTC"), lubridate::with_tz(lubridate::force_tz(lubridate::ymd_hms(paste(format(lubridate::dmy(Exp.Date)), "16:00:00")), "America/New_York"), "UTC"))) |>
             dplyr::group_by(TradeNr, Instrument) |>
             #### Result will still be grouped by TradeNr - 1 line per Instrument
             dplyr::summarize(orig_datetime=min(DateTime),
