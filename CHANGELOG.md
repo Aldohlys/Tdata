@@ -16,10 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Solution**: Modified SQL query to use CASE statement - CASH positions grouped by `symbol` (trading currency), other positions by `currency` field
   - **Implementation**:
     - Added CASE WHEN type = 'CASH' THEN symbol ELSE currency END for GROUP BY clause
+    - **CRITICAL FIX**: Changed `GROUP BY currency` to `GROUP BY 1` to group by CASE result instead of original currency column
+    - Bug was causing duplicate rows when CASH and non-CASH positions existed in same trading currency (e.g., EUR cash + EUR options)
     - Preserves P&L calculations (CASH unPnL already in base currency, no conversion needed)
     - Handles negative market values correctly (short options)
     - Works for both current and historical date queries
-  - **Location**: R/account.R:1298-1332
+  - **Location**: R/account.R:1298-1332 (lines 1313, 1332)
   - **Testing**: test_currency_exposure_fix.R verifies CASH grouping, negative values, and data integrity
   - **Backward compatible**: No schema changes, UI rendering unchanged
 

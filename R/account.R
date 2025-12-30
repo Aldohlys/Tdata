@@ -1310,7 +1310,7 @@ getCurrencyExposure <- function(account_name, date = NULL) {
                         ORDER BY date DESC, heure DESC LIMIT 1
                       )
                     )
-                    GROUP BY currency")
+                    GROUP BY 1")
   } else {
     date_int <- as.integer(format(as.Date(date), "%Y%m%d"))
     portf_query <- glue::glue("SELECT
@@ -1329,7 +1329,7 @@ getCurrencyExposure <- function(account_name, date = NULL) {
                         ORDER BY heure DESC LIMIT 1
                       )
                     )
-                    GROUP BY currency")
+                    GROUP BY 1")
   }
 
   portf_data <- tryCatch({
