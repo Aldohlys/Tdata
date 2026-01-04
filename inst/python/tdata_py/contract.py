@@ -133,9 +133,12 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
 
             ### If ConId is provided and different from nan, use it (for ISIN-based securities)
             elif (sym_conId is not None and not (isinstance(sym_conId, float) and math.isnan(sym_conId))):
-              contract = Contract(secType=sym_secType, conId=sym_conId, exchange='SMART', currency=sym_currency)
-              logger.info(f"Using ConId {sym_conId} for {sym} (type: {sym_secType}) with SMART routing")
-                
+              # Fund platforms (ALLFUNDS, EBS) require primary exchange routing, not SMART
+              # Stock exchanges (LSEETF, etc.) work better with SMART routing
+              fund_platforms = ['ALLFUNDS', 'EBS']
+              routing_exchange = sym_exchange if sym_exchange in fund_platforms else 'SMART'
+              contract = Contract(secType=sym_secType, conId=sym_conId, exchange=routing_exchange, currency=sym_currency)
+              logger.info(f"Using ConId {sym_conId} for {sym} (type: {sym_secType}) with {routing_exchange} routing")                
             ### Other cases - use symbol
             else : contract = Contract(secType = sym_secType, symbol = sym, currency = sym_currency, exchange = sym_exchange)
 
