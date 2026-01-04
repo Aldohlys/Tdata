@@ -813,18 +813,18 @@ getGonet <- function() {
   ### Identify positions with type == "Precious Metals" and URL in exchange field
   ### Update sym_ibkr BEFORE IBKR price fetch to avoid fetching NA symbols
   precious_metals_mask <- !is.na(portf$type) & portf$type == "Precious Metals"
-  
+
   if (any(precious_metals_mask)) {
     for (i in which(precious_metals_mask)) {
       url <- portf$exchange[i]
-      
+
       ### Extract identifier from URL (FI_ID_NOTATION parameter)
       url_id <- sub(".*FI_ID_NOTATION=([0-9]+).*", "\\1", url)
-      
+
       ### Create unique symbol identifier and update portf
       pm_symbol <- paste0("PM_", url_id)
       portf$sym_ibkr[i] <- pm_symbol
-      
+
       logger::log_info("Found precious metal position: {pm_symbol}", namespace = "Tdata")
     }
   }
@@ -845,7 +845,7 @@ getGonet <- function() {
     if (!is.na(s) && grepl("^PM_", s)) {
       next
     }
-    
+
     ticker <- getTicker(s)
     if (nrow(ticker) > 0 && !is.na(ticker$Exchange) && ticker$Exchange %in% delayed_exchanges) {
       symbols_delayed <- c(symbols_delayed, s)
@@ -873,28 +873,28 @@ getGonet <- function() {
     for (i in which(precious_metals_mask)) {
       url <- portf$exchange[i]
       sym_for_price <- portf$sym_ibkr[i]  # Use sym_ibkr from GonetTrades.csv (e.g., "PM_15606539")
-      
+
       logger::log_info("Fetching precious metal price from {url}", namespace = "Tdata")
-      
+
       price_result <- tryCatch({
         ### Fetch the webpage content
         response <- httr::GET(url, httr::timeout(10))
-        
+
         if (httr::status_code(response) != 200) {
           logger::log_warn("HTTP error {httr::status_code(response)} fetching precious metal price", namespace = "Tdata")
           return(NA_real_)
         }
-        
+
         content_text <- httr::content(response, as = "text", encoding = "UTF-8")
-        
+
         ### Extract price - look for "Mittelkurs" followed by the price value
         ### Pattern: Find "Mittelkurs" and extract following number (e.g., "662.80")
         price_pattern <- "Mittelkurs[^0-9]*(\\d+\\.\\d+)"
         price_match <- regmatches(content_text, regexec(price_pattern, content_text))
-        
+
         if (length(price_match[[1]]) >= 2) {
           price_value <- as.numeric(price_match[[1]][2])
-          
+
           if (!is.na(price_value) && price_value > 0) {
             logger::log_info("Retrieved price {price_value} CHF from ZKB website", namespace = "Tdata")
             price_value
@@ -910,7 +910,7 @@ getGonet <- function() {
         logger::log_warn("Error fetching precious metal price: {e$message}", namespace = "Tdata")
         NA_real_
       })
-      
+
       ### Add to last_price data frame (with NaN if fetch failed, so user can enter manually)
       pm_price_row <- data.frame(
         sym = sym_for_price,
@@ -988,19 +988,31 @@ getGonet <- function() {
   ### Retrieve stored cash positions from database to use as defaults
   ### IMPORTANT: Query BEFORE disconnecting
   stored_cash_query <- "SELECT CashBalanceCHF, CashBalanceUSD, CashBalanceEUR
-                        FROM account
-                        WHERE account = 'Gonet'
-                        ORDER BY date DESC, heure DESC
-                        LIMIT 1"
+                          FROM account
+                          WHERE account = 'Gonet'
+                          ORDER BY date DESC, heure DESC
+                          LIMIT 1"
   stored_cash <- tryCatch({
-    DBI::dbGetQuery(conn, stored_cash_query)
+    result <- DBI::dbGetQuery(conn, stored_cash_query)
+
+    ### Log successful retrieval
+    if (nrow(result) > 0) {
+      logger::log_info("Retrieved stored cash: CHF={result$CashBalanceCHF[1]}, USD={result$CashBalanceUSD[1]}, EUR={result$CashBalanceEUR[1]}",
+                       namespace = "Tdata")
+    } else {
+      logger::log_warn("No previous Gonet account records found in database", namespace = "Tdata")
+    }
+
+    result
   }, error = function(e) {
+    logger::log_error("Failed to retrieve stored cash positions: {e$message}", namespace = "Tdata")
+    Tbasics::display_error_message(paste("Could not retrieve previous cash positions:", e$message))
     data.frame(CashBalanceCHF = 0, CashBalanceUSD = 0, CashBalanceEUR = 0)
   })
 
   ### Now disconnect after all queries are complete
   DBI::dbDisconnect(conn)
-  
+
   ### Prompt user for cash positions with stored values as defaults
   cash_chf <- Tbasics::enter_numerical_data(
     "Gonet Cash CHF",
@@ -1071,7 +1083,7 @@ getAccountGonet <- function(gonet_cash = NULL) {
     cash_usd <- as.numeric(Cash_USD[Sys.Date()])
     cash_eur <- as.numeric(Cash_EUR[Sys.Date()])
   }
-  
+
   #### Calculate total cash balance in base currency
   cash_balance <- round(
     convert_to_base_date(cash_chf, "CHF", Sys.Date()) +
