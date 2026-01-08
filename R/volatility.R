@@ -560,3 +560,367 @@ getOptionPrices <- function(sym, strikes, expiration) {
   ### Data.Frame with columns strikes, call, put
 }
 
+
+#' Get Historical Price Data for HAR Volatility
+#'
+#' Retrieves historical price data from either Yahoo Finance or IBKR TWS API.
+#'
+#' @param sym Symbol to retrieve data for (IBKR-style ticker)
+#' @param lookback_days Number of calendar days to look back (default 400)
+#' @param source Data source: "yahoo" or "ibkr" (default "yahoo")
+#' @return An xts object with OHLCV data, or NULL if retrieval fails
+#' @noRd
+get_har_price_data <- function(sym, lookback_days = 400, source = c("yahoo", "ibkr")) {
+  source <- match.arg(source)
+
+  end_date <- Sys.Date()
+  start_date <- end_date - lookback_days
+
+  if (source == "yahoo") {
+    # Use Tdata::getYahooData which handles IBKR->Yahoo ticker conversion
+    tryCatch({
+      yahoo_data <- getYahooData(sym, from_date = start_date, to_date = end_date)
+
+      if (is.null(yahoo_data) || nrow(yahoo_data) == 0) {
+        logger::log_warn("No Yahoo data returned for {sym}", namespace = "Tdata")
+        return(NULL)
+      }
+
+      # Convert to xts format compatible with HAR functions
+      prices <- xts::xts(
+        yahoo_data[, c("Open", "High", "Low", "Close", "Volume")],
+        order.by = as.Date(yahoo_data$date)
+      )
+      colnames(prices) <- paste0(sym, ".", c("Open", "High", "Low", "Close", "Volume"))
+
+      return(prices)
+    }, error = function(e) {
+      logger::log_error("Failed to retrieve Yahoo data for {sym}: {e$message}", namespace = "Tdata")
+      return(NULL)
+    })
+
+  } else if (source == "ibkr") {
+    # Use IBKR TWS API via Python interface - 15 minute bars
+    tryCatch({
+      # Calculate duration string for IBKR (format: "X D" for days)
+      duration_str <- paste0(lookback_days, " D")
+
+      # Get 15-minute bars from IBKR
+      ibkr_data <- tdata_py$get_historical_bars(
+        sym = sym,
+        duration = duration_str,
+        bar_size = "15 mins"
+      )
+
+      if (is.null(ibkr_data) || nrow(ibkr_data) == 0) {
+        logger::log_warn("No IBKR data returned for {sym}", namespace = "Tdata")
+        return(NULL)
+      }
+
+      # Convert to xts format compatible with HAR functions
+      # Aggregate 15-min bars to daily OHLCV
+      ibkr_data$date <- as.Date(ibkr_data$datetime)
+
+      daily_data <- ibkr_data |>
+        dplyr::group_by(date) |>
+        dplyr::summarise(
+          Open = dplyr::first(open),
+          High = max(high),
+          Low = min(low),
+          Close = dplyr::last(close),
+          Volume = sum(volume),
+          .groups = "drop"
+        )
+
+      # Convert to xts
+      prices <- xts::xts(
+        daily_data[, c("Open", "High", "Low", "Close", "Volume")],
+        order.by = daily_data$date
+      )
+      colnames(prices) <- paste0(sym, ".", c("Open", "High", "Low", "Close", "Volume"))
+
+      return(prices)
+    }, error = function(e) {
+      logger::log_error("Failed to retrieve IBKR data for {sym}: {e$message}", namespace = "Tdata")
+      return(NULL)
+    })
+  }
+}
+
+
+#' Calculate Daily Realized Volatility
+#'
+#' Computes daily realized volatility using squared log returns.
+#'
+#' @param returns Numeric vector or xts of log returns
+#' @return Realized volatility (squared returns)
+#' @noRd
+calculate_daily_rv <- function(returns) {
+  rv <- returns^2
+  return(rv)
+}
+
+
+#' Calculate Period Realized Volatility
+#'
+#' Computes rolling mean of daily RV over specified period.
+#'
+#' @param rv_daily Daily realized volatility series
+#' @param period_length Number of days for rolling window (5 for weekly, 22 for monthly)
+#' @return Rolling mean RV for the specified period
+#' @noRd
+calculate_period_rv <- function(rv_daily, period_length) {
+  period_rv <- zoo::rollmean(rv_daily, k = period_length, align = "right", fill = NA)
+  return(period_rv)
+}
+
+
+#' Prepare Data for HAR-RV Model
+#'
+#' Creates lagged variables needed for HAR-RV regression using TTR::volatility.
+#'
+#' @param prices xts object with OHLCV data
+#' @param calc Volatility calculation method passed to TTR::volatility:
+#'   "close" (default), "garman.klass", "parkinson", "rogers.satchell",
+#'   "gk.yz", or "yang.zhang"
+#' @return Data frame with rv_next, rv_daily, rv_weekly, rv_monthly columns,
+#'   or NULL if calculation fails
+#' @noRd
+prepare_har_data <- function(prices, calc = "close") {
+
+  # Check for minimum data requirements
+  if (is.null(prices) || nrow(prices) < 30) {
+    logger::log_warn("Insufficient price data for HAR model: {nrow(prices)} rows", namespace = "Tdata")
+    return(NULL)
+  }
+
+  # Use TTR::volatility for daily RV calculation
+  # TTR returns annualized volatility, we need to de-annualize for daily variance
+  # Use n=5 for a 5-day rolling volatility window (minimum stable window)
+  vol_daily <- tryCatch({
+    TTR::volatility(prices, n = 5, calc = calc, N = 1)
+  }, error = function(e) {
+    logger::log_error("TTR::volatility failed: {e$message}", namespace = "Tdata")
+    return(NULL)
+  })
+
+  if (is.null(vol_daily)) return(NULL)
+
+  # Convert volatility to variance (squared)
+  rv_daily <- vol_daily^2
+
+  # Calculate weekly (5-day) and monthly (22-day) average RV
+  # Use tryCatch to handle edge cases
+ rv_weekly <- tryCatch({
+    calculate_period_rv(rv_daily, 5)
+  }, error = function(e) {
+    logger::log_warn("Failed to calculate weekly RV: {e$message}", namespace = "Tdata")
+    return(NULL)
+  })
+
+  rv_monthly <- tryCatch({
+    calculate_period_rv(rv_daily, 22)
+  }, error = function(e) {
+    logger::log_warn("Failed to calculate monthly RV: {e$message}", namespace = "Tdata")
+    return(NULL)
+  })
+
+  if (is.null(rv_weekly) || is.null(rv_monthly)) return(NULL)
+
+  # Combine into data frame
+  model_data <- data.frame(
+    date = zoo::index(rv_daily),
+    rv_next = as.numeric(dplyr::lead(rv_daily, 1)),  # Tomorrow's RV
+    rv_daily = as.numeric(rv_daily),
+    rv_weekly = as.numeric(rv_weekly),
+    rv_monthly = as.numeric(rv_monthly)
+  )
+
+  # Remove NA values
+  model_data <- stats::na.omit(model_data)
+
+  if (nrow(model_data) == 0) {
+    logger::log_warn("No valid data after HAR preparation", namespace = "Tdata")
+    return(NULL)
+  }
+
+  return(model_data)
+}
+
+
+#' Fit HAR-RV Volatility Model
+#'
+#' Fits a Heterogeneous Autoregressive Realized Volatility (HAR-RV) model
+#' using daily, weekly (5-day), and monthly (22-day) realized volatility components.
+#'
+#' @param sym Symbol to analyze (IBKR-style ticker)
+#' @param lookback_days Number of calendar days for historical data (default 400)
+#' @param source Data source: "yahoo" or "ibkr" (default "yahoo").
+#'   IBKR source uses 15-minute bars aggregated to daily.
+#' @param calc Volatility calculation method (via TTR::volatility):
+#'   \itemize{
+#'     \item "close" - Close-to-close volatility (default, standard method)
+#'     \item "garman.klass" - Garman-Klass estimator using OHLC
+#'     \item "parkinson" - Parkinson High-Low range estimator
+#'     \item "rogers.satchell" - Rogers-Satchell estimator
+#'     \item "gk.yz" - Garman-Klass Yang-Zhang extension
+#'     \item "yang.zhang" - Yang-Zhang estimator (recommended for OHLC data)
+#'   }
+#' @param n_test Number of days to reserve for out-of-sample testing (default 30)
+#' @return A list containing:
+#' \itemize{
+#'   \item{\code{model} The fitted lm object}
+#'   \item{\code{summary} Model summary statistics}
+#'   \item{\code{forecast} Next day annualized volatility forecast}
+#'   \item{\code{rmse} Root mean squared error on test set}
+#'   \item{\code{mae} Mean absolute error on test set}
+#'   \item{\code{test_actual} Actual RV values for test period}
+#'   \item{\code{test_predicted} Predicted RV values for test period}
+#'   \item{\code{latest_data} Latest RV components used for forecast}
+#' }
+#' @examples
+#' \dontrun{
+#' # Using Yahoo Finance data with close-to-close volatility
+#' har_spy <- fitHAR("SPY", source = "yahoo")
+#' print(har_spy$forecast)
+#'
+#' # Using IBKR data with 15-minute bars and Yang-Zhang estimator
+#' har_aapl <- fitHAR("AAPL", source = "ibkr", calc = "yang.zhang")
+#' print(har_aapl$summary)
+#'
+#' # Compare different volatility estimators
+#' har_close <- fitHAR("SPY", calc = "close")
+#' har_yz <- fitHAR("SPY", calc = "yang.zhang")
+#' }
+#' @export
+fitHAR <- function(sym, lookback_days = 400, source = c("yahoo", "ibkr"),
+                   calc = c("close", "garman.klass", "parkinson",
+                            "rogers.satchell", "gk.yz", "yang.zhang"),
+                   n_test = 30) {
+  source <- match.arg(source)
+  calc <- match.arg(calc)
+
+  logger::log_info("Fitting HAR-RV model for {sym} using {source} data, calc={calc}", namespace = "Tdata")
+
+  # Get price data
+  prices <- get_har_price_data(sym, lookback_days, source)
+  if (is.null(prices)) {
+    Tbasics::display_error_message(paste0("Failed to retrieve price data for ", sym))
+    return(NULL)
+  }
+
+  # Prepare HAR model data
+  model_data <- prepare_har_data(prices, calc = calc)
+
+  if (is.null(model_data) || nrow(model_data) < n_test + 50) {
+    n_obs <- if (is.null(model_data)) 0 else nrow(model_data)
+    logger::log_warn("Insufficient data for HAR model: {n_obs} observations", namespace = "Tdata")
+    return(NULL)
+  }
+
+  # Split into training and test sets
+  train_data <- model_data[1:(nrow(model_data) - n_test), ]
+  test_data <- model_data[(nrow(model_data) - n_test + 1):nrow(model_data), ]
+
+  # Fit HAR-RV model
+  har_model <- stats::lm(rv_next ~ rv_daily + rv_weekly + rv_monthly, data = train_data)
+
+  # Make predictions for test set
+  predictions <- stats::predict(har_model, newdata = test_data)
+
+  # Calculate forecast accuracy metrics
+  rmse <- sqrt(mean((test_data$rv_next - predictions)^2))
+  mae <- mean(abs(test_data$rv_next - predictions))
+
+  # Forecast for next day using latest data
+  latest_data <- data.frame(
+    rv_daily = utils::tail(model_data$rv_daily, 1),
+    rv_weekly = utils::tail(model_data$rv_weekly, 1),
+    rv_monthly = utils::tail(model_data$rv_monthly, 1)
+  )
+
+  next_day_rv <- stats::predict(har_model, newdata = latest_data)
+  next_day_vol_annualized <- sqrt(next_day_rv * 252)
+
+  logger::log_info("HAR forecast for {sym}: {round(next_day_vol_annualized, 4)} annualized vol", namespace = "Tdata")
+
+  return(list(
+    symbol = sym,
+    source = source,
+    calc = calc,
+    model = har_model,
+    summary = summary(har_model),
+    forecast = as.numeric(next_day_vol_annualized),
+    rmse = rmse,
+    mae = mae,
+    test_actual = test_data$rv_next,
+    test_predicted = as.numeric(predictions),
+    test_dates = test_data$date,
+    latest_data = latest_data,
+    n_observations = nrow(model_data)
+  ))
+}
+
+
+#' Get HAR Volatility Forecast
+#'
+#' Convenience function to get the next-day annualized volatility forecast
+#' using the HAR-RV model.
+#'
+#' @param sym Symbol to forecast (IBKR-style ticker)
+#' @param source Data source: "yahoo" or "ibkr" (default "yahoo")
+#' @param calc Volatility calculation method: "close" (default), "garman.klass",
+#'   "parkinson", "rogers.satchell", "gk.yz", or "yang.zhang"
+#' @return Numeric value of annualized volatility forecast, or NA if model fails
+#' @examples
+#' \dontrun{
+#' getHARForecast("SPY")
+#' getHARForecast("AAPL", source = "ibkr", calc = "yang.zhang")
+#' }
+#' @export
+getHARForecast <- function(sym, source = c("yahoo", "ibkr"),
+                           calc = c("close", "garman.klass", "parkinson",
+                                    "rogers.satchell", "gk.yz", "yang.zhang")) {
+  source <- match.arg(source)
+  calc <- match.arg(calc)
+  result <- fitHAR(sym, source = source, calc = calc)
+  if (is.null(result)) return(NA_real_)
+  return(result$forecast)
+}
+
+
+#' Plot HAR Model Results
+#'
+#' Creates a plot comparing actual vs predicted volatilities for the test period.
+#'
+#' @param har_result Result object from fitHAR()
+#' @param main Plot title (optional, defaults to symbol name)
+#' @return Invisibly returns the har_result object
+#' @examples
+#' \dontrun{
+#' har_spy <- fitHAR("SPY")
+#' plotHAR(har_spy)
+#' }
+#' @export
+plotHAR <- function(har_result, main = NULL) {
+  if (is.null(har_result)) {
+    return(invisible(NULL))
+  }
+
+  if (is.null(main)) {
+    main <- paste0(har_result$symbol, " - Actual vs Predicted Volatility (Annualized)")
+  }
+
+  actual_vol <- sqrt(har_result$test_actual * 252)
+  predicted_vol <- sqrt(har_result$test_predicted * 252)
+
+  plot(actual_vol, type = "l", col = "blue",
+       main = main,
+       ylab = "Volatility", xlab = "Day",
+       ylim = range(c(actual_vol, predicted_vol), na.rm = TRUE))
+  lines(predicted_vol, col = "red")
+  legend("topright", c("Actual", "Predicted"), col = c("blue", "red"), lty = 1)
+
+  invisible(har_result)
+}
+

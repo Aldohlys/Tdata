@@ -235,11 +235,14 @@ except ImportError as e:
 # Volatility functions
 try:
     from .impliedvol import (
-        get_volatility_metrics  
+        get_volatility_metrics,
+        get_historical_bars
     )
 except ImportError as e:
     print(f"Error importing impliedvol: {e}")
     def get_volatility_metrics(*args, **kwargs):
+        return None
+    def get_historical_bars(*args, **kwargs):
         return None
 
 # ============================================================================
@@ -298,6 +301,7 @@ __all__ = [
     
     # === SPECIALIZED UTILITIES ===
     'get_volatility_metrics',
+    'get_historical_bars',
     
     # === LOGGING FUNCTIONS ===
     'get_logger',

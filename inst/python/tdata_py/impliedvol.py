@@ -293,3 +293,110 @@ def get_volatility_metrics(sym, secType=None, currency=None, exchange=None,
     
     return result
 
+
+def get_historical_bars(sym, duration="400 D", bar_size="15 mins", secType=None,
+                        currency=None, exchange=None, expiration_future=None):
+    """
+    Retrieve historical OHLCV bars for a given symbol.
+
+    This function retrieves intraday or daily bars from IBKR for use in
+    volatility calculations like HAR-RV models.
+
+    Args:
+        sym: Symbol to retrieve data for
+        duration: Duration string in IBKR format (e.g., "400 D", "1 Y")
+        bar_size: Bar size setting. Common values:
+            - "15 mins" (default) - 15-minute bars
+            - "1 hour" - hourly bars
+            - "1 day" - daily bars
+        secType: Security type (STK, FUT, IND, CASH). Default from ticker DB.
+        currency: Currency. Default from ticker DB.
+        exchange: Exchange. Default from ticker DB.
+        expiration_future: Future expiration (for FUT contracts)
+
+    Returns:
+        pandas DataFrame with columns: datetime, open, high, low, close, volume
+        Returns None if retrieval fails.
+    """
+    # Use safe_ib_connect
+    ib = safe_ib_connect()
+    if not ib.isConnected():
+        logger.error(f"Failed to connect to IBKR for {sym}")
+        return None
+
+    # Get ticker information from database if not provided
+    ticker_info = ticker_db.get_ticker_info(sym)
+
+    if ticker_info is None:
+        logger.warning(f"No ticker info found for {sym}, using defaults")
+        if secType is None: secType = 'STK'
+        if currency is None: currency = 'USD'
+        if exchange is None: exchange = 'SMART'
+    else:
+        if secType is None: secType = ticker_info.get('Type', 'STK')
+        if currency is None: currency = ticker_info.get('Currency', 'USD')
+        if exchange is None: exchange = ticker_info.get('Exchange', 'SMART')
+
+    logger.info(f"Getting historical bars for {sym}: duration={duration}, bar_size={bar_size}")
+
+    # Handle FUT expiration
+    if secType == "FUT" and expiration_future is None:
+        expiration_future = ticker_info.get('Expiration') if ticker_info else None
+
+    # Create contract
+    contract = _create_contract(sym, secType, currency, exchange, expiration_future)
+    if contract is None:
+        logger.error(f"Unsupported security type: {secType}")
+        return None
+
+    try:
+        ib.qualifyContracts(contract)
+
+        # Fetch TRADES data (OHLCV)
+        bars = ib.reqHistoricalData(
+            contract,
+            endDateTime='',
+            durationStr=duration,
+            barSizeSetting=bar_size,
+            whatToShow='TRADES',
+            useRTH=True,
+            formatDate=1
+        )
+
+        if bars is None or len(bars) == 0:
+            logger.warning(f"No historical bars returned for {sym}")
+            ib.disconnect()
+            return None
+
+        # Convert to DataFrame
+        df = util.df(bars)
+
+        # Rename columns to standard lowercase
+        df = df.rename(columns={
+            'date': 'datetime',
+            'open': 'open',
+            'high': 'high',
+            'low': 'low',
+            'close': 'close',
+            'volume': 'volume'
+        })
+
+        # Convert datetime column
+        df['datetime'] = pd.to_datetime(df['datetime'])
+
+        # Select only needed columns
+        result_cols = ['datetime', 'open', 'high', 'low', 'close', 'volume']
+        available_cols = [c for c in result_cols if c in df.columns]
+        df = df[available_cols]
+
+        logger.info(f"Retrieved {len(df)} bars for {sym}")
+
+    except Exception as e:
+        logger.error(f"Error retrieving historical bars for {sym}: {e}")
+        df = None
+    finally:
+        ib.sleep(1)
+        ib.disconnect()
+
+    return df
+
