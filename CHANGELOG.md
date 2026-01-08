@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.70] - 2026-01-08
+
+### Added
+- **HAR-RV Volatility Model**: New functions for Heterogeneous Autoregressive Realized Volatility forecasting
+  - **fitHAR()**: Fits HAR-RV model using daily, weekly (5-day), and monthly (22-day) RV components
+    - Supports Yahoo Finance and IBKR data sources
+    - IBKR source uses 15-minute bars aggregated to daily OHLCV
+    - Multiple volatility calculation methods via TTR::volatility: close, garman.klass, parkinson, rogers.satchell, gk.yz, yang.zhang
+    - Returns model, forecast, accuracy metrics (RMSE, MAE), and test/train data
+  - **getHARForecast()**: Convenience function for quick next-day annualized volatility forecast
+  - **plotHAR()**: Visualizes actual vs predicted volatility for test period
+  - **get_historical_bars()** (Python): New function to retrieve OHLCV bars from IBKR TWS API
+    - Configurable bar size (default: 15 mins) and duration
+    - Aggregates intraday data to daily for HAR model input
+- **Test file**: tests/testthat/test-har-volatility.R with comprehensive test coverage
+- **TTR package dependency**: Added to DESCRIPTION Imports for volatility calculations
+
+### Changed
+- **prepare_har_data()**: Now uses TTR::volatility with n=5 rolling window instead of simple squared returns
+- **get_har_price_data()**: Uses Tdata::getYahooData() instead of direct quantmod::getSymbols() for Yahoo source
+
 ## [5.7.66] - 2025-12-30
 
 ### Fixed
