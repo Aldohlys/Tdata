@@ -1,12 +1,6 @@
 
 ############ Test HAR Volatility Functions ###########
 
-# Helper to check if IBKR is available for tests requiring live connection
-skip_if_no_ibkr <- function() {
-  if (!isIBAvailable()) {
-    skip("IBKR TWS not available")
-  }
-}
 
 # =============================================================================
 # Test get_har_price_data (internal function)
@@ -253,7 +247,7 @@ test_that("plotHAR returns har_result invisibly", {
 
 test_that("fitHAR works with IBKR source when available", {
   skip_if_offline()
-  skip_if_no_ibkr()
+  skip_if_not(isIBAvailable(), "IBKR is not available - skip test")
 
   result <- tryCatch({
     fitHAR("SPY", lookback_days = 200, source = "ibkr", n_test = 20)
@@ -291,13 +285,6 @@ test_that("getHARForecast validates calc parameter", {
 # =============================================================================
 # Test helper functions
 # =============================================================================
-
-test_that("calculate_daily_rv computes squared returns", {
-  returns <- c(0.01, -0.02, 0.015, -0.005)
-  rv <- Tdata:::calculate_daily_rv(returns)
-
-  expect_equal(rv, returns^2)
-})
 
 test_that("calculate_period_rv computes rolling mean", {
   rv_daily <- xts::xts(

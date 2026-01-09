@@ -648,26 +648,13 @@ get_har_price_data <- function(sym, lookback_days = 400, source = c("yahoo", "ib
 }
 
 
-#' Calculate Daily Realized Volatility
+#' Calculate Period Realized Variance
 #'
-#' Computes daily realized volatility using squared log returns.
+#' Computes rolling mean of daily realized variance over specified period.
 #'
-#' @param returns Numeric vector or xts of log returns
-#' @return Realized volatility (squared returns)
-#' @noRd
-calculate_daily_rv <- function(returns) {
-  rv <- returns^2
-  return(rv)
-}
-
-
-#' Calculate Period Realized Volatility
-#'
-#' Computes rolling mean of daily RV over specified period.
-#'
-#' @param rv_daily Daily realized volatility series
+#' @param rv_daily Daily realized variance series (squared volatility)
 #' @param period_length Number of days for rolling window (5 for weekly, 22 for monthly)
-#' @return Rolling mean RV for the specified period
+#' @return Rolling mean of realized variance for the specified period
 #' @noRd
 calculate_period_rv <- function(rv_daily, period_length) {
   period_rv <- zoo::rollmean(rv_daily, k = period_length, align = "right", fill = NA)
@@ -683,22 +670,27 @@ calculate_period_rv <- function(rv_daily, period_length) {
 #' @param calc Volatility calculation method passed to TTR::volatility:
 #'   "close" (default), "garman.klass", "parkinson", "rogers.satchell",
 #'   "gk.yz", or "yang.zhang"
+#' @param n Number of periods for volatility calculation (default 5).
+#'   Common values: 5 (weekly), 9, 21, 30 (monthly).
+#' @param forecast_horizon Number of days ahead to forecast (default 1).
+#'   For h > 1, target is average RV over next h days.
 #' @return Data frame with rv_next, rv_daily, rv_weekly, rv_monthly columns,
 #'   or NULL if calculation fails
 #' @noRd
-prepare_har_data <- function(prices, calc = "close") {
+prepare_har_data <- function(prices, calc = "close", n = 5, forecast_horizon = 1) {
 
   # Check for minimum data requirements
-  if (is.null(prices) || nrow(prices) < 30) {
-    logger::log_warn("Insufficient price data for HAR model: {nrow(prices)} rows", namespace = "Tdata")
+  min_rows <- n + 22 + forecast_horizon  # n for vol, 22 for monthly RV, h for forecast
+
+  if (is.null(prices) || nrow(prices) < min_rows) {
+    logger::log_warn("Insufficient price data for HAR model: {nrow(prices)} rows (need {min_rows})", namespace = "Tdata")
     return(NULL)
   }
 
   # Use TTR::volatility for daily RV calculation
   # TTR returns annualized volatility, we need to de-annualize for daily variance
-  # Use n=5 for a 5-day rolling volatility window (minimum stable window)
   vol_daily <- tryCatch({
-    TTR::volatility(prices, n = 5, calc = calc, N = 1)
+    TTR::volatility(prices, n = n, calc = calc, N = 1)
   }, error = function(e) {
     logger::log_error("TTR::volatility failed: {e$message}", namespace = "Tdata")
     return(NULL)
@@ -711,7 +703,7 @@ prepare_har_data <- function(prices, calc = "close") {
 
   # Calculate weekly (5-day) and monthly (22-day) average RV
   # Use tryCatch to handle edge cases
- rv_weekly <- tryCatch({
+  rv_weekly <- tryCatch({
     calculate_period_rv(rv_daily, 5)
   }, error = function(e) {
     logger::log_warn("Failed to calculate weekly RV: {e$message}", namespace = "Tdata")
@@ -727,10 +719,20 @@ prepare_har_data <- function(prices, calc = "close") {
 
   if (is.null(rv_weekly) || is.null(rv_monthly)) return(NULL)
 
+  # Calculate target variable: average RV over next forecast_horizon days
+  # lead by 1 to get future values, then rolling mean for h-day average
+  if (forecast_horizon == 1) {
+    rv_next <- dplyr::lead(rv_daily, 1)
+  } else {
+    # For h > 1: mean of RV from t+1 to t+h
+    rv_lead <- dplyr::lead(rv_daily, 1)
+    rv_next <- zoo::rollmean(rv_lead, k = forecast_horizon, align = "left", fill = NA)
+  }
+
   # Combine into data frame
   model_data <- data.frame(
     date = zoo::index(rv_daily),
-    rv_next = as.numeric(dplyr::lead(rv_daily, 1)),  # Tomorrow's RV
+    rv_next = as.numeric(rv_next),
     rv_daily = as.numeric(rv_daily),
     rv_weekly = as.numeric(rv_weekly),
     rv_monthly = as.numeric(rv_monthly)
@@ -766,17 +768,23 @@ prepare_har_data <- function(prices, calc = "close") {
 #'     \item "gk.yz" - Garman-Klass Yang-Zhang extension
 #'     \item "yang.zhang" - Yang-Zhang estimator (recommended for OHLC data)
 #'   }
+#' @param n Number of periods for volatility calculation (default 5).
+#'   Common values: 5 (weekly), 9, 21, 30 (monthly).
+#' @param forecast_horizon Number of days ahead to forecast (default 1).
+#'   For h > 1, predicts average volatility over next h days.
 #' @param n_test Number of days to reserve for out-of-sample testing (default 30)
 #' @return A list containing:
 #' \itemize{
 #'   \item{\code{model} The fitted lm object}
 #'   \item{\code{summary} Model summary statistics}
-#'   \item{\code{forecast} Next day annualized volatility forecast}
+#'   \item{\code{forecast} Annualized volatility forecast for specified horizon}
 #'   \item{\code{rmse} Root mean squared error on test set}
 #'   \item{\code{mae} Mean absolute error on test set}
 #'   \item{\code{test_actual} Actual RV values for test period}
 #'   \item{\code{test_predicted} Predicted RV values for test period}
 #'   \item{\code{latest_data} Latest RV components used for forecast}
+#'   \item{\code{n} Number of periods used for volatility calculation}
+#'   \item{\code{forecast_horizon} Number of days ahead being forecast}
 #' }
 #' @examples
 #' \dontrun{
@@ -784,23 +792,22 @@ prepare_har_data <- function(prices, calc = "close") {
 #' har_spy <- fitHAR("SPY", source = "yahoo")
 #' print(har_spy$forecast)
 #'
-#' # Using IBKR data with 15-minute bars and Yang-Zhang estimator
-#' har_aapl <- fitHAR("AAPL", source = "ibkr", calc = "yang.zhang")
-#' print(har_aapl$summary)
+#' # Forecast 5-day ahead average volatility
+#' har_5d_ahead <- fitHAR("SPY", forecast_horizon = 5)
 #'
-#' # Compare different volatility estimators
-#' har_close <- fitHAR("SPY", calc = "close")
-#' har_yz <- fitHAR("SPY", calc = "yang.zhang")
+#' # Forecast 10-day ahead with Yang-Zhang estimator
+#' har_10d <- fitHAR("AAPL", forecast_horizon = 10, calc = "yang.zhang")
 #' }
 #' @export
 fitHAR <- function(sym, lookback_days = 400, source = c("yahoo", "ibkr"),
                    calc = c("close", "garman.klass", "parkinson",
                             "rogers.satchell", "gk.yz", "yang.zhang"),
-                   n_test = 30) {
+                   n = 5, forecast_horizon = 1, n_test = 30) {
   source <- match.arg(source)
   calc <- match.arg(calc)
 
-  logger::log_info("Fitting HAR-RV model for {sym} using {source} data, calc={calc}", namespace = "Tdata")
+  logger::log_info("Fitting HAR-RV model for {sym}: source={source}, calc={calc}, n={n}, horizon={forecast_horizon}",
+                   namespace = "Tdata")
 
   # Get price data
   prices <- get_har_price_data(sym, lookback_days, source)
@@ -810,7 +817,7 @@ fitHAR <- function(sym, lookback_days = 400, source = c("yahoo", "ibkr"),
   }
 
   # Prepare HAR model data
-  model_data <- prepare_har_data(prices, calc = calc)
+  model_data <- prepare_har_data(prices, calc = calc, n = n, forecast_horizon = forecast_horizon)
 
   if (is.null(model_data) || nrow(model_data) < n_test + 50) {
     n_obs <- if (is.null(model_data)) 0 else nrow(model_data)
@@ -823,6 +830,7 @@ fitHAR <- function(sym, lookback_days = 400, source = c("yahoo", "ibkr"),
   test_data <- model_data[(nrow(model_data) - n_test + 1):nrow(model_data), ]
 
   # Fit HAR-RV model
+  # Predicts future RV as function of current daily, weekly, monthly variance components
   har_model <- stats::lm(rv_next ~ rv_daily + rv_weekly + rv_monthly, data = train_data)
 
   # Make predictions for test set
@@ -832,25 +840,29 @@ fitHAR <- function(sym, lookback_days = 400, source = c("yahoo", "ibkr"),
   rmse <- sqrt(mean((test_data$rv_next - predictions)^2))
   mae <- mean(abs(test_data$rv_next - predictions))
 
-  # Forecast for next day using latest data
+  # Forecast using latest data
   latest_data <- data.frame(
     rv_daily = utils::tail(model_data$rv_daily, 1),
     rv_weekly = utils::tail(model_data$rv_weekly, 1),
     rv_monthly = utils::tail(model_data$rv_monthly, 1)
   )
 
-  next_day_rv <- stats::predict(har_model, newdata = latest_data)
-  next_day_vol_annualized <- sqrt(next_day_rv * 252)
+  forecast_rv <- stats::predict(har_model, newdata = latest_data)
+  forecast_vol_annualized <- sqrt(forecast_rv * 252)
 
-  logger::log_info("HAR forecast for {sym}: {round(next_day_vol_annualized, 4)} annualized vol", namespace = "Tdata")
+  horizon_desc <- if (forecast_horizon == 1) "next day" else paste0(forecast_horizon, "-day avg")
+  logger::log_info("HAR forecast for {sym} ({horizon_desc}): {round(forecast_vol_annualized, 4)} annualized vol",
+                   namespace = "Tdata")
 
   return(list(
     symbol = sym,
     source = source,
     calc = calc,
+    n = n,
+    forecast_horizon = forecast_horizon,
     model = har_model,
     summary = summary(har_model),
-    forecast = as.numeric(next_day_vol_annualized),
+    forecast = as.numeric(forecast_vol_annualized),
     rmse = rmse,
     mae = mae,
     test_actual = test_data$rv_next,
@@ -864,26 +876,31 @@ fitHAR <- function(sym, lookback_days = 400, source = c("yahoo", "ibkr"),
 
 #' Get HAR Volatility Forecast
 #'
-#' Convenience function to get the next-day annualized volatility forecast
-#' using the HAR-RV model.
+#' Convenience function to get annualized volatility forecast using the HAR-RV model.
 #'
 #' @param sym Symbol to forecast (IBKR-style ticker)
 #' @param source Data source: "yahoo" or "ibkr" (default "yahoo")
 #' @param calc Volatility calculation method: "close" (default), "garman.klass",
 #'   "parkinson", "rogers.satchell", "gk.yz", or "yang.zhang"
+#' @param n Number of periods for volatility calculation (default 5).
+#'   Common values: 5 (weekly), 9, 21, 30 (monthly).
+#' @param forecast_horizon Number of days ahead to forecast (default 1).
+#'   For h > 1, returns average volatility forecast over next h days.
 #' @return Numeric value of annualized volatility forecast, or NA if model fails
 #' @examples
 #' \dontrun{
 #' getHARForecast("SPY")
-#' getHARForecast("AAPL", source = "ibkr", calc = "yang.zhang")
+#' getHARForecast("SPY", forecast_horizon = 5)  # 5-day ahead forecast
+#' getHARForecast("SPY", forecast_horizon = 10, calc = "yang.zhang")
 #' }
 #' @export
 getHARForecast <- function(sym, source = c("yahoo", "ibkr"),
                            calc = c("close", "garman.klass", "parkinson",
-                                    "rogers.satchell", "gk.yz", "yang.zhang")) {
+                                    "rogers.satchell", "gk.yz", "yang.zhang"),
+                           n = 5, forecast_horizon = 1) {
   source <- match.arg(source)
   calc <- match.arg(calc)
-  result <- fitHAR(sym, source = source, calc = calc)
+  result <- fitHAR(sym, source = source, calc = calc, n = n, forecast_horizon = forecast_horizon)
   if (is.null(result)) return(NA_real_)
   return(result$forecast)
 }
@@ -922,5 +939,157 @@ plotHAR <- function(har_result, main = NULL) {
   legend("topright", c("Actual", "Predicted"), col = c("blue", "red"), lty = 1)
 
   invisible(har_result)
+}
+
+
+#' Evaluate HAR Model Performance
+#'
+#' Computes comprehensive evaluation metrics for a HAR-RV model, with focus on
+#' directional accuracy and volatility spike detection - useful for catching
+#' volatility regime changes.
+#'
+#' @param har_result Result object from fitHAR()
+#' @param spike_threshold Percentile threshold for defining volatility spikes (default 0.9).
+#'   Values above this percentile of actual RV are considered spikes.
+#' @return A list containing:
+#' \itemize{
+#'   \item{\code{symbol} Ticker symbol}
+#'   \item{\code{forecast_horizon} Days ahead being forecast}
+#'   \item{\code{n_test} Number of test observations}
+#'   \item{\code{r_squared} R-squared (coefficient of determination)}
+#'   \item{\code{rmse} Root mean squared error}
+#'   \item{\code{mae} Mean absolute error}
+#'   \item{\code{mape} Mean absolute percentage error}
+#'   \item{\code{direction_accuracy} Percent of correct up/down predictions}
+#'   \item{\code{change_correlation} Correlation between predicted and actual changes}
+#'   \item{\code{spike_recall} Percent of actual spikes we detected}
+#'   \item{\code{spike_precision} Percent of predicted spikes that were real}
+#'   \item{\code{spike_f1} F1 score for spike detection}
+#'   \item{\code{vol_of_vol} Volatility of volatility (std dev of RV changes)}
+#'   \item{\code{regime_indicator} Current regime: "high_vov", "normal", "low_vov"}
+#' }
+#' @examples
+#' \dontrun{
+#' har_spy <- fitHAR("SPY", forecast_horizon = 5)
+#' eval_result <- evaluateHAR(har_spy)
+#' print(eval_result$direction_accuracy)  # How often we got direction right
+#' print(eval_result$spike_recall)        # How often we caught vol spikes
+#' }
+#' @export
+evaluateHAR <- function(har_result, spike_threshold = 0.9) {
+
+  if (is.null(har_result)) {
+    logger::log_warn("evaluateHAR: NULL har_result provided", namespace = "Tdata")
+    return(NULL)
+  }
+
+  actual <- har_result$test_actual
+  predicted <- har_result$test_predicted
+  n_test <- length(actual)
+
+  # Basic metrics
+  ss_res <- sum((actual - predicted)^2)
+  ss_tot <- sum((actual - mean(actual))^2)
+  r_squared <- 1 - (ss_res / ss_tot)
+
+  rmse <- har_result$rmse
+  mae <- har_result$mae
+  mape <- mean(abs((actual - predicted) / actual)) * 100
+
+  # Directional accuracy: did we predict increase/decrease correctly?
+  actual_changes <- diff(actual)
+  predicted_changes <- diff(predicted)
+  direction_correct <- sign(actual_changes) == sign(predicted_changes)
+  direction_accuracy <- mean(direction_correct, na.rm = TRUE) * 100
+
+  # Change correlation: how well do predicted changes track actual changes?
+  change_correlation <- stats::cor(actual_changes, predicted_changes, use = "complete.obs")
+
+  # Spike detection metrics
+  spike_cutoff <- stats::quantile(actual, spike_threshold, na.rm = TRUE)
+  actual_spikes <- actual > spike_cutoff
+  predicted_spikes <- predicted > spike_cutoff
+
+  # True positives, false positives, false negatives
+  tp <- sum(actual_spikes & predicted_spikes)
+  fp <- sum(!actual_spikes & predicted_spikes)
+  fn <- sum(actual_spikes & !predicted_spikes)
+
+  spike_recall <- if ((tp + fn) > 0) tp / (tp + fn) * 100 else NA_real_
+  spike_precision <- if ((tp + fp) > 0) tp / (tp + fp) * 100 else NA_real_
+  spike_f1 <- if (!is.na(spike_recall) && !is.na(spike_precision) && (spike_recall + spike_precision) > 0) {
+    2 * (spike_recall * spike_precision) / (spike_recall + spike_precision)
+  } else {
+    NA_real_
+  }
+
+  # Vol-of-vol: standard deviation of RV changes (regime stability indicator)
+  vol_of_vol <- stats::sd(actual_changes, na.rm = TRUE)
+
+  # Historical vol-of-vol percentiles for regime classification
+  # Use simple heuristics based on relative magnitude
+  vol_of_vol_ratio <- vol_of_vol / mean(actual, na.rm = TRUE)
+  regime_indicator <- if (vol_of_vol_ratio > 0.5) {
+    "high_vov"  # Volatile regime, expect regime changes
+  } else if (vol_of_vol_ratio < 0.2) {
+    "low_vov"   # Stable regime
+  } else {
+    "normal"
+  }
+
+  result <- list(
+    symbol = har_result$symbol,
+    forecast_horizon = har_result$forecast_horizon,
+    n_test = n_test,
+    r_squared = round(r_squared, 4),
+    rmse = round(rmse, 6),
+    mae = round(mae, 6),
+    mape = round(mape, 2),
+    direction_accuracy = round(direction_accuracy, 1),
+    change_correlation = round(change_correlation, 3),
+    spike_recall = round(spike_recall, 1),
+    spike_precision = round(spike_precision, 1),
+    spike_f1 = round(spike_f1, 1),
+    vol_of_vol = round(vol_of_vol, 6),
+    regime_indicator = regime_indicator
+  )
+
+  class(result) <- c("har_evaluation", "list")
+  return(result)
+}
+
+
+#' Print HAR Evaluation Results
+#'
+#' @param x An har_evaluation object from evaluateHAR()
+#' @param ... Additional arguments (ignored)
+#' @return Invisibly returns x
+#' @export
+print.har_evaluation <- function(x, ...) {
+  cat("\n=== HAR Model Evaluation ===\n")
+  cat(sprintf("Symbol: %s | Horizon: %d-day | Test obs: %d\n\n",
+              x$symbol, x$forecast_horizon, x$n_test))
+
+  cat("-- Accuracy Metrics --\n")
+  cat(sprintf("  R-squared:          %.4f\n", x$r_squared))
+  cat(sprintf("  RMSE:               %.6f\n", x$rmse))
+  cat(sprintf("  MAE:                %.6f\n", x$mae))
+  cat(sprintf("  MAPE:               %.2f%%\n", x$mape))
+
+
+  cat("\n-- Directional Performance --\n")
+  cat(sprintf("  Direction Accuracy: %.1f%%\n", x$direction_accuracy))
+  cat(sprintf("  Change Correlation: %.3f\n", x$change_correlation))
+
+  cat("\n-- Spike Detection --\n")
+  cat(sprintf("  Spike Recall:       %.1f%% (caught this %% of actual spikes)\n", x$spike_recall))
+  cat(sprintf("  Spike Precision:    %.1f%% (this %% of predicted spikes were real)\n", x$spike_precision))
+  cat(sprintf("  Spike F1:           %.1f\n", x$spike_f1))
+
+  cat("\n-- Regime Indicator --\n")
+  cat(sprintf("  Vol-of-Vol:         %.6f\n", x$vol_of_vol))
+  cat(sprintf("  Current Regime:     %s\n", x$regime_indicator))
+
+  invisible(x)
 }
 
