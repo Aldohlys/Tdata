@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.72] - 2026-01-09
+
+### Changed
+- **fitHAR()**: Major enhancements for practical trading use
+  - Direct multi-horizon forecasting: trains separate model for each forecast day (avoids compounding errors)
+  - Blended forecasts (70% current vol + 30% HAR) for conservative, tradeable values
+  - Returns `forecast` (blended), `forecast_raw` (pure HAR), and `forecast_error` (MAE in vol points)
+  - Returns current realized volatility at multiple windows: `current_vol_n`, `current_vol_5d`, `current_vol_22d`
+  - Parameterized volatility window (`n`) now properly flows through all calculations
+  - MAE calculated directly on annualized volatility (not variance) for meaningful error bounds
+- **plotHAR()**: Now returns interactive plotly chart with hover values, Y-axis in percentage format
+- **evaluateHAR()**: Added comprehensive model evaluation with directional accuracy, spike detection metrics, and vol-of-vol regime indicator
+
 ## [5.7.70] - 2026-01-08
 
 ### Added
