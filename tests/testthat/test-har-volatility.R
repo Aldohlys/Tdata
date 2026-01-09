@@ -236,9 +236,9 @@ test_that("plotHAR returns har_result invisibly", {
 
   skip_if(is.null(har_result), "fitHAR returned NULL")
 
-  # plotHAR should return the result invisibly
+  # plotHAR should return a plotly object
   result <- plotHAR(har_result)
-  expect_identical(result, har_result)
+  expect_true(inherits(result, "plotly"))
 })
 
 # =============================================================================
