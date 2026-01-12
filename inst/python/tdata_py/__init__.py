@@ -245,6 +245,16 @@ except ImportError as e:
     def get_historical_bars(*args, **kwargs):
         return None
 
+# Spread analysis functions
+try:
+    from .spread import (
+        compute_spread_risk_reward
+    )
+except ImportError as e:
+    print(f"Error importing spread: {e}")
+    def compute_spread_risk_reward(*args, **kwargs):
+        return None
+
 # ============================================================================
 # PACKAGE METADATA AND CONVENIENCE
 # ============================================================================
@@ -302,7 +312,10 @@ __all__ = [
     # === SPECIALIZED UTILITIES ===
     'get_volatility_metrics',
     'get_historical_bars',
-    
+
+    # === SPREAD ANALYSIS ===
+    'compute_spread_risk_reward',
+
     # === LOGGING FUNCTIONS ===
     'get_logger',
     'setup_logging',

@@ -16,9 +16,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pandas as pd
 
-from .core import CONFIG, ticker_db
-from .IB_connection import safe_ib_connect
-from .parquet_storage import ParquetChainsStorage
+from tdata_py.core import CONFIG, ticker_db
+from tdata_py.IB_connection import safe_ib_connect
+from tdata_py.parquet_storage import ParquetChainsStorage, ParquetStrikesStorage
 from fin_logger import get_logger
 
 logger = get_logger("tdata_py.chains_manager")
@@ -291,11 +291,11 @@ def getOptionStrikes(sym, trading_class, expiration, strike_min=None, strike_max
         return None
     
     # Check if expiration exists in the chain
-    available_expirations = [str(exp) for exp in chain[4]]
-    if expiration not in available_expirations:
-        logger.error(f"Expiration {expiration} not available for {sym} {trading_class}")
-        logger.debug(f"Available expirations: {available_expirations}")
-        return None
+    # available_expirations = [str(exp) for exp in chain[4]]
+    # if expiration not in available_expirations:
+    #     logger.error(f"Expiration {expiration} not available for {sym} {trading_class}")
+    #     logger.debug(f"Available expirations: {available_expirations}")
+    #     return None
     
     # Get all theoretical strikes and filter to requested range
     all_available_strikes = [float(strike) for strike in chain[5]]
@@ -306,7 +306,6 @@ def getOptionStrikes(sym, trading_class, expiration, strike_min=None, strike_max
         return []
     
     # Load cached strike states (qualified + out_of_scope)
-    from .parquet_storage import ParquetStrikesStorage
     strikes_storage = ParquetStrikesStorage()
     
     if force_refresh:
@@ -733,7 +732,6 @@ def compareTradingClasses(sym, exchangeOpt=None, force_refresh=False):
         comparison_data.append(row)
     
     try:
-        import pandas as pd
         df = pd.DataFrame(comparison_data)
         return df
     except ImportError:
