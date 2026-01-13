@@ -2,6 +2,7 @@ import sys
 import math
 import datetime
 import locale
+import numpy as np
 import pandas as pd
 import logging
 from ib_insync import *
@@ -174,12 +175,6 @@ def compute_spread_risk_reward(
         for long_strike in strikes:
 
             if abs(short_strike - long_strike) != spread_width:
-                continue
-
-            # Enforce vertical orientation
-            if right == "P" and short_strike <= long_strike:
-                continue
-            if right == "C" and short_strike >= long_strike:
                 continue
 
             if short_strike not in opt_df.index or long_strike not in opt_df.index:

@@ -330,7 +330,7 @@ class HistoricalDataConfig:
                 self.incremental_timeout = data.get('incremental_timeout', 10)
                 self.full_historical_timeout = data.get('full_historical_timeout', 120)
                 self.intraday_what_to_show = data.get('intraday_what_to_show', ["TRADES", "BID_ASK"])
-                self.historical_what_to_show = data.get('historical_what_to_show', ["TRADES", "MIDPOINT"])
+                self.historical_what_to_show = data.get('historical_what_to_show', ["TRADES", "MIDPOINT", "BID_ASK"])
                 logger.info(f"Loaded config: {len(self.contracts)} contracts")
             except Exception as e:
                 logger.error(f"Error loading config: {e}")

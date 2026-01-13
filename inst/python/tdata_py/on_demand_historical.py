@@ -156,6 +156,7 @@ def _fetch_single_contract_data(
         data_manager.collect_data_for_active_contracts(data_type, [contract_spec])
 
         # Retrieve the stored option data (HistoricalDataManager auto-stores to parquet)
+        # Try requested what_to_show first, then fall back to alternatives if not available
         from . import get_option_historical_data
         fetched_data = get_option_historical_data(
             contract_spec['symbol'],
@@ -167,6 +168,27 @@ def _fetch_single_contract_data(
             what_to_show,  # Use the passed what_to_show parameter
             True  # include_archived
         )
+
+        # Fall back to other what_to_show types if preferred type not available
+        # This is common for illiquid options where IBKR may only have MIDPOINT data
+        if fetched_data is None or fetched_data.empty:
+            fallback_types = ["MIDPOINT", "BID_ASK", "TRADES"]
+            for fallback_type in fallback_types:
+                if fallback_type == what_to_show:
+                    continue  # Already tried this one
+                fetched_data = get_option_historical_data(
+                    contract_spec['symbol'],
+                    contract_spec['trading_class'],
+                    contract_spec['expiration'],
+                    contract_spec['strike'],
+                    contract_spec['right'],
+                    data_type,
+                    fallback_type,
+                    True
+                )
+                if fetched_data is not None and not fetched_data.empty:
+                    logger.info(f"Using {fallback_type} data (requested {what_to_show} not available)")
+                    break
 
         if fetched_data is None or fetched_data.empty:
             logger.warning(f"No data available from IBKR for {contract_spec['symbol']} {contract_spec['strike']}{contract_spec['right']}")

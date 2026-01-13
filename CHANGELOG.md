@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.77] - 2026-01-13
+
+### Fixed
+- **on_demand_historical.py**: Fixed issue where option historical data returned None despite being successfully fetched
+  - **Problem**: When IBKR only provides MIDPOINT or BID_ASK data (no TRADES), `_fetch_single_contract_data()` failed to return any data
+  - **Root cause**: Function only tried the requested `what_to_show` type (default: TRADES), ignoring successfully saved data of other types
+  - **Solution**: Added fallback logic to try alternative data types (MIDPOINT, BID_ASK) if the requested type is not available
+  - **Impact**: Options with limited liquidity will now return available data instead of None
+
+### Added
+- **historical_option.py**: Added BID_ASK to `historical_what_to_show` default options
+  - Updated `load_config()` default from `["TRADES", "MIDPOINT"]` to `["TRADES", "MIDPOINT", "BID_ASK"]`
+  - Also updated `historical_config.json` to include BID_ASK
+  - **Impact**: BID_ASK now available in RPreTrade dropdown for historical data type selection
+
 ## [5.7.72] - 2026-01-09
 
 ### Changed
