@@ -9,10 +9,61 @@ from ib_insync import *
 # Import from other modules
 from .contract import getOptValue
 from .chains_manager import getOptionStrikes
-from fin_logger import get_logger, log_execution_time
 
-# Créez un logger pour ce module
-logger = get_logger("tdata_py.spread")
+# Create a dedicated logger for debug messages
+debug_log = logging.getLogger("spread_debug")
+debug_log.setLevel(logging.DEBUG)  # standard Logger works
+handler = logging.StreamHandler()  # print to console
+formatter = logging.Formatter("[%(levelname)s] %(message)s")
+handler.setFormatter(formatter)
+debug_log.addHandler(handler)
+debug_log.propagate = False
+
+import math
+import logging
+import pandas as pd
+
+# ---------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
+
+
+# ---------------------------------------------------------------------
+# Canonical DEBUG summary (single source of truth)
+# ---------------------------------------------------------------------
+def log_spread_summary(
+    sym,
+    expiration,
+    right,
+    spread_type,
+    short_strike,
+    long_strike,
+    short_delta,
+    net_premium,
+    max_risk,
+    max_reward,
+    prob_success_delta,
+    prob_success_market,
+    edge,
+    expected_value
+):
+    log.debug(
+        f"{sym} {expiration} | "
+        f"{spread_type:6} {right} | "
+        f"S={short_strike:6.1f} L={long_strike:6.1f} | "
+        f"Δ={short_delta:6.3f} | "
+        f"PΔ={prob_success_delta:5.3f} "
+        f"PM={prob_success_market:5.3f} | "
+        f"net={net_premium:7.2f} "
+        f"risk={max_risk:7.0f} "
+        f"rew={max_reward:7.0f} | "
+        f"edge={edge:6.3f} "
+        f"EV={expected_value:8.2f}"
+    )
+
+
 
 def compute_spread_risk_reward(
     sym,
@@ -34,13 +85,55 @@ def compute_spread_risk_reward(
       - Delta-implied probability of success
       - Market-implied probability of success (scaled by multiplier)
       - Expected value
+      Compute risk/reward, expected value, and success probabilities for option vertical spreads.
+      
+      SUMMARY OF KEY CONCEPTS AND FORMULAS:
+      
+      1. Spread Types:
+         - DEBIT: You pay premium to buy a spread (long call or long put). Max risk = premium paid.
+         - CREDIT: You receive premium to sell a spread (short call or short put). Max reward = premium received.
+      
+      2. Delta-Implied Probability of Success:
+         - Approximates risk-neutral probability of the spread achieving maximum profit based on option delta.
+         - For DEBIT spreads: success occurs if short leg finishes ITM
+             - prob_success_delta = delta_ITM (call delta or abs(put delta))
+         - For CREDIT spreads: success occurs if short leg finishes OTM
+             - prob_success_delta = 1 - delta_ITM (call delta or abs(put delta))
+      
+      3. Market-Implied Probability of Success:
+         - Derived from the spread price under the assumption that expected value according to the market is zero.
+         - For DEBIT spreads (you pay premium):
+             EV_market = p_success * max_reward - (1 - p_success) * premium = 0
+             => prob_success_market = premium / (premium + max_reward)
+         - For CREDIT spreads (you receive premium):
+             EV_market = p_success * premium - (1 - p_success) * max_risk = 0
+             => prob_success_market = max_risk / (premium + max_risk)
+         - This ensures probabilities are always between 0 and 1 and consistent with market pricing.
+      
+      4. Risk/Reward and Expected Value:
+         - max_reward and max_risk are computed in the same units as the premium (scaled by multiplier).
+         - Expected value uses delta-implied probability:
+             expected_value = prob_success_delta * max_reward - (1 - prob_success_delta) * max_risk
+         - Edge metric can be computed as:
+             edge = prob_success_delta - prob_success_market
+      
+      5. Important Notes:
+         - Delta-implied probability approximates the physical/risk-neutral probability for the short leg finishing ITM (or OTM for credit).
+         - Market-implied probability is derived from the price of the spread assuming a simplified binary payoff (max reward or max risk) and expected value = 0.
+         - For deep OTM debit spreads or tight credit spreads, delta and market probabilities can differ significantly due to skew, implied vol, or the triangular nature of vertical spread payoff.
+         - Probabilities and expected value should always be computed using **the same units** for premium, max_reward, and max_risk (i.e., scaled by contract multiplier).
+      
+      6. Practical Interpretation:
+         - High edge (prob_success_delta - prob_success_market) indicates spreads that may be mispriced relative to delta-implied risk-neutral probability.
+         - Expected value may still be negative even if delta-implied probability is high, if max risk greatly exceeds max reward.
+      
     """
 
-    # -----------------------------
+    # --------------------------------------------------------------
     # Strike bounds
-    # -----------------------------
-    strike_min = current_price * (1 - moneyness_pct)
-    strike_max = current_price * (1 + moneyness_pct)
+    # --------------------------------------------------------------
+    strike_min = current_price * (1.0 - moneyness_pct)
+    strike_max = current_price * (1.0 + moneyness_pct)
 
     strikes = getOptionStrikes(
         sym=sym,
@@ -48,21 +141,19 @@ def compute_spread_risk_reward(
         expiration=expiration,
         strike_min=strike_min,
         strike_max=strike_max,
-        secType="OPT",
         currency=currency,
-        exchangeSec=exchangeSec,
-        exchangeOpt=exchangeOpt
+        exchangeOpt=exchangeOpt,
     )
 
     if not strikes:
+        log.warning("No strikes returned.")
         return pd.DataFrame()
 
     strikes = sorted(strikes)
-    strike_set = set(strikes)
 
-    # -----------------------------
-    # Option prices + greeks
-    # -----------------------------
+    # --------------------------------------------------------------
+    # Fetch option prices & greeks
+    # --------------------------------------------------------------
     opt_df = getOptValue(
         sym=sym,
         expiration=expiration,
@@ -70,99 +161,134 @@ def compute_spread_risk_reward(
         right=right,
         currency=currency,
         exchange=exchangeOpt,
-        tradingClass=trading_class
+        tradingClass=trading_class,
     )
 
     if opt_df is None or opt_df.empty:
+        log.warning("No option pricing data returned.")
         return pd.DataFrame()
 
     opt_df = opt_df.set_index("strike")
-    results = []
 
-    # -----------------------------
-    # Build vertical spreads
-    # -----------------------------
-    for k1 in strikes:
-        k2 = k1 + spread_width
-        if k2 not in strike_set:
-            continue
+    rows = []
 
-        width = abs(k2 - k1)
+    # --------------------------------------------------------------
+    # Enumerate spreads
+    # --------------------------------------------------------------
+    for short_strike in strikes:
+        for long_strike in strikes:
 
-        # Evaluate BOTH orientations
-        for short_strike, long_strike in [(k1, k2), (k2, k1)]:
+            if abs(short_strike - long_strike) != spread_width:
+                continue
 
-            short_price = opt_df.loc[short_strike, "value"]
-            long_price  = opt_df.loc[long_strike,  "value"]
-            short_delta = opt_df.loc[short_strike, "delta"]
+            try:
+                short_price = opt_df.loc[short_strike, "value"]
+                long_price = opt_df.loc[long_strike, "value"]
+                short_delta = opt_df.loc[short_strike, "delta"]
+            except KeyError:
+                continue
 
-            net_premium = short_price - long_price
+            if short_price is None or long_price is None:
+                continue
 
-            # -----------------------------
-            # Determine spread type and risk/reward
-            # -----------------------------
-            if net_premium > 0:
-                # CREDIT spread
-                spread_type = "CREDIT"
-                credit = net_premium * multiplier
-                max_reward = credit
-                max_risk   = (width * multiplier - credit)
-                if max_risk <= 0:
-                    continue
+            if short_delta is None or math.isnan(short_delta):
+                log.warning(
+                    f"Missing delta for short strike {short_strike}, right={right}. "
+                    "Skipping this spread."
+                )
+                continue
+
+            # --------------------------------------------------
+            # Net premium
+            # --------------------------------------------------
+            net_premium = (short_price - long_price) * multiplier
+
+            spread_type = "CREDIT" if net_premium > 0 else "DEBIT"
+
+            width_value = spread_width * multiplier
+
+            if spread_type == "CREDIT":
+                max_reward = abs(net_premium)
+                max_risk = width_value - max_reward
             else:
-                # DEBIT spread
-                spread_type = "DEBIT"
-                debit = abs(net_premium) * multiplier
-                max_risk   = debit
-                max_reward = (width * multiplier - debit)
-                if max_reward <= 0:
-                    continue
+                max_risk = abs(net_premium)
+                max_reward = width_value - max_risk
 
-            # -----------------------------
+            if max_risk <= 0 or max_reward <= 0:
+                continue
+
+            reward_risk_ratio = max_reward / max_risk
+
+            # --------------------------------------------------
             # Delta-implied probability of success
-            # -----------------------------
-            if right == "C":
-                delta_itm = max(0.0, min(1.0, short_delta))
-            else:  # Put
-                delta_itm = max(0.0, min(1.0, abs(short_delta)))
+            # --------------------------------------------------
+            prob_itm = abs(short_delta)
 
             if spread_type == "DEBIT":
-                # Debit succeeds if short leg ITM
-                prob_success_delta = delta_itm
+                # debit profits when spread expires ITM
+                prob_success_delta = prob_itm
             else:
-                # Credit succeeds if short leg OTM
-                prob_success_delta = 1.0 - delta_itm
+                # credit profits when spread expires OTM
+                prob_success_delta = 1.0 - prob_itm
 
-            # -----------------------------
-            # Market-implied probability of success
-            # -----------------------------
-            if spread_type == "CREDIT":
-                # Credit received = max_reward, risk = max_risk
-                prob_success_market = max_risk / (max_reward + max_risk)
-            else:  # DEBIT
-                # Debit paid = max_risk, reward = max_reward
+            prob_success_delta = max(0.0, min(1.0, prob_success_delta))
+
+            # --------------------------------------------------
+            # Market-implied probability of success (zero EV)
+            # --------------------------------------------------
+            if spread_type == "DEBIT":
+                prob_success_market = max_risk / (max_risk + max_reward)
+            else:
                 prob_success_market = max_risk / (max_risk + max_reward)
 
+            prob_success_market = max(0.0, min(1.0, prob_success_market))
 
-            # -----------------------------
-            # Expected value (delta-weighted)
-            # -----------------------------
-            expected_value = prob_success_delta * max_reward - (1 - prob_success_delta) * max_risk
+            # --------------------------------------------------
+            # Edge and expected value
+            # --------------------------------------------------
+            edge = prob_success_delta - prob_success_market
 
-            results.append({
-                "right": right,
-                "spread_type": spread_type,
-                "short_strike": short_strike,
-                "long_strike": long_strike,
-                "width": width,
-                "net_premium": round(net_premium, 3),
-                "max_risk": round(max_risk, 2),
-                "max_reward": round(max_reward, 2),
-                "reward_risk_ratio": round(max_reward / max_risk, 3),
-                "prob_success_delta": round(prob_success_delta, 3),
-                "prob_success_market": round(prob_success_market, 3),
-                "edge": round(prob_success_delta - prob_success_market, 3),
-                "expected_value": round(expected_value, 2)
-            })
+            expected_value = (
+                prob_success_delta * max_reward
+                - (1.0 - prob_success_delta) * max_risk
+            )
 
-    return pd.DataFrame(results).sort_values("reward_risk_ratio").reset_index(drop=True)
+            # --------------------------------------------------
+            # Debug summary (single canonical log)
+            # --------------------------------------------------
+            log_spread_summary(
+                sym=sym,
+                expiration=expiration,
+                right=right,
+                spread_type=spread_type,
+                short_strike=short_strike,
+                long_strike=long_strike,
+                short_delta=short_delta,
+                net_premium=net_premium,
+                max_risk=max_risk,
+                max_reward=max_reward,
+                prob_success_delta=prob_success_delta,
+                prob_success_market=prob_success_market,
+                edge=edge,
+                expected_value=expected_value,
+            )
+
+            rows.append(
+                dict(
+                    right=right,
+                    spread_type=spread_type,
+                    short_strike=short_strike,
+                    long_strike=long_strike,
+                    width=spread_width,
+                    net_premium=round(net_premium, 2),
+                    max_risk=round(max_risk, 0),
+                    max_reward=round(max_reward, 0),
+                    reward_risk_ratio=round(reward_risk_ratio, 3),
+                    prob_success_delta=round(prob_success_delta, 3),
+                    prob_success_market=round(prob_success_market, 3),
+                    edge=round(edge, 3),
+                    expected_value=round(expected_value, 2),
+                )
+            )
+
+    return pd.DataFrame(rows)
