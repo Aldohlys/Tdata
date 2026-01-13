@@ -354,7 +354,12 @@ getVolMetrics <- function(sym_list) {
 
     ### Retrieve currency from Ticker DB or use USD by default
     ticker = getTicker(sym)
-    if (nrow(ticker) == 0) currency = "USD" else currency = ticker$Currency
+    if (nrow(ticker) == 0) {
+      Tbasics::display_message(paste0("Ticker ", sym, " not found in DB. Using default values (USD, SMART exchange)."))
+      currency = "USD"
+    } else {
+      currency = ticker$Currency
+    }
 
     iv180_data <- getIV_DTE(sym, currency, metrics$price, 180)
     metrics$iv180 <- round(iv180_data$v, 4)
