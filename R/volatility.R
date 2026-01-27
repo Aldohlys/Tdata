@@ -361,10 +361,46 @@ getVolMetrics <- function(sym_list) {
       currency = ticker$Currency
     }
 
-    iv180_data <- getIV_DTE(sym, currency, metrics$price, 180)
-    metrics$iv180 <- round(iv180_data$v, 4)
-    ### Append to DB - with or without margin data retrieved from IBKR
-    safe_db_append(conn, "Prices",metrics); metrics
+    ### Fallback: iv30 from option chains when IBKR aggregate IV unavailable
+    if (is.na(metrics$iv30)) {
+      logger::log_info("IBKR aggregate IV unavailable for {sym}, computing iv30 from option chains", namespace = "Tdata")
+      iv30_data <- tryCatch(getIV_DTE(sym, currency, metrics$price, 30), error = function(e) NA)
+      if (is.list(iv30_data) && !is.na(iv30_data$v)) {
+        metrics$iv30 <- round(iv30_data$v, 4)
+        logger::log_info("iv30 fallback for {sym}: {metrics$iv30}", namespace = "Tdata")
+      }
+    }
+
+    ### Fallback: rv30 from Yahoo historical prices when IBKR aggregate HV unavailable
+    if (is.na(metrics$rv30)) {
+      logger::log_info("IBKR aggregate HV unavailable for {sym}, computing rv30 from Yahoo prices", namespace = "Tdata")
+      rv30 <- tryCatch({
+        prices <- get_har_price_data(sym, lookback_days = 60, source = "yahoo")
+        if (!is.null(prices) && nrow(prices) >= 22) {
+          close_col <- grep("\\.Close$", colnames(prices), value = TRUE)
+          closes <- as.numeric(prices[, close_col])
+          n_days <- min(22, length(closes) - 1)
+          recent_closes <- utils::tail(closes, n_days + 1)
+          log_returns <- diff(log(recent_closes))
+          sd(log_returns) * sqrt(252)
+        } else NA_real_
+      }, error = function(e) {
+        logger::log_warn("rv30 Yahoo fallback failed for {sym}: {e$message}", namespace = "Tdata")
+        NA_real_
+      })
+      if (!is.na(rv30) && is.finite(rv30)) {
+        metrics$rv30 <- round(rv30, 4)
+        logger::log_info("rv30 fallback for {sym}: {metrics$rv30}", namespace = "Tdata")
+      }
+    }
+
+    ### Compute iv180 from option chains (handle NA return from getIV_DTE safely)
+    iv180_data <- tryCatch(getIV_DTE(sym, currency, metrics$price, 180), error = function(e) NA)
+    metrics$iv180 <- if (is.list(iv180_data) && !is.na(iv180_data$v)) round(iv180_data$v, 4) else NA_real_
+
+    ### Append to DB
+    safe_db_append(conn, "Prices", metrics)
+    metrics
   })
 }
 
