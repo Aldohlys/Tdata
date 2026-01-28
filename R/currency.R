@@ -518,9 +518,9 @@ base_currency_format <- function(amount) {
 #'currency_format(c(100,40),"EUR")
 #'}
 #'@export
-currency_format = function(amount, currency){
+currency_format = function(amount, currency, accuracy = 0.01){
   #Returns the amount values formatted with their respective currency sign, based on the currency argument
-  ## Amounts are rounded to 0.01
+  ## Amounts are rounded to accuracy (default 0.01)
 
   ### If length currency equals 1 and length arguments differ
   ### then recycled otherwise error is raised
@@ -539,7 +539,7 @@ currency_format = function(amount, currency){
           prefix = "",
           suffix = paste0(" ", curr), #### EURO sign = \u20ac"
           big.mark = " ",
-          accuracy=0.01
+          accuracy = accuracy
         )
       })
 
