@@ -327,14 +327,16 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
                     delta = ticker.modelGreeks.delta
             
             # Build result dictionary with safe rounding
+            # Use 5 decimal places for prices to support forex futures options (6S, 6E, etc.)
+            # where prices can be very small (e.g., 0.035)
             row = {
                 "strike": strike,
-                "value": round(market_price, 2) if market_price is not None and not math.isnan(market_price) else float('nan'),
-                "bid": round(bid_price, 2) if bid_price is not None else float('nan'),
-                "ask": round(ask_price, 2) if ask_price is not None else float('nan'),
-                "spread": round(spread, 2) if not math.isnan(spread) else float('nan'),
-                "impliedvol": round(implied_vol, 3) if not math.isnan(implied_vol) else float('nan'),
-                "delta": round(delta, 2) if not math.isnan(delta) else float('nan')
+                "value": round(market_price, 5) if market_price is not None and not math.isnan(market_price) else float('nan'),
+                "bid": round(bid_price, 5) if bid_price is not None else float('nan'),
+                "ask": round(ask_price, 5) if ask_price is not None else float('nan'),
+                "spread": round(spread, 5) if not math.isnan(spread) else float('nan'),
+                "impliedvol": round(implied_vol, 4) if not math.isnan(implied_vol) else float('nan'),
+                "delta": round(delta, 3) if not math.isnan(delta) else float('nan')
             }
             
             result_dic.append(row)
@@ -420,8 +422,8 @@ def getStraddleValue(sym, expiration, strike, currency=None, exchange=None, trad
         ib.reqMarketDataType(4)
         ticker = ib.reqTickers(*contract)
         
-        # Sum put and call values
-        value = round(ticker[0].marketPrice() + ticker[1].marketPrice(), 2)
+        # Sum put and call values (5 decimals for forex futures options)
+        value = round(ticker[0].marketPrice() + ticker[1].marketPrice(), 5)
         ib.sleep(1)
         
         if(math.isnan(value)):
