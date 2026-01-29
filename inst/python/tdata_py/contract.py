@@ -216,7 +216,7 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
 def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, tradingClass=None):
     """
     Get option values, implied volatility and delta for one or multiple strikes.
-    
+
     Args:
         sym (str): Option's underlying symbol
         expiration (str): Option expiration date in format YYYYMMDD
@@ -225,9 +225,9 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
         currency (str, optional): Currency code. If None, uses value from ticker database.
         exchange (str, optional): Exchange name. If None, uses value from ticker database.
         tradingClass (str, optional): Trading class. If None, uses value from ticker database.
-        
+
     Returns:
-        DataFrame or None: 
+        DataFrame or None:
             DataFrame with strike, value, impliedvol, delta columns if successful
             None if connection error or contract doesn't exist
     """
