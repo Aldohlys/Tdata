@@ -254,3 +254,46 @@ getOptPrice = function(sym, tradingClass, right, strike, expiration, currency="U
 }
 
 
+#'getOptMarketData
+#'
+#'Retrieves full market data for one or more option strikes from IBKR.
+#'
+#'Returns a data.frame with bid, ask, last, mid prices plus IBKR model greeks.
+#'Accepts a vector of strikes (same expiration and right).
+#'@param sym string - IBKR ticker symbol
+#'@param right string - can be P, C, Put or Call
+#'@param strikes numeric vector - one or more strike prices
+#'@param expiration date, number or string - expiration date (YYYYMMDD format)
+#'@param currency string - currency code, default "USD"
+#'@param exchange string - exchange, default "SMART"
+#'@returns data.frame with columns: strike, value, bid, ask, last, mid, spread, impliedvol, delta; or NULL on failure
+#'@examples
+#'\dontrun{
+#'getOptMarketData("SPY", "P", c(500, 510), "20260320")
+#'getOptMarketData("SPY", "Call", 500, as.Date("2026-03-20"))
+#'}
+#'@export
+getOptMarketData = function(sym, right, strikes, expiration, currency = "USD", exchange = "SMART") {
+  ## Normalize right
+  if (right == "Put") right = "P"
+  if (right == "Call") right = "C"
+
+  ## Normalize expiration
+  if (is.numeric(expiration)) expiration = as.character(expiration)
+  else if (inherits(expiration, "Date")) expiration = format(expiration, "%Y%m%d")
+  else if (!is.character(expiration)) stop("expiration date must be either a date, a number or a character string!")
+
+  strikes = as.numeric(strikes)
+
+  result = tdata_py$getOptValue(sym = sym, expiration = expiration,
+                                strikes = as.list(strikes), right = right)
+
+  if (is.null(result)) return(NULL)
+
+  ## Compute mid price
+  result$mid = (result$bid + result$ask) / 2
+
+  return(result)
+}
+
+

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.6] - 2026-01-29
+
+### Added
+- **ibkr.R**: New exported function `getOptMarketData()` for retrieving full option market data
+  - Accepts single or vector of strikes (same expiration and right)
+  - Returns data.frame with strike, value, bid, ask, last, mid, spread, impliedvol, delta
+  - Normalizes right ("Put"→"P", "Call"→"C") and expiration formats
+  - Computes mid price from bid/ask
+
+### Changed
+- **contract.py**: Added `last` price field to `getOptValue()` result dictionary
+  - Extracts `ticker.last` with safe None/NaN handling
+  - Backward compatible: only adds a column to the returned DataFrame
+
 ## [5.7.77] - 2026-01-13
 
 ### Fixed

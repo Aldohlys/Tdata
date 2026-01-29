@@ -306,9 +306,10 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
             # Safe market price calculation
             market_price = ticker.marketPrice() if not math.isnan(ticker.marketPrice()) else ticker.close
             
-            # Safe bid/ask calculation  
+            # Safe bid/ask/last calculation
             bid_price = ticker.bid if ticker.bid != -1 and not math.isnan(ticker.bid) else None
             ask_price = ticker.ask if ticker.ask != -1 and not math.isnan(ticker.ask) else None
+            last_price = ticker.last if ticker.last is not None and not math.isnan(ticker.last) else None
             
             # Safe spread calculation
             if bid_price is not None and ask_price is not None and (bid_price + ask_price) != 0:
@@ -334,6 +335,7 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
                 "value": round(market_price, 5) if market_price is not None and not math.isnan(market_price) else float('nan'),
                 "bid": round(bid_price, 5) if bid_price is not None else float('nan'),
                 "ask": round(ask_price, 5) if ask_price is not None else float('nan'),
+                "last": round(last_price, 5) if last_price is not None else float('nan'),
                 "spread": round(spread, 5) if not math.isnan(spread) else float('nan'),
                 "impliedvol": round(implied_vol, 4) if not math.isnan(implied_vol) else float('nan'),
                 "delta": round(delta, 3) if not math.isnan(delta) else float('nan')
