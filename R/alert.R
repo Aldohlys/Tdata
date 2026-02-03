@@ -67,7 +67,7 @@ getAllAlerts <- function(active_only = TRUE) {
 #' Adds a new alert to the Alerts table.
 #'
 #'@param theme Character. One of: "Earnings", "Macro", "Expiration", "Technical".
-#'@param asset Character. The asset symbol or name.
+#'@param asset Character. The asset symbol or name. Can be empty for non-asset alerts (e.g. FOMC).
 #'@param alert_date Character or Date. The alert date in ISO format (YYYY-MM-DD).
 #'@param description Character. Optional description text. Default is empty string.
 #'@return The data frame that was appended (one row).
@@ -77,7 +77,7 @@ getAllAlerts <- function(active_only = TRUE) {
 #'addAlert("Technical", "SPY", Sys.Date() + 7, "RSI oversold level")
 #'}
 #'@export
-addAlert <- function(theme, asset, alert_date, description = "") {
+addAlert <- function(theme, asset = "", alert_date, description = "") {
   valid_themes <- c("Earnings", "Macro", "Expiration", "Technical")
   if (!theme %in% valid_themes) {
     stop(paste("Invalid theme:", theme, "- must be one of:", paste(valid_themes, collapse = ", ")))

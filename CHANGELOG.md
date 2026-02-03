@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.9] - 2026-02-03
+
+### Changed
+- **alert.R**: Made `asset` parameter optional in `addAlert()` (default `""`)
+  - Supports non-asset alerts such as FOMC meetings or macro events
+
 ## [5.8.8] - 2026-02-03
 
 ### Added
