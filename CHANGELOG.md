@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.8] - 2026-02-03
+
+### Added
+- **alert.R**: New alert management database layer with 6 exported functions
+  - `createAlertTable()` — creates Alerts table (id, Theme, Asset, AlertDate, Description, Active, CreatedAt)
+  - `getAllAlerts(active_only)` — retrieves alerts sorted by date, with optional active filter
+  - `addAlert(theme, asset, alert_date, description)` — validates theme and appends alert row
+  - `removeAlert(id)` — permanently deletes an alert by id
+  - `dismissAlert(id)` — sets Active=0 to hide alert without deleting
+  - `getUpcomingAlerts(days_ahead)` — returns active alerts within a date range for email notifications
+  - Themes: Earnings, Macro, Expiration, Technical
+
 ## [5.8.7] - 2026-01-29
 
 ### Added
