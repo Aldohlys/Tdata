@@ -236,7 +236,8 @@ except ImportError as e:
 try:
     from .impliedvol import (
         get_volatility_metrics,
-        get_historical_bars
+        get_historical_bars,
+        get_iv_percentile_levels
     )
 except ImportError as e:
     print(f"Error importing impliedvol: {e}")
@@ -312,6 +313,7 @@ __all__ = [
     # === SPECIALIZED UTILITIES ===
     'get_volatility_metrics',
     'get_historical_bars',
+    'get_iv_percentile_levels',
 
     # === SPREAD ANALYSIS ===
     'compute_spread_risk_reward',
