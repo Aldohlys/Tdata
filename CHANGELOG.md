@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.10] - 2026-02-04
+
+### Added
+- **impliedvol.py**: New `get_iv_percentile_levels()` function
+  - Fetches 252-day OPTION_IMPLIED_VOLATILITY history from IBKR
+  - Returns IV values at percentile breakpoints (p10, p25, p50, p75, p90) using numpy
+  - Reuses existing `_create_contract()`, `_fetch_historical_data()`, `_calculate_days_covered()`
+- **volatility.R**: New exported `getIVPercentileLevels()` R wrapper
+  - Calls Python function and returns clean named list (current, p10-p90, days_covered)
+  - Used by TODO #19 IV Percentile-Based Vega Risk Table
+
 ## [5.8.9] - 2026-02-03
 
 ### Changed

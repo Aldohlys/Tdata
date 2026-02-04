@@ -1,6 +1,7 @@
 import math
 import datetime
 import locale
+import numpy as np
 import pandas as pd
 import logging
 from ib_insync import *
@@ -399,4 +400,80 @@ def get_historical_bars(sym, duration="400 D", bar_size="15 mins", secType=None,
         ib.disconnect()
 
     return df
+
+
+def get_iv_percentile_levels(sym, secType=None, currency=None, exchange=None,
+                             expiration_future=None, lookback_days=252,
+                             levels=[10, 25, 50, 75, 90]):
+    """
+    Fetch historical IV data and return IV values at specific percentile levels.
+
+    Args:
+        sym: Symbol to analyze
+        secType: Security type (STK, FUT, IND, CASH)
+        currency: Currency (default from ticker_db)
+        exchange: Exchange (default from ticker_db)
+        expiration_future: Future expiration (for FUT contracts)
+        lookback_days: Number of days to look back (default 252)
+        levels: List of percentile levels to compute (default [10, 25, 50, 75, 90])
+
+    Returns:
+        Dict with symbol, current_iv, days_covered, and pXX keys for each level
+    """
+    ib = safe_ib_connect()
+    if not ib.isConnected():
+        return None
+
+    bar_size = _determine_bar_size(lookback_days)
+
+    ticker_info = ticker_db.get_ticker_info(sym)
+    if ticker_info is None:
+        logger.warning(f"No ticker info found for {sym}, using defaults")
+        if secType is None: secType = 'STK'
+        if currency is None: currency = 'USD'
+        if exchange is None: exchange = 'SMART'
+    else:
+        if secType is None: secType = ticker_info.get('Type')
+        if currency is None: currency = ticker_info.get('Currency')
+        if exchange is None: exchange = ticker_info.get('Exchange')
+
+    if secType == "FUT" and expiration_future is None:
+        expiration_future = ticker_info.get('Expiration') if ticker_info else None
+
+    contract = _create_contract(sym, secType, currency, exchange, expiration_future)
+    if contract is None:
+        return None
+
+    ib.qualifyContracts(contract)
+    duration_str = f"{int(lookback_days)} D"
+
+    iv_bars = _fetch_historical_data(ib, contract, duration_str, bar_size,
+                                     'OPTION_IMPLIED_VOLATILITY')
+
+    ib.sleep(1)
+    ib.disconnect()
+
+    if iv_bars is None or len(iv_bars) == 0:
+        logger.warning(f"No IV data returned for {sym}")
+        return None
+
+    df = util.df(iv_bars)
+    df = df.copy()
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.sort_values('date').reset_index(drop=True)
+
+    closes = df['close'].values
+    current_iv = float(closes[-1])
+
+    result = {
+        'symbol': sym,
+        'current_iv': current_iv,
+        'days_covered': _calculate_days_covered(df)
+    }
+
+    for level in levels:
+        key = f"p{level}"
+        result[key] = float(np.percentile(closes, level))
+
+    return result
 

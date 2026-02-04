@@ -1208,3 +1208,41 @@ print.har_evaluation <- function(x, ...) {
   invisible(x)
 }
 
+
+#' Get IV Values at Historical Percentile Levels
+#'
+#' Fetches 252-day IV history from IBKR and returns IV values at specific
+#' percentile breakpoints (10th, 25th, 50th, 75th, 90th). Requires IBKR TWS connection.
+#'
+#' @param sym IBKR symbol string
+#' @return Named list with current_iv, p10, p25, p50, p75, p90, days_covered.
+#'   Returns NULL if data unavailable.
+#' @examples
+#' \dontrun{
+#' getIVPercentileLevels("SPY")
+#' }
+#' @export
+getIVPercentileLevels <- function(sym) {
+  stopifnot(is.character(sym), length(sym) == 1)
+
+  result <- tryCatch(
+    tdata_py$get_iv_percentile_levels(sym = sym),
+    error = function(e) {
+      logger::log_warn("getIVPercentileLevels failed for {sym}: {e$message}", namespace = "Tdata")
+      NULL
+    }
+  )
+
+  if (is.null(result)) return(NULL)
+
+  list(
+    current = as.numeric(result$current_iv),
+    p10     = as.numeric(result$p10),
+    p25     = as.numeric(result$p25),
+    p50     = as.numeric(result$p50),
+    p75     = as.numeric(result$p75),
+    p90     = as.numeric(result$p90),
+    days_covered = as.integer(result$days_covered)
+  )
+}
+
