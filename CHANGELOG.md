@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.12] - 2026-02-04
+
+### Added
+- **historical_option.py**: Add `spread` and `spread_pct` derived fields to BID_ASK records
+  - `spread` = ask - bid (absolute spread in dollars)
+  - `spread_pct` = (spread / bid) * 100 (spread as percentage of bid)
+  - IBKR does not provide volume for BID_ASK bars, so spread metrics are the enhancement path (TODO #17)
+  - Only computed for BID_ASK what_to_show type; existing parquet files unaffected (schema evolution)
+
 ## [5.8.11] - 2026-02-04
 
 ### Fixed

@@ -683,6 +683,12 @@ class HistoricalDataManager:
                 record["ask"] = bar.close     # time-weighted average ask
                 record["bid_low"] = bar.low   # minimum bid
                 record["ask_high"] = bar.high # maximum ask
+                # Derived spread metrics
+                record["spread"] = record["ask"] - record["bid"]
+                record["spread_pct"] = (
+                    (record["spread"] / record["bid"]) * 100
+                    if record["bid"] > 0 else 0.0
+                )
             elif what_to_show == "MIDPOINT":
                 # For MIDPOINT: OHLC values are midpoint between bid/ask
                 # This is what we want for charting
