@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.14] - 2026-02-05
+
+### Fixed
+- **historical_option.py**: Use ask_high - bid_low for spread calculation
+  - IBKR BID_ASK bars often have bar.open == bar.close (time-weighted averages equal)
+  - Changed spread formula: `spread = ask_high - bid_low` (max spread during bar)
+  - Changed spread_pct formula: `spread_pct = spread / bid_low * 100`
+  - This gives meaningful spread values instead of always 0
+
 ## [5.8.13] - 2026-02-05
 
 ### Fixed

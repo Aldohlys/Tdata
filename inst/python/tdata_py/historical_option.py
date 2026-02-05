@@ -172,25 +172,26 @@ class HistoricalStorage:
         combined_data['last_updated'] = datetime.datetime.now().isoformat()
 
         # Ensure spread columns exist for BID_ASK rows (backfill for legacy data)
-        if 'bid' in combined_data.columns and 'ask' in combined_data.columns:
+        # Use ask_high - bid_low for spread (max spread during bar) since bid/ask often equal
+        if 'bid_low' in combined_data.columns and 'ask_high' in combined_data.columns:
             # Add spread columns if missing
             if 'spread' not in combined_data.columns:
                 combined_data['spread'] = None
             if 'spread_pct' not in combined_data.columns:
                 combined_data['spread_pct'] = None
 
-            # Compute spread for BID_ASK rows that have bid/ask but missing spread
+            # Compute spread for BID_ASK rows that have bid_low/ask_high but missing spread
             bid_ask_mask = (combined_data['what_to_show'] == 'BID_ASK') & \
-                           combined_data['bid'].notna() & \
-                           combined_data['ask'].notna() & \
+                           combined_data['bid_low'].notna() & \
+                           combined_data['ask_high'].notna() & \
                            combined_data['spread'].isna()
 
             if bid_ask_mask.any():
                 combined_data.loc[bid_ask_mask, 'spread'] = \
-                    combined_data.loc[bid_ask_mask, 'ask'] - combined_data.loc[bid_ask_mask, 'bid']
+                    combined_data.loc[bid_ask_mask, 'ask_high'] - combined_data.loc[bid_ask_mask, 'bid_low']
                 combined_data.loc[bid_ask_mask, 'spread_pct'] = \
                     combined_data.loc[bid_ask_mask].apply(
-                        lambda r: (r['spread'] / r['bid'] * 100) if r['bid'] > 0 else 0.0, axis=1
+                        lambda r: (r['spread'] / r['bid_low'] * 100) if r['bid_low'] > 0 else 0.0, axis=1
                     )
                 logger.debug(f"Backfilled spread for {bid_ask_mask.sum()} legacy BID_ASK rows")
 
@@ -706,11 +707,12 @@ class HistoricalDataManager:
                 record["ask"] = bar.close     # time-weighted average ask
                 record["bid_low"] = bar.low   # minimum bid
                 record["ask_high"] = bar.high # maximum ask
-                # Derived spread metrics
-                record["spread"] = record["ask"] - record["bid"]
+                # Derived spread metrics using ask_high - bid_low (max spread during bar)
+                # Note: bar.open/bar.close often equal for options, so use low/high instead
+                record["spread"] = record["ask_high"] - record["bid_low"]
                 record["spread_pct"] = (
-                    (record["spread"] / record["bid"]) * 100
-                    if record["bid"] > 0 else 0.0
+                    (record["spread"] / record["bid_low"]) * 100
+                    if record["bid_low"] > 0 else 0.0
                 )
             elif what_to_show == "MIDPOINT":
                 # For MIDPOINT: OHLC values are midpoint between bid/ask
