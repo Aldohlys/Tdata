@@ -180,11 +180,12 @@ class HistoricalStorage:
             if 'spread_pct' not in combined_data.columns:
                 combined_data['spread_pct'] = None
 
-            # Compute spread for BID_ASK rows that have bid_low/ask_high but missing spread
+            # Compute spread for BID_ASK rows that have bid_low/ask_high but missing or zero spread
+            # Also recalculate if spread=0 but bid_low != ask_high (legacy wrong calculation)
             bid_ask_mask = (combined_data['what_to_show'] == 'BID_ASK') & \
                            combined_data['bid_low'].notna() & \
                            combined_data['ask_high'].notna() & \
-                           combined_data['spread'].isna()
+                           (combined_data['spread'].isna() | (combined_data['spread'] == 0))
 
             if bid_ask_mask.any():
                 combined_data.loc[bid_ask_mask, 'spread'] = \

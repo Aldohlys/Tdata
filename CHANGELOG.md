@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.15] - 2026-02-05
+
+### Fixed
+- **historical_option.py**: Recalculate spread when it's 0 but should have a value
+  - Backfill mask now triggers on `spread.isna() | (spread == 0)`
+  - Fixes legacy data where spread was incorrectly set to 0 using bid/ask instead of bid_low/ask_high
+
 ## [5.8.14] - 2026-02-05
 
 ### Fixed
