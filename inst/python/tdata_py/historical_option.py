@@ -170,7 +170,30 @@ class HistoricalStorage:
         combined_data['exchange'] = exchange
         combined_data['data_type'] = data_type
         combined_data['last_updated'] = datetime.datetime.now().isoformat()
-        
+
+        # Ensure spread columns exist for BID_ASK rows (backfill for legacy data)
+        if 'bid' in combined_data.columns and 'ask' in combined_data.columns:
+            # Add spread columns if missing
+            if 'spread' not in combined_data.columns:
+                combined_data['spread'] = None
+            if 'spread_pct' not in combined_data.columns:
+                combined_data['spread_pct'] = None
+
+            # Compute spread for BID_ASK rows that have bid/ask but missing spread
+            bid_ask_mask = (combined_data['what_to_show'] == 'BID_ASK') & \
+                           combined_data['bid'].notna() & \
+                           combined_data['ask'].notna() & \
+                           combined_data['spread'].isna()
+
+            if bid_ask_mask.any():
+                combined_data.loc[bid_ask_mask, 'spread'] = \
+                    combined_data.loc[bid_ask_mask, 'ask'] - combined_data.loc[bid_ask_mask, 'bid']
+                combined_data.loc[bid_ask_mask, 'spread_pct'] = \
+                    combined_data.loc[bid_ask_mask].apply(
+                        lambda r: (r['spread'] / r['bid'] * 100) if r['bid'] > 0 else 0.0, axis=1
+                    )
+                logger.debug(f"Backfilled spread for {bid_ask_mask.sum()} legacy BID_ASK rows")
+
         # Save with compression
         table = pa.Table.from_pandas(combined_data)
         pq.write_table(table, file_path, compression='snappy')
