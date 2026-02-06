@@ -19,6 +19,7 @@ import pyarrow.parquet as pq
 import json
 import shutil
 
+from ib_insync import Contract
 from .core import CONFIG, ticker_db
 from .IB_connection import safe_ib_connect
 from .chains_manager import getOptionStrikes
@@ -550,10 +551,15 @@ class HistoricalDataManager:
                     
                     contract_files = 0
                     
-                    # Create IB contract
-                    from ib_insync import Option
-                    ib_contract = Option(
+                    # Create IB contract - determine secType from ticker DB
+                    # Same pattern as getOptValue: FUT->FOP, STK/IND->OPT
+                    ticker_info = ticker_db.get_ticker_info(contract.symbol)
+                    sec_type = ticker_info.get('Type') if ticker_info else 'STK'
+                    sec_opt_type = "FOP" if sec_type == "FUT" else "OPT"
+
+                    ib_contract = Contract(
                         symbol=contract.symbol,
+                        secType=sec_opt_type,
                         lastTradeDateOrContractMonth=contract.expiration,
                         strike=contract.strike,
                         right=contract.right,
