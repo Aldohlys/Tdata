@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.20] - 2026-02-06
+
+### Fixed
+- **on_demand_historical.py**: Fetch underlying prices on cache path for IV calculation
+  - Previously, underlying prices were only fetched on the fresh-fetch path (IBKR retrieval)
+  - When loading from cache (common path), `underlying_price` column was missing
+  - Now checks for missing `underlying_price` in cached data and fetches from IBKR if available
+  - Gracefully handles IBKR unavailability (returns cached data without underlying prices)
+  - Added `exchange` parameter to `_fetch_underlying_data()` as fallback when ticker_db info incomplete
+
 ## [5.8.18] - 2026-02-06
 
 ### Fixed

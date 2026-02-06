@@ -93,7 +93,7 @@ def get_logging_config(config=None):
     
     return {
         'level': python_config.get('level', 'INFO'),
-        'control_ibinsync': python_config.get('control_ibinsync', False),
-        'ibinsync_level': python_config.get('ibinsync_level', 'ERROR'),
+        'control_ibasync': python_config.get('control_ibasync', False),
+        'ibasync_level': python_config.get('ibasync_level', 'ERROR'),
         'log_dir': logging_config.get('log_dir'),
     }

@@ -89,6 +89,23 @@ def get_or_retrieve_option_historical_data(
 
             if existing_data is not None and not existing_data.empty:
                 logger.info(f"Found {len(existing_data)} cached data points")
+
+                # Fetch underlying prices if missing (needed for IV calculation)
+                if 'underlying_price' not in existing_data.columns:
+                    try:
+                        if isIBAvailable():
+                            data_manager = HistoricalDataManager()
+                            underlying_data = _fetch_underlying_data(
+                                symbol, data_type, data_manager, exchange
+                            )
+                            if underlying_data is not None and not underlying_data.empty:
+                                existing_data = _merge_underlying_with_option(existing_data, underlying_data)
+                                logger.info(f"Merged underlying prices with cached data")
+                        else:
+                            logger.info("IBKR not available, returning cached data without underlying prices")
+                    except Exception as e:
+                        logger.warning(f"Could not fetch underlying data: {e}")
+
                 return existing_data
 
         # Step 2: No data found or force_refresh - fetch on-demand
@@ -220,7 +237,8 @@ def _fetch_single_contract_data(
 def _fetch_underlying_data(
     symbol: str,
     data_type: str,
-    data_manager: HistoricalDataManager
+    data_manager: HistoricalDataManager,
+    exchange: str = None
 ) -> Optional[pd.DataFrame]:
     """
     Fetch historical data for the underlying instrument (stock or future).
@@ -229,6 +247,7 @@ def _fetch_underlying_data(
         symbol: Underlying symbol
         data_type: Type of data ("historical" or "intraday")
         data_manager: HistoricalDataManager instance to reuse connection
+        exchange: Fallback exchange if ticker_db info is incomplete
 
     Returns:
         DataFrame with columns: datetime, underlying_price
@@ -263,10 +282,11 @@ def _fetch_underlying_data(
 
             logger.info(f"Using ticker info for {symbol}: type={sec_type}, exchange={exchange}, currency={currency}")
         else:
-            exchange = 'SMART'
+            exchange_val = exchange if exchange else 'SMART'
             currency = 'USD'
             sec_type = 'STK'
-            logger.warning(f"No ticker info found for {symbol}, using default: type=STK, exchange=SMART, currency=USD")
+            exchange = exchange_val
+            logger.warning(f"No ticker info found for {symbol}, using default: type=STK, exchange={exchange}, currency=USD")
 
         # Create contract based on security type
         if sec_type == 'FUT':

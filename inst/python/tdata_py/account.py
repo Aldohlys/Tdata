@@ -1,4 +1,5 @@
 import datetime
+import dataclasses
 import pandas as pd
 from ib_async import *
 
@@ -221,18 +222,20 @@ def retrievePortfolioData(ib, df):
     
     ### optionComputation elements (9)
     # tickAttrib  impliedVol     delta  optPrice  pvDividend     gamma      vega     theta  undPrice
-    option_c = pd.DataFrame(columns=["tickAttrib", "impliedVol", "delta", "optPrice", "pvDividend", "gamma", "vega", "theta", "undPrice"])
+    greeks_cols = ["tickAttrib", "impliedVol", "delta", "optPrice", "pvDividend", "gamma", "vega", "theta", "undPrice"]
+    greeks_zero = dict.fromkeys(greeks_cols, 0)
+    rows = []
     opt = 0
     for i, row in df.iterrows():
         #### Iterate over each contract
         if (row['secType'] == "OPT") or (row['secType'] == 'FOP'):
-            optionComputation = tickers[opt].modelGreeks
+            greeks = tickers[opt].modelGreeks
+            rows.append(dataclasses.asdict(greeks) if greeks is not None else greeks_zero)
             opt = opt + 1
-        else:  
-            optionComputation = [0, 0, 0, 0, 0, 0, 0, 0, 0]
-        ### Construction de option computation à revoir
-        option_c.loc[len(option_c.index)] = optionComputation
-        
+        else:
+            rows.append(greeks_zero)
+
+    option_c = pd.DataFrame(rows, columns=greeks_cols)
     df = df.join(option_c)
 
     ### Extract meaningful columns
