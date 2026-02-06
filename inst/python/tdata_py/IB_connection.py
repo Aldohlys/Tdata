@@ -1,7 +1,7 @@
 
 import socket
 import random
-from ib_insync import *
+from ib_async import *
 from fin_logger import get_logger, DEBUG, INFO
 
 # Get logger for this module

@@ -235,7 +235,7 @@ def _fetch_underlying_stock_data(
     """
     try:
         from .IB_connection import safe_ib_connect
-        from ib_insync import Stock
+        from ib_async import Stock
         from .core import ticker_db
 
         # Get or create IB connection

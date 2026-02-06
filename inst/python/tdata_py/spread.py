@@ -5,7 +5,7 @@ import locale
 import numpy as np
 import pandas as pd
 import logging
-from ib_insync import *
+from ib_async import *
 
 # Import from other modules
 from .contract import getOptValue

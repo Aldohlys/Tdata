@@ -98,7 +98,7 @@ class ParquetChainsStorage:
                 chain_file = symbol_dir / f"{trading_class}_chain.parquet"
                 
                 # Create comprehensive data structure preserving all information
-                # Ensure correct data types according to ib_insync.OptionChain spec:
+                # Ensure correct data types according to ib_async.OptionChain spec:
                 # exchange: str, underlyingConId: int, tradingClass: str, multiplier: str
                 # expirations: List[str], strikes: List[float]
                 data = []

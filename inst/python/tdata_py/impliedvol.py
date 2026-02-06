@@ -4,7 +4,7 @@ import locale
 import numpy as np
 import pandas as pd
 import logging
-from ib_insync import *
+from ib_async import *
 
 # Import from other modules
 # from tdata_py.core import CONFIG, ticker_db, validate_contract_params

@@ -1,4 +1,4 @@
-from ib_insync import *
+from ib_async import *
 from tdata_py.IB_connection import safe_ib_connect
 import numpy as np
 import pandas as pd

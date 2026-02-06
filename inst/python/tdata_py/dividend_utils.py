@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 import calendar
 import math
 import time
-from ib_insync import Contract
+from ib_async import Contract
 
 # Import from other modules
 from .core import CONFIG, ticker_db

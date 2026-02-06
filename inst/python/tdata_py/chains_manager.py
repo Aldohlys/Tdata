@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from contextlib import contextmanager
 
-from ib_insync import *
+from ib_async import *
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pandas as pd
@@ -26,7 +26,7 @@ logger = get_logger("tdata_py.chains_manager")
 @contextmanager
 def suppress_ib_errors():
     """Context manager to temporarily suppress IB wrapper errors."""
-    wrapper_logger = logging.getLogger('ib_insync.wrapper')
+    wrapper_logger = logging.getLogger('ib_async.wrapper')
     original_level = wrapper_logger.level
     wrapper_logger.setLevel(logging.CRITICAL)
     try:

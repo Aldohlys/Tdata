@@ -4,7 +4,7 @@ import pathlib
 import re
 import sqlite3
 import pandas as pd
-from ib_insync import *
+from ib_async import *
 from fin_logger import get_logger, log_execution_time
 
 # Créez un logger pour ce module

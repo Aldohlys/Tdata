@@ -2,7 +2,7 @@ import math
 import numpy as np
 import datetime
 from dateutil.relativedelta import relativedelta
-from ib_insync import *
+from ib_async import *
 from tdata_py.IB_connection import safe_ib_connect
 from tdata_py.contract import getValue
 import calendar

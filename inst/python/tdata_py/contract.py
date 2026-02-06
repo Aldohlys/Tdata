@@ -33,7 +33,7 @@ import datetime
 import locale
 import pandas as pd
 import logging
-from ib_insync import *
+from ib_async import *
 
 # Import from other modules
 from .core import CONFIG, ticker_db, validate_contract_params, find_nearest_number

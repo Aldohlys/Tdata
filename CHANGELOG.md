@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.17] - 2026-02-06
+
+### Changed
+- **Migrate ib_insync to ib_async** (TODO #25): Replaced all `ib_insync` imports with `ib_async` across 18 Python files
+  - `ib_insync` is unmaintained since author's passing in early 2024
+  - `ib_async` is the actively maintained community fork (v2.1.0), drop-in replacement
+  - Updated logger names (`ib_insync.wrapper` -> `ib_async.wrapper`) in fin_logger.py, chains_manager.py, historical_option.py
+  - Updated requirements.txt: `ib_insync>=0.9.85` -> `ib_async>=2.1.0`
+
+### Fixed
+- **historical_option.py**: Fixed "No security definition" error for futures options (6SM6, 6EM6, etc.)
+  - Was always creating `Option()` contract (secType=OPT), now uses `Contract(secType=FOP)` for FUT underlyings
+  - Same pattern as `getOptValue()` in contract.py: looks up ticker type from DB to determine OPT vs FOP
+
 ## [5.8.15] - 2026-02-05
 
 ### Fixed

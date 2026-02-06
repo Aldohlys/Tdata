@@ -19,7 +19,7 @@ import pyarrow.parquet as pq
 import json
 import shutil
 
-from ib_insync import Contract
+from ib_async import Contract
 from .core import CONFIG, ticker_db
 from .IB_connection import safe_ib_connect
 from .chains_manager import getOptionStrikes
@@ -669,7 +669,7 @@ class HistoricalDataManager:
             qualified_contract = qualified_contracts[0]
             logger.debug(f"Qualified contract: {qualified_contract} (incremental: {is_incremental}, duration: {duration})")
 
-            ib_logger = logging.getLogger('ib_insync.wrapper')
+            ib_logger = logging.getLogger('ib_async.wrapper')
             ib_logger.addFilter(lambda record: 'Error 162' not in record.getMessage())
 
             bars = ib.reqHistoricalData(

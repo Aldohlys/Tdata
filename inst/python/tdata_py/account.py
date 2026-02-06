@@ -1,6 +1,6 @@
 import datetime
 import pandas as pd
-from ib_insync import *
+from ib_async import *
 
 # Import from other modules
 from .IB_connection import safe_ib_connect
@@ -52,7 +52,7 @@ def retrieveCurrencyPairs(currencies, currency_pairs, direct_conv):
 
 def retrieveAccountHistory(ib, days_back=180):
     """
-    Retrieve historical net liquidation values using ib_insync.
+    Retrieve historical net liquidation values using ib_async.
     
     Args:
         days_back (int): Number of days of history to retrieve

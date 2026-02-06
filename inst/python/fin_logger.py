@@ -101,12 +101,12 @@ def setup_logging_from_config(config_path=None, **kwargs):
         reset_handlers=True
     )
     
-    # Configure ib_insync logging if requested
+    # Configure ib_async logging if requested
     if config.get('control_ibinsync', False):
-        print(f"[PY] Configuring ib_insync logging to level: {config.get('ibinsync_level', 'ERROR')}")
+        print(f"[PY] Configuring ib_async logging to level: {config.get('ibinsync_level', 'ERROR')}")
         configure_ibinsync_logging(config.get('ibinsync_level', 'ERROR'))
     else:
-        print("[PY] ib_insync control not enabled in config")
+        print("[PY] ib_async control not enabled in config")
     
     return logger
 
@@ -218,8 +218,8 @@ def set_all_loggers_level(level):
 
 def configure_ibinsync_logging(level="ERROR"):
     """
-    Configure spécifiquement le niveau de log des modules ib_insync
-    
+    Configure spécifiquement le niveau de log des modules ib_async
+
     Args:
         level: Niveau de log (TRACE, DEBUG, INFO, WARN, ERROR, FATAL)
     """
@@ -234,26 +234,26 @@ def configure_ibinsync_logging(level="ERROR"):
         "FATAL": logging.CRITICAL,
         "CRITICAL": logging.CRITICAL
     }
-    
+
     py_level = level_map.get(level.upper(), logging.ERROR)
-    
-    # Configure all ib_insync loggers comprehensively
+
+    # Configure all ib_async loggers comprehensively
     ib_modules = [
-        'ib_insync',
-        'ib_insync.wrapper',
-        'ib_insync.client',  
-        'ib_insync.ib',
-        'ib_insync.contract',
-        'ib_insync.order',
-        'ib_insync.util'
+        'ib_async',
+        'ib_async.wrapper',
+        'ib_async.client',
+        'ib_async.ib',
+        'ib_async.contract',
+        'ib_async.order',
+        'ib_async.util'
     ]
-    
+
     for module in ib_modules:
         logging.getLogger(module).setLevel(py_level)
-    
-    # Configurer tous les loggers ib_insync
+
+    # Configurer tous les loggers ib_async
     for logger_name in logging.root.manager.loggerDict:
-        if logger_name.startswith('ib_insync'):
+        if logger_name.startswith('ib_async'):
             logging.getLogger(logger_name).setLevel(py_level)
     
     return True

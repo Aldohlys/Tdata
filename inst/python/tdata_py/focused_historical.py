@@ -340,7 +340,7 @@ class BatchHistoricalUpdater:
             dict: Update results summary
         """
         from .IB_connection import safe_ib_connect
-        from ib_insync import Option
+        from ib_async import Option
         
         # Load watchlist
         watchlist = self.watchlist_manager.load_watchlist(symbols, priority)

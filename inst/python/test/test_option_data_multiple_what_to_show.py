@@ -6,7 +6,7 @@ import tdata_py
 import tdata_py.historical_option as td
 from tdata_py.historical_option import HistoricalDataConfig
 from tdata_py.IB_connection import safe_ib_connect
-from ib_insync import *
+from ib_async import *
 
 config_file = Path("historical_config.json")
 
