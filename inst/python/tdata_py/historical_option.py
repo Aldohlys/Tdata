@@ -833,6 +833,8 @@ def list_historical_config(config_file=None, show_contracts=True, max_contracts=
                     "expiration": c.expiration,
                     "strike": c.strike,
                     "right": c.right,
+                    "exchange": c.exchange,
+                    "active": c.active,
                     "last_updated": c.last_updated
                 }
                 for c in active_contracts[:max_contracts]
