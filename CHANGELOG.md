@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.23] - 2026-02-06
+
+### Fixed
+- **historical_options.R**: Fix `$` partial matching bug in `update_tracked_options()`
+  - `result$error` was matching Python's `result$errors` (plural, empty list) due to R partial matching
+  - Caused false "Update failed:" message even when data collection succeeded
+  - Changed to exact matching with `result[["error"]]`
+
+## [5.8.22] - 2026-02-06
+
+### Fixed
+- **historical_option.py**: Add `exchange` and `active` fields to `list_historical_config()` return dict
+  - `active_contract_details` was missing these fields, causing tracking manager to show defaults
+
 ## [5.8.21] - 2026-02-06
 
 ### Added
