@@ -340,20 +340,21 @@ class BatchHistoricalUpdater:
             dict: Update results summary
         """
         from .IB_connection import safe_ib_connect
-        from ib_async import Option
-        
+        from ib_async import Contract
+        from .core import ticker_db
+
         # Load watchlist
         watchlist = self.watchlist_manager.load_watchlist(symbols, priority)
-        
+
         if watchlist.empty:
             logger.info("No contracts in watchlist to update")
             return {'error': 'Empty watchlist'}
-        
+
         # Limit contracts per session
         if len(watchlist) > max_contracts_per_session:
             logger.info(f"Limiting to first {max_contracts_per_session} contracts")
             watchlist = watchlist.head(max_contracts_per_session)
-        
+
         # Setup IB connection
         close_connection = False
         if ib_connection is not None:
@@ -361,23 +362,29 @@ class BatchHistoricalUpdater:
         else:
             ib = safe_ib_connect()
             close_connection = True
-        
+
         if not ib.isConnected():
             return {'error': 'No IB connection'}
-        
+
         try:
             results = {'success': [], 'failed': [], 'total': len(watchlist)}
-            
+
             for _, contract_row in watchlist.iterrows():
                 symbol = contract_row['symbol']
                 expiration = contract_row['expiration']
                 strike = contract_row['strike']
                 right = contract_row['right']
-                
+
                 try:
-                    # Create IB contract
-                    contract = Option(
+                    # Determine contract type: FOP for futures options, OPT for stock options
+                    ticker_info = ticker_db.get_ticker_info(symbol)
+                    sec_type = ticker_info.get('Type') if ticker_info else 'STK'
+                    sec_opt_type = "FOP" if sec_type == "FUT" else "OPT"
+
+                    # Create IB contract with correct secType
+                    contract = Contract(
                         symbol=symbol,
+                        secType=sec_opt_type,
                         lastTradeDateOrContractMonth=expiration,
                         strike=strike,
                         right=right,

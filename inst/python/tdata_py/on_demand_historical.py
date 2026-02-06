@@ -196,8 +196,8 @@ def _fetch_single_contract_data(
 
         logger.info(f"Successfully retrieved {len(fetched_data)} option records for {contract_spec['symbol']} {contract_spec['strike']}{contract_spec['right']}")
 
-        # Also fetch underlying stock data for accurate IV calculations
-        underlying_data = _fetch_underlying_stock_data(
+        # Also fetch underlying data for accurate IV calculations
+        underlying_data = _fetch_underlying_data(
             contract_spec['symbol'],
             data_type,
             data_manager
@@ -217,16 +217,16 @@ def _fetch_single_contract_data(
         return None
 
 
-def _fetch_underlying_stock_data(
+def _fetch_underlying_data(
     symbol: str,
     data_type: str,
     data_manager: HistoricalDataManager
 ) -> Optional[pd.DataFrame]:
     """
-    Fetch historical data for the underlying stock.
+    Fetch historical data for the underlying instrument (stock or future).
 
     Args:
-        symbol: Stock symbol
+        symbol: Underlying symbol
         data_type: Type of data ("historical" or "intraday")
         data_manager: HistoricalDataManager instance to reuse connection
 
@@ -234,39 +234,59 @@ def _fetch_underlying_stock_data(
         DataFrame with columns: datetime, underlying_price
     """
     try:
+        import math
         from .IB_connection import safe_ib_connect
-        from ib_async import Stock
+        from ib_async import Stock, Future
         from .core import ticker_db
 
         # Get or create IB connection
         ib = safe_ib_connect()
         if not ib or not ib.isConnected():
-            logger.error("No IB connection available for stock data retrieval")
+            logger.error("No IB connection available for underlying data retrieval")
             return None
 
-        # Get stock info from ticker database to determine correct exchange/currency
+        # Get ticker info from database to determine type, exchange, currency
         ticker_info = ticker_db.get_ticker_info(symbol)
 
         if ticker_info is not None and len(ticker_info) > 0:
-            # get_ticker_info returns a dict
             exchange = ticker_info.get('Exchange', 'SMART')
             currency = ticker_info.get('Currency', 'USD')
+            sec_type = ticker_info.get('Type', 'STK')
 
             # Handle empty values
             if not exchange or exchange == '':
                 exchange = 'SMART'
             if not currency or currency == '':
                 currency = 'USD'
+            if not sec_type or sec_type == '':
+                sec_type = 'STK'
 
-            logger.info(f"Using ticker info for {symbol}: exchange={exchange}, currency={currency}")
+            logger.info(f"Using ticker info for {symbol}: type={sec_type}, exchange={exchange}, currency={currency}")
         else:
-            # Fallback to SMART/USD for US stocks
             exchange = 'SMART'
             currency = 'USD'
-            logger.warning(f"No ticker info found for {symbol}, using default: exchange=SMART, currency=USD")
+            sec_type = 'STK'
+            logger.warning(f"No ticker info found for {symbol}, using default: type=STK, exchange=SMART, currency=USD")
 
-        # Create stock contract with proper exchange and currency
-        stock_contract = Stock(symbol=symbol, exchange=exchange, currency=currency)
+        # Create contract based on security type
+        if sec_type == 'FUT':
+            # For futures, use ConId (most reliable) or localSymbol+expiration as backup
+            con_id = ticker_info.get('ConId') if ticker_info else None
+            expiration = ticker_info.get('Expiration') if ticker_info else None
+
+            if con_id is not None and not (isinstance(con_id, float) and math.isnan(con_id)):
+                underlying_contract = Future(currency=currency, exchange=exchange, conId=int(con_id))
+                logger.info(f"Creating Future contract for {symbol} using ConId={int(con_id)}")
+            elif expiration and not (isinstance(expiration, float) and math.isnan(expiration)):
+                underlying_contract = Future(localSymbol=symbol,
+                                            lastTradeDateOrContractMonth=int(expiration),
+                                            currency=currency, exchange=exchange)
+                logger.info(f"Creating Future contract for {symbol} using localSymbol+expiration={int(expiration)}")
+            else:
+                underlying_contract = Future(symbol=symbol, exchange=exchange, currency=currency)
+                logger.info(f"Creating Future contract for {symbol} using symbol only (fallback)")
+        else:
+            underlying_contract = Stock(symbol=symbol, exchange=exchange, currency=currency)
 
         # Use same configuration as option data
         config = data_manager.config_manager
@@ -279,36 +299,36 @@ def _fetch_underlying_stock_data(
             duration = config.historical_duration
             bar_size = config.historical_frequency
 
-        logger.info(f"Fetching underlying stock data for {symbol} ({data_type}: {duration} of {bar_size} bars)")
+        logger.info(f"Fetching underlying data for {symbol} (type={sec_type}, {data_type}: {duration} of {bar_size} bars)")
 
-        # Fetch stock bars using the same method as options
+        # Fetch bars using the same method as options
         bars = data_manager._collect_bars(
             ib=ib,
-            contract=stock_contract,
+            contract=underlying_contract,
             data_type=data_type,
-            what_to_show="TRADES",  # Use actual trades for stock
+            what_to_show="TRADES",
             timeout=config.incremental_timeout,
             is_incremental=False
         )
 
         if not bars or len(bars) == 0:
-            logger.warning(f"No stock data returned for {symbol}")
+            logger.warning(f"No underlying data returned for {symbol}")
             return None
 
         # Convert to DataFrame
-        stock_df = pd.DataFrame([
+        underlying_df = pd.DataFrame([
             {
                 'datetime': pd.to_datetime(bar.date),
-                'underlying_price': bar.close  # Use close price for IV calculations
+                'underlying_price': bar.close
             }
             for bar in bars
         ])
 
-        logger.info(f"Retrieved {len(stock_df)} stock price records for {symbol}")
-        return stock_df
+        logger.info(f"Retrieved {len(underlying_df)} underlying price records for {symbol}")
+        return underlying_df
 
     except Exception as e:
-        logger.error(f"Error fetching underlying stock data for {symbol}: {e}")
+        logger.error(f"Error fetching underlying data for {symbol}: {e}")
         return None
 
 def _get_tz_name(tzinfo) -> str | None:
