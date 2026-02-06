@@ -1,8 +1,7 @@
-#' Historical Option Data Retrieval
+#' Historical Option Data Retrieval and Tracking
 #'
-#' R wrappers for on-demand historical option data retrieval from IBKR.
-#' These functions provide seamless access to historical option data with automatic
-#' caching and retrieval.
+#' R wrappers for on-demand historical option data retrieval from IBKR,
+#' plus contract tracking for incremental daily data accumulation.
 
 #' Get or Retrieve Historical Option Data
 #'
@@ -218,6 +217,207 @@ clear_on_demand_cache <- function(symbol = NULL, older_than_days = 30) {
 
   }, error = function(e) {
     logger::log_error(paste0("Error in clear_on_demand_cache: ", e$message), namespace="Tdata")
+    return(list(error = e$message))
+  })
+}
+
+
+#' Add Option Contract to Tracking
+#'
+#' Add an option contract to the historical tracking configuration for
+#' incremental daily data collection. Tracked contracts accumulate data
+#' over time via scheduled updates.
+#'
+#' @param symbol Character. Underlying symbol (e.g., "SPY", "6SM6")
+#' @param trading_class Character. Option trading class
+#' @param expiration Character. Expiration date in YYYYMMDD format
+#' @param strike Numeric. Strike price
+#' @param right Character. "C" for Call, "P" for Put
+#' @param exchange Character. Exchange for routing. Default: "SMART"
+#'
+#' @return Logical. TRUE if contract was added successfully
+#'
+#' @examples
+#' \dontrun{
+#' add_option_tracking("SPY", "SPY", "20260918", 680, "C", "SMART")
+#' }
+#'
+#' @export
+add_option_tracking <- function(symbol, trading_class, expiration, strike, right, exchange = "SMART") {
+
+  # Normalize right
+  right_normalized <- if (right %in% c("Call", "C")) "C" else "P"
+
+  tryCatch({
+    tdata_py <- reticulate::import("tdata_py")
+
+    contract_config <- list(
+      symbol = symbol,
+      trading_class = trading_class,
+      expiration = expiration,
+      strike = as.numeric(strike),
+      right = right_normalized,
+      exchange = exchange
+    )
+
+    result <- tdata_py$add_historical_tracking(contract_config)
+    success <- isTRUE(result)
+
+    if (success) {
+      logger::log_info(
+        "Added tracking: {symbol} {strike}{right_normalized} {expiration} ({exchange})",
+        namespace = "Tdata"
+      )
+    } else {
+      logger::log_warn(
+        "Failed to add tracking: {symbol} {strike}{right_normalized} {expiration}",
+        namespace = "Tdata"
+      )
+    }
+
+    return(success)
+
+  }, error = function(e) {
+    logger::log_error(paste0("Error in add_option_tracking: ", e$message), namespace = "Tdata")
+    return(FALSE)
+  })
+}
+
+
+#' Remove Option Contract from Tracking
+#'
+#' Remove an option contract from the historical tracking configuration.
+#'
+#' @param symbol Character. Underlying symbol
+#' @param trading_class Character. Option trading class
+#' @param expiration Character. Expiration date in YYYYMMDD format
+#' @param strike Numeric. Strike price
+#' @param right Character. "C" for Call, "P" for Put
+#'
+#' @return Logical. TRUE if contract was removed successfully
+#'
+#' @examples
+#' \dontrun{
+#' remove_option_tracking("SPY", "SPY", "20260918", 680, "C")
+#' }
+#'
+#' @export
+remove_option_tracking <- function(symbol, trading_class, expiration, strike, right) {
+
+  right_normalized <- if (right %in% c("Call", "C")) "C" else "P"
+
+  tryCatch({
+    tdata_py <- reticulate::import("tdata_py")
+
+    result <- tdata_py$manage_contracts(
+      action = "remove",
+      symbol = symbol,
+      trading_class = trading_class,
+      expiration = expiration,
+      strike = as.numeric(strike),
+      right = right_normalized
+    )
+
+    success <- isTRUE(result)
+
+    if (success) {
+      logger::log_info(
+        "Removed tracking: {symbol} {strike}{right_normalized} {expiration}",
+        namespace = "Tdata"
+      )
+    }
+
+    return(success)
+
+  }, error = function(e) {
+    logger::log_error(paste0("Error in remove_option_tracking: ", e$message), namespace = "Tdata")
+    return(FALSE)
+  })
+}
+
+
+#' Update Tracked Option Contracts
+#'
+#' Collect incremental data for all tracked option contracts. This function
+#' is designed to be called by scheduled scripts (e.g., daily via Windows Task Scheduler)
+#' to accumulate historical data over time.
+#'
+#' @param data_type Character. "historical", "intraday", or "both". Default: "both"
+#'
+#' @return A list with update results:
+#' \itemize{
+#'   \item contracts_processed: Number of contracts updated
+#'   \item contracts_errors: Number of contracts that failed
+#'   \item files_updated: Number of data files written
+#'   \item errors: Character vector of error messages
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Update all tracked contracts
+#' result <- update_tracked_options()
+#'
+#' # Update historical data only
+#' result <- update_tracked_options("historical")
+#' }
+#'
+#' @export
+update_tracked_options <- function(data_type = "both") {
+
+  tryCatch({
+    tdata_py <- reticulate::import("tdata_py")
+
+    logger::log_info("Updating tracked options (data_type={data_type})", namespace = "Tdata")
+
+    result <- tdata_py$update_historical_data(data_type)
+    result_list <- reticulate::py_to_r(result)
+
+    if (!is.null(result_list$error)) {
+      logger::log_error("Update failed: {result_list$error}", namespace = "Tdata")
+    } else {
+      logger::log_info(
+        "Update complete: {result_list$contracts_processed} contracts, {result_list$files_updated} files",
+        namespace = "Tdata"
+      )
+    }
+
+    return(result_list)
+
+  }, error = function(e) {
+    logger::log_error(paste0("Error in update_tracked_options: ", e$message), namespace = "Tdata")
+    return(list(error = e$message))
+  })
+}
+
+
+#' List Tracked Option Contracts
+#'
+#' Display the current tracking configuration including all tracked contracts
+#' and collection settings.
+#'
+#' @return A list with tracking configuration:
+#' \itemize{
+#'   \item contracts: List of tracked contracts with their details
+#'   \item settings: Collection settings (durations, frequencies, etc.)
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' config <- list_tracked_options()
+#' config$contracts
+#' }
+#'
+#' @export
+list_tracked_options <- function() {
+
+  tryCatch({
+    tdata_py <- reticulate::import("tdata_py")
+
+    result <- tdata_py$list_historical_config(return_dict = TRUE)
+    return(reticulate::py_to_r(result))
+
+  }, error = function(e) {
+    logger::log_error(paste0("Error in list_tracked_options: ", e$message), namespace = "Tdata")
     return(list(error = e$message))
   })
 }

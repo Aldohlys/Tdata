@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.21] - 2026-02-06
+
+### Added
+- **historical_options.R**: R wrappers for option contract tracking
+  - `add_option_tracking()` - Add contract to daily incremental tracking
+  - `remove_option_tracking()` - Remove contract from tracking
+  - `update_tracked_options()` - Collect incremental data for all tracked contracts
+  - `list_tracked_options()` - List tracked contracts and settings
+  - All wrap existing Python functions (`add_historical_tracking`, `update_historical_data`, etc.)
+
 ## [5.8.20] - 2026-02-06
 
 ### Fixed
