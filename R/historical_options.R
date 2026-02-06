@@ -372,8 +372,8 @@ update_tracked_options <- function(data_type = "both") {
     result <- tdata_py$update_historical_data(data_type)
     result_list <- reticulate::py_to_r(result)
 
-    if (!is.null(result_list$error)) {
-      logger::log_error("Update failed: {result_list$error}", namespace = "Tdata")
+    if (!is.null(result_list[["error"]])) {
+      logger::log_error("Update failed: {result_list[['error']]}", namespace = "Tdata")
     } else {
       logger::log_info(
         "Update complete: {result_list$contracts_processed} contracts, {result_list$files_updated} files",
