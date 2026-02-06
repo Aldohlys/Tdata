@@ -113,8 +113,7 @@ try:
         generate_cache_health_report
     )
     enhanced_functions_available = True
-    package_logger.info("✅ Enhanced parquet modules loaded successfully")
-  
+
 except ImportError as e:
     enhanced_functions_available = False
     package_logger.error(f"⚠️ Enhanced chain functions not available: {e}")
@@ -148,7 +147,6 @@ try:
         clear_on_demand_cache
     )
     
-    package_logger.info("✅ Historical option data module loaded")
     historical_data_available = True
     
 except ImportError as e:
@@ -260,8 +258,6 @@ except ImportError as e:
 # PACKAGE METADATA AND CONVENIENCE
 # ============================================================================
 
-# Version number
-__version__ = '0.2.0'  # Incremented for multi-trading-class support
 
 # Define what gets imported with "from tdata_py import *"
 # A subset of all available functions nevertheless
@@ -326,36 +322,4 @@ __all__ = [
     'log_with_context',
     'log_execution_time'
 ]
-
-# ============================================================================
-# PACKAGE INITIALIZATION SUMMARY
-# ============================================================================
-
-def package_info():
-    """Return comprehensive package information."""
-    return {
-        'version': __version__,
-        'features': {
-            'systematic_caching': True,
-            'multi_trading_class': True,
-            'r_friendly_interface': True,
-            'batch_operations': True,
-            'enhanced_discovery': True,
-            'maintenance_tools': True,
-            'historical_data_available' : True
-        },
-        'available_functions': len(__all__),
-        'storage_architecture': 'hierarchical_parquet',
-        'caching_strategy': 'systematic_immediate'
-    }
-
-# Initialize package with summary
-try:
-    info = package_info()
-    package_logger.info(f"🎉 tdata_py v{info['version']} initialization complete")
-    package_logger.info(f"✅ {info['available_functions']} functions available")
-    package_logger.info("🚀 Ready for systematic options chain caching with multi-trading-class support")
-except:
-    print("tdata_py initialization complete")
-
 

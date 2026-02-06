@@ -22,6 +22,7 @@ getValue("810331198", "BILL")
 getValue("SR3Z6", secType="FUT", expiration = "202612", exchange="CME")
 getValue("SR3Z6", secType="FUT",exchange="CME", conId="385575900")
 getValue("6SM6", exchange="CME", conId="496647070")
+getValue("6SM6", exchange="CME")
 getValue("6SH6", secType="FUT",exchange="CME", conId="476639238")
 
 print("2. Test getValue with multiple symbols ==")

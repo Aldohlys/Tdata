@@ -67,9 +67,9 @@ def setup_logging_from_config(config_path=None, **kwargs):
     if config is None:
         # Fallback to defaults if config not found
         config = {
-            'level': 'INFO',
-            'control_ibinsync': False,
-            'ibinsync_level': 'ERROR'
+            'level': 'ERROR',
+            'control_ibasync': False,
+            'ibasync_level': 'ERROR'
         }
     
     # Override with any provided kwargs
@@ -95,16 +95,16 @@ def setup_logging_from_config(config_path=None, **kwargs):
     
     # Setup logging
     logger = setup_logging(
-        level=config.get('level', 'INFO'),
+        level=config.get('level', 'ERROR'),
         log_file=log_file,
         add_timestamp=True,
         reset_handlers=True
     )
     
     # Configure ib_async logging if requested
-    if config.get('control_ibinsync', False):
-        print(f"[PY] Configuring ib_async logging to level: {config.get('ibinsync_level', 'ERROR')}")
-        configure_ibinsync_logging(config.get('ibinsync_level', 'ERROR'))
+    if config.get('control_ibasync', False):
+        print(f"[PY] Configuring ib_async logging to level: {config.get('ibasync_level', 'ERROR')}")
+        configure_ibinsync_logging(config.get('ibasync_level', 'ERROR'))
     else:
         print("[PY] ib_async control not enabled in config")
     

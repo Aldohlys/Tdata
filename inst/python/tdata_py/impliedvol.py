@@ -26,13 +26,13 @@ def _determine_bar_size(lookback_days):
         return '4 hours'  # ~820 bars for 2 years
 
 
-def _create_contract(sym, secType, currency, exchange, expiration_future):
+def _create_contract(sym, secType, currency, exchange, expiration_future, conId=None):
     """Create appropriate contract based on security type."""
     if secType == "STK":
         return Stock(symbol=sym, exchange=exchange, currency=currency)
     elif secType == "FUT":
         return Future(symbol=sym, exchange=exchange, currency=currency, 
-                     lastTradeDateOrContractMonth=expiration_future)
+                     lastTradeDateOrContractMonth=str(expiration_future), conId=conId)
     elif secType == "IND":
         return Index(symbol=sym, exchange=exchange, currency=currency)
     elif secType == "CASH":
@@ -192,7 +192,7 @@ def _calculate_days_covered(df):
 
 
 def get_volatility_metrics(sym, secType=None, currency=None, exchange=None, 
-                          expiration_future=None, lookback_days=252, hist=False, price=False):
+                          expiration_future=None, conId=None, lookback_days=252, hist=False, price=False):
     """
     Retrieve volatility and price metrics for a given symbol.
     
@@ -202,6 +202,7 @@ def get_volatility_metrics(sym, secType=None, currency=None, exchange=None,
         currency: Currency (default from ticker_db)
         exchange: Exchange (default from ticker_db)
         expiration_future: Future expiration (for FUT contracts)
+        conId: contract IBKR Id (necessary for FUT contracts)
         lookback_days: Number of days to look back (default 252)
         hist: Whether to retrieve historical volatility data
         price: Whether to retrieve historical price data
@@ -234,11 +235,14 @@ def get_volatility_metrics(sym, secType=None, currency=None, exchange=None,
     print(f"Getting volatility metrics for {sym}: secType={secType}, currency={currency}, exchange={exchange}")
     
     # Handle FUT expiration
-    if secType == "FUT" and expiration_future is None:
-        expiration_future = ticker_info.get('Expiration')
+    if secType == "FUT":
+        if expiration_future is None:
+          expiration_future = int(ticker_info.get('Expiration')) if ticker_info else None
+        if conId is None:
+          conId = int(ticker_info.get('ConId')) if ticker_info else None
     
     # Create contract
-    contract = _create_contract(sym, secType, currency, exchange, expiration_future)
+    contract = _create_contract(sym, secType, currency, exchange, expiration_future, conId)
     if contract is None:
         return {
             'symbol': sym,
@@ -296,7 +300,7 @@ def get_volatility_metrics(sym, secType=None, currency=None, exchange=None,
 
 
 def get_historical_bars(sym, duration="400 D", bar_size="15 mins", secType=None,
-                        currency=None, exchange=None, expiration_future=None):
+                        currency=None, exchange=None, expiration_future=None, conId=None):
     """
     Retrieve historical OHLCV bars for a given symbol.
 
@@ -314,6 +318,7 @@ def get_historical_bars(sym, duration="400 D", bar_size="15 mins", secType=None,
         currency: Currency. Default from ticker DB.
         exchange: Exchange. Default from ticker DB.
         expiration_future: Future expiration (for FUT contracts)
+        conId: contract IBKR Id (necessary for FUT contracts)
 
     Returns:
         pandas DataFrame with columns: datetime, open, high, low, close, volume
@@ -341,11 +346,14 @@ def get_historical_bars(sym, duration="400 D", bar_size="15 mins", secType=None,
     logger.info(f"Getting historical bars for {sym}: duration={duration}, bar_size={bar_size}")
 
     # Handle FUT expiration
-    if secType == "FUT" and expiration_future is None:
-        expiration_future = ticker_info.get('Expiration') if ticker_info else None
+    if secType == "FUT":
+        if expiration_future is None:
+          expiration_future = int(ticker_info.get('Expiration')) if ticker_info else None
+        if conId is None:
+          conId = int(ticker_info.get('ConId')) if ticker_info else None
 
     # Create contract
-    contract = _create_contract(sym, secType, currency, exchange, expiration_future)
+    contract = _create_contract(sym, secType, currency, exchange, expiration_future, conId)
     if contract is None:
         logger.error(f"Unsupported security type: {secType}")
         return None
@@ -403,7 +411,7 @@ def get_historical_bars(sym, duration="400 D", bar_size="15 mins", secType=None,
 
 
 def get_iv_percentile_levels(sym, secType=None, currency=None, exchange=None,
-                             expiration_future=None, lookback_days=252,
+                             expiration_future=None, conId=None, lookback_days=252,
                              levels=[10, 25, 50, 75, 90]):
     """
     Fetch historical IV data and return IV values at specific percentile levels.
@@ -414,6 +422,7 @@ def get_iv_percentile_levels(sym, secType=None, currency=None, exchange=None,
         currency: Currency (default from ticker_db)
         exchange: Exchange (default from ticker_db)
         expiration_future: Future expiration (for FUT contracts)
+        conId: contract IBKR Id (necessary for FUT contracts)
         lookback_days: Number of days to look back (default 252)
         levels: List of percentile levels to compute (default [10, 25, 50, 75, 90])
 
@@ -437,8 +446,11 @@ def get_iv_percentile_levels(sym, secType=None, currency=None, exchange=None,
         if currency is None: currency = ticker_info.get('Currency')
         if exchange is None: exchange = ticker_info.get('Exchange')
 
-    if secType == "FUT" and expiration_future is None:
-        expiration_future = ticker_info.get('Expiration') if ticker_info else None
+    if secType == "FUT":
+        if expiration_future is None:
+          expiration_future = int(ticker_info.get('Expiration')) if ticker_info else None
+        if conId is None:
+          conId = int(ticker_info.get('ConId')) if ticker_info else None
 
     contract = _create_contract(sym, secType, currency, exchange, expiration_future)
     if contract is None:
