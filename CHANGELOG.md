@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.18] - 2026-02-06
+
+### Fixed
+- **on_demand_historical.py**: Fixed underlying price retrieval for futures options
+  - `_fetch_underlying_stock_data()` always created `Stock()` contract, failing for futures (e.g., 6SM6)
+  - Renamed to `_fetch_underlying_data()`, now detects `FUT` type from ticker DB
+  - Creates `Future()` contract using ConId (preferred) or localSymbol+expiration (backup)
+  - Follows same pattern as `getValue()` in contract.py
+- **focused_historical.py**: Fixed `update_watchlist_data()` contract creation for futures options
+  - Was always using `Option()` (secType=OPT), now uses `Contract(secType=FOP)` for FUT underlyings
+  - Same pattern as historical_option.py: looks up ticker type from DB
+
 ## [5.8.17] - 2026-02-06
 
 ### Changed
