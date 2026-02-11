@@ -781,7 +781,7 @@ getIBKRActiveCurrencyValues <- function() {
 #'\dontrun{
 #'getGonet()
 #'}
-getGonet <- function() {
+getGonet <- function(use_defaults = FALSE) {
 
   ### Test first if IB is available - no use to continue if not
   if (!isIBAvailable()) return()
@@ -1013,19 +1013,27 @@ getGonet <- function() {
   ### Now disconnect after all queries are complete
   DBI::dbDisconnect(conn)
 
-  ### Prompt user for cash positions with stored values as defaults
-  cash_chf <- Tbasics::enter_numerical_data(
-    "Gonet Cash CHF",
-    ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceCHF[1], 0)
-  )
-  cash_usd <- Tbasics::enter_numerical_data(
-    "Gonet Cash USD",
-    ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceUSD[1], 0)
-  )
-  cash_eur <- Tbasics::enter_numerical_data(
-    "Gonet Cash EUR",
-    ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceEUR[1], 0)
-  )
+  ### Cash positions: use stored defaults silently or prompt user
+  if (use_defaults) {
+    cash_chf <- ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceCHF[1], 0)
+    cash_usd <- ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceUSD[1], 0)
+    cash_eur <- ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceEUR[1], 0)
+    logger::log_info("Using stored cash defaults: CHF={cash_chf}, USD={cash_usd}, EUR={cash_eur}",
+                     namespace = "Tdata")
+  } else {
+    cash_chf <- Tbasics::enter_numerical_data(
+      "Gonet Cash CHF",
+      ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceCHF[1], 0)
+    )
+    cash_usd <- Tbasics::enter_numerical_data(
+      "Gonet Cash USD",
+      ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceUSD[1], 0)
+    )
+    cash_eur <- Tbasics::enter_numerical_data(
+      "Gonet Cash EUR",
+      ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceEUR[1], 0)
+    )
+  }
 
   ### Automatically call getAccountGonet() to write account data
   cash_values <- list(
