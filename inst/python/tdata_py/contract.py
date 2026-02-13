@@ -213,6 +213,123 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
         except Exception as e:
             logger.warning(f"Could not restore original locale: {e}")
 
+def qualify_contract(sym, expiration, strike, right, exchange=None, currency=None, ib=None):
+    """
+    Qualify an option contract via IBKR to resolve tradingClass, conId, and exchange.
+
+    Auto-detects OPT vs FOP from ticker database. For FOP, uses reqContractDetails
+    to handle ambiguous matches (e.g., SOFR3 has 6 trading classes for same strike).
+    Filters by TradingClass from Tickers table when multiple matches found.
+
+    Args:
+        sym (str): Underlying symbol (e.g., "CHF", "SOFR3", "SPY")
+        expiration (str): Expiration date in YYYYMMDD format
+        strike (float): Strike price
+        right (str): "C" for Call, "P" for Put
+        exchange (str, optional): Exchange. If None, uses OptExchange from ticker DB.
+        currency (str, optional): Currency. If None, uses Currency from ticker DB.
+        ib: Existing IB connection. If None, creates and disconnects own connection.
+
+    Returns:
+        dict: Qualified contract fields (conId, tradingClass, exchange, symbol,
+              currency, secType, strike, right, expiration) or {"error": "message"}
+    """
+    # Look up ticker info
+    ticker_info = ticker_db.get_ticker_info(sym)
+    preferred_tc = None
+
+    if ticker_info is None:
+        sec_type = "OPT"
+        underlying = sym
+        if currency is None: currency = "USD"
+        if exchange is None: exchange = "SMART"
+    else:
+        base_type = ticker_info.get("Type")
+        if base_type == "FUT":
+            sec_type = "FOP"
+            # Use original sym as IBKR FOP symbol (e.g., "CHF", "SOFR3")
+            underlying = sym
+            # TradingClass from Tickers used to disambiguate (e.g., "SR3" for quarterly SOFR)
+            preferred_tc = ticker_info.get("TradingClass")
+        else:
+            sec_type = "OPT"
+            underlying = sym
+        if currency is None: currency = ticker_info.get("Currency", "USD")
+        if exchange is None: exchange = ticker_info.get("OptExchange", "SMART")
+
+    logger.info("qualify_contract", {
+        "symbol": underlying,
+        "secType": sec_type,
+        "expiration": expiration,
+        "strike": strike,
+        "right": right,
+        "exchange": exchange,
+        "currency": currency,
+        "preferred_tc": preferred_tc
+    })
+
+    disconnect = True
+    if ib is None:
+        ib = safe_ib_connect()
+    else:
+        disconnect = False
+
+    if not ib.isConnected():
+        return {"error": "Could not connect to IBKR"}
+
+    try:
+        # Build contract with empty tradingClass
+        contract = Contract(
+            symbol=underlying,
+            secType=sec_type,
+            lastTradeDateOrContractMonth=str(expiration),
+            strike=float(strike),
+            right=right,
+            exchange=exchange,
+            currency=currency,
+            tradingClass=""
+        )
+
+        # Use reqContractDetails to handle ambiguous matches (e.g., SOFR mid-curves)
+        details = ib.reqContractDetails(contract)
+
+        if not details:
+            return {"error": f"IBKR found no contract: {underlying} {expiration} {strike} {right}"}
+
+        if len(details) == 1:
+            c = details[0].contract
+        elif preferred_tc:
+            # Multiple matches - filter by TradingClass from Tickers table
+            matches = [d for d in details if d.contract.tradingClass == preferred_tc]
+            if matches:
+                c = matches[0].contract
+            else:
+                logger.warning(f"No match for tradingClass={preferred_tc}, using first of {len(details)} results")
+                c = details[0].contract
+        else:
+            logger.warning(f"Ambiguous: {len(details)} matches, no preferred tradingClass, using first")
+            c = details[0].contract
+
+        return {
+            "conId": c.conId,
+            "symbol": c.symbol,
+            "secType": c.secType,
+            "expiration": c.lastTradeDateOrContractMonth,
+            "strike": c.strike,
+            "right": c.right,
+            "tradingClass": c.tradingClass,
+            "exchange": c.exchange,
+            "currency": c.currency,
+            "multiplier": c.multiplier
+        }
+    except Exception as e:
+        logger.error(f"Error qualifying contract: {e}")
+        return {"error": str(e)}
+    finally:
+        if disconnect:
+            ib.disconnect()
+
+
 def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, tradingClass=None):
     """
     Get option values, implied volatility and delta for one or multiple strikes.

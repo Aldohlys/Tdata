@@ -641,7 +641,39 @@ class HistoricalDataManager:
             contract.strike, contract.right, data_type
         )
         return existing_data is not None and not existing_data.empty
-    
+
+    def _get_incremental_duration(self, contract: ContractConfig, data_type: str, default_duration: str) -> str:
+        """Calculate duration needed to fill gap since last stored data point.
+
+        Returns an IBKR duration string (e.g., '3 D', '2 W') that covers
+        from the last stored timestamp to now, with 1-day overlap for safety.
+        Falls back to default_duration if no existing data or on error.
+        """
+        try:
+            existing_data = self.storage.load_active_data(
+                contract.symbol, contract.trading_class, contract.expiration,
+                contract.strike, contract.right, data_type
+            )
+            if existing_data is None or existing_data.empty:
+                return default_duration
+
+            last_date = pd.to_datetime(existing_data['datetime']).max()
+            gap_days = (pd.Timestamp.now() - last_date).days + 1  # +1 day overlap
+
+            if gap_days <= 2:
+                return "2 D"
+            elif gap_days <= 7:
+                return "1 W"
+            elif gap_days <= 30:
+                return f"{min(gap_days + 2, 30)} D"
+            else:
+                # Beyond 30 days, use weeks (capped at full duration)
+                weeks = (gap_days // 7) + 1
+                return f"{weeks} W"
+        except Exception as e:
+            logger.warning(f"Could not compute incremental duration: {e}")
+            return default_duration
+
     def _collect_bars(self, ib, contract, data_type: str, what_to_show: str, timeout: int, is_incremental: bool = False):
         """Collect bars from IB API with proper parameters"""
         config = self.config_manager
@@ -649,15 +681,13 @@ class HistoricalDataManager:
         if data_type == "intraday":
             duration = config.intraday_duration
             bar_size = config.intraday_frequency
-            # For incremental intraday updates, only get last 2 days to avoid overwriting old data
             if is_incremental:
-                duration = "2 D"
+                duration = self._get_incremental_duration(contract, data_type, "2 D")
         else:  # historical
             duration = config.historical_duration
             bar_size = config.historical_frequency
-            # For incremental historical updates, only get last week to avoid overwriting old data
             if is_incremental:
-                duration = "1 W"
+                duration = self._get_incremental_duration(contract, data_type, "1 W")
 
         try:
             qualified_contracts = ib.qualifyContracts(contract)
@@ -824,7 +854,7 @@ def list_historical_config(config_file=None, show_contracts=True, max_contracts=
     }
     
     if return_dict:
-        # Add contract details to dict if requested
+        # Return ALL active contracts (no truncation for programmatic use)
         if show_contracts:
             summary["active_contract_details"] = [
                 {
@@ -837,7 +867,7 @@ def list_historical_config(config_file=None, show_contracts=True, max_contracts=
                     "active": c.active,
                     "last_updated": c.last_updated
                 }
-                for c in active_contracts[:max_contracts]
+                for c in active_contracts
             ]
         return summary
     

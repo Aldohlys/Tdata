@@ -163,7 +163,8 @@ try:
         getValue,
         getOptValue,
         getStraddleValue,
-        getStrikesfromExpDate
+        getStrikesfromExpDate,
+        qualify_contract
     )
 except ImportError as e:
     print(f"Error importing contract: {e}")
@@ -175,6 +176,8 @@ except ImportError as e:
     def getStraddleValue(*args, **kwargs):
         return None
     def getStrikesfromExpDate(*args, **kwargs):
+        return None
+    def qualify_contract(*args, **kwargs):
         return None
 
 # ============================================================================
@@ -301,6 +304,7 @@ __all__ = [
     # === CONTRACT FUNCTIONS ===
     'getValue',
     'getOptValue',
+    'qualify_contract',
 
     # === ACCOUNT FUNCTIONS ===
     'retrieveCurrencyPairs',

@@ -222,6 +222,74 @@ clear_on_demand_cache <- function(symbol = NULL, older_than_days = 30) {
 }
 
 
+#' Qualify an Option Contract via IBKR
+#'
+#' Asks IBKR to resolve the correct tradingClass, conId, and exchange for an
+#' option contract. Essential for futures options (FOP) where the tradingClass
+#' varies by contract series and cannot be looked up statically.
+#'
+#' @param symbol Character. Underlying symbol (e.g., "CHF", "SOFR3", "SPY")
+#' @param expiration Character. Expiration date in YYYYMMDD format
+#' @param strike Numeric. Strike price
+#' @param right Character. "C" for Call, "P" for Put
+#' @param exchange Character. Exchange for routing. Default: NULL (auto from Tickers)
+#' @param currency Character. Currency. Default: NULL (auto from Tickers)
+#' @param ib Python IB connection object. If NULL, creates and disconnects own connection.
+#'   Pass an existing connection to avoid repeated connect/disconnect overhead.
+#'
+#' @return A list with qualified contract fields (conId, tradingClass, exchange, etc.)
+#'   or NULL on error
+#'
+#' @examples
+#' \dontrun{
+#' qualify_contract("CHF", "20260605", 1.3, "C", exchange = "CME")
+#' # Returns list(conId=..., tradingClass="CHU", exchange="CME", ...)
+#' }
+#'
+#' @export
+qualify_contract <- function(symbol, expiration, strike, right,
+                             exchange = NULL, currency = NULL, ib = NULL) {
+
+  right_normalized <- if (right %in% c("Call", "C")) "C" else "P"
+
+  tryCatch({
+    tdata_py <- reticulate::import("tdata_py")
+
+    result <- tdata_py$qualify_contract(
+      sym = symbol,
+      expiration = as.character(expiration),
+      strike = as.numeric(strike),
+      right = right_normalized,
+      exchange = exchange,
+      currency = currency,
+      ib = ib
+    )
+
+    result_list <- reticulate::py_to_r(result)
+
+    # Use [[ ]] for exact matching - avoid R partial matching on $
+    if (!is.null(result_list[["error"]])) {
+      logger::log_error(
+        "qualify_contract failed: {result_list[['error']]}",
+        namespace = "Tdata"
+      )
+      return(NULL)
+    }
+
+    logger::log_info(
+      "Qualified: {symbol} {expiration} {strike}{right_normalized} -> tradingClass={result_list[['tradingClass']]}, exchange={result_list[['exchange']]}",
+      namespace = "Tdata"
+    )
+
+    return(result_list)
+
+  }, error = function(e) {
+    logger::log_error(paste0("Error in qualify_contract: ", e$message), namespace = "Tdata")
+    return(NULL)
+  })
+}
+
+
 #' Add Option Contract to Tracking
 #'
 #' Add an option contract to the historical tracking configuration for

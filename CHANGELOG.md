@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.25] - 2026-02-13
+
+### Added
+- **contract.py**: New `qualify_contract()` function to resolve FOP tradingClass via IBKR
+  - Auto-detects OPT vs FOP from ticker database
+  - Uses `reqContractDetails` to handle ambiguous matches (e.g., SOFR3 mid-curve options)
+  - Filters by TradingClass from Tickers table when multiple matches found
+  - Returns dict with conId, tradingClass, exchange, etc.
+- **historical_options.R**: R wrapper `qualify_contract()` with `ib` connection reuse parameter
+- **historical_option.py**: `_get_incremental_duration()` computes gap-based duration
+  - Replaces hardcoded "1 W" / "2 D" incremental durations
+  - Calculates days since last stored data point to fill gaps (e.g., after vacation)
+
+### Fixed
+- **historical_option.py**: `list_historical_config()` no longer truncates `active_contract_details`
+  - Was limited to `max_contracts=10` by default, causing sync loop to miss contracts
+  - `return_dict` path now returns ALL active contracts
+- **update_historical_options.R**: Fix FOP tracking with correct tradingClass
+  - Futures options (CHF, SOFR3) now qualify via IBKR instead of static Tickers lookup
+  - Normalize portfolio expdate (YYYY-MM-DD) to config format (YYYYMMDD) for key comparison
+  - Reuse single IBKR connection across all qualify calls
+  - Add retry mechanism (3 attempts, 30s delay) for update phase
+
 ## [5.8.23] - 2026-02-06
 
 ### Fixed
