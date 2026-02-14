@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.26] - 2026-02-14
+
+### Fixed
+- **currency.R**: Fix vector length mismatch in `c_to_chf()` and `c_to_usd()`
+  - `getStoredCHFValue()`/`getStoredUSDValue()` return one row per unique currency (GROUP BY), but input vectors can have duplicates
+  - Direct multiplication caused recycling warning when lengths didn't match
+  - Fix: use `left_join()` by currency to align rates 1:1 with input rows before multiplication
+- **trades.R**: Suppress spurious "6 failed to parse" warning in `getTradeDates()`
+  - `dplyr::if_else()` evaluates both branches for all rows, so `lubridate::dmy()` ran on NA/empty `Exp.Date` values even though their result was discarded
+  - Wrapped FALSE branch in `suppressWarnings()` — NA handling was already correct
+
 ## [5.8.25] - 2026-02-13
 
 ### Added
