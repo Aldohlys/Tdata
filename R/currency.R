@@ -595,8 +595,9 @@ c_to_base <- function(amount, currency) {
 #' @export
 c_to_chf <- function(amount, currency) {
   data <- data.frame(am = amount, cur = currency)
-  data <- dplyr::mutate(data, res = am * getStoredCHFValue(cur)$chf_value)
-  return(data$res)
+  chf_rates <- getStoredCHFValue(unique(currency))
+  data <- dplyr::left_join(data, chf_rates[, c("currency", "chf_value")], by = c("cur" = "currency"))
+  return(data$am * data$chf_value)
 }
 
 #'  c_to_usd
@@ -616,9 +617,10 @@ c_to_chf <- function(amount, currency) {
 #'}
 #'@export
 c_to_usd <- function(amount, currency) {
-  data <- data.frame(am=amount, cur=currency)
-  data <- dplyr::mutate(data, res = am*getStoredUSDValue(cur)$usd_value)
-  return(data$res)
+  data <- data.frame(am = amount, cur = currency)
+  usd_rates <- getStoredUSDValue(unique(currency))
+  data <- dplyr::left_join(data, usd_rates[, c("currency", "usd_value")], by = c("cur" = "currency"))
+  return(data$am * data$usd_value)
 }
 
 
