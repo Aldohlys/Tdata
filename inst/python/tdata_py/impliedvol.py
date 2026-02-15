@@ -18,6 +18,14 @@ logger = get_logger("tdata_py.impliedvol")
 
 #from .contract import getOptValue
 
+def _safe_int(value):
+    """Safely convert a value to int, returning None for NaN/None."""
+    if value is None:
+        return None
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    return int(value)
+
 def _determine_bar_size(lookback_days):
     """Determine appropriate bar size based on lookback period."""
     if lookback_days <= 252:  # 1 year
@@ -237,10 +245,10 @@ def get_volatility_metrics(sym, secType=None, currency=None, exchange=None,
     # Handle FUT expiration
     if secType == "FUT":
         if expiration_future is None:
-          expiration_future = int(ticker_info.get('Expiration')) if ticker_info else None
+          expiration_future = _safe_int(ticker_info.get('Expiration')) if ticker_info else None
         if conId is None:
-          conId = int(ticker_info.get('ConId')) if ticker_info else None
-    
+          conId = _safe_int(ticker_info.get('ConId')) if ticker_info else None
+
     # Create contract
     contract = _create_contract(sym, secType, currency, exchange, expiration_future, conId)
     if contract is None:
@@ -348,9 +356,9 @@ def get_historical_bars(sym, duration="400 D", bar_size="15 mins", secType=None,
     # Handle FUT expiration
     if secType == "FUT":
         if expiration_future is None:
-          expiration_future = int(ticker_info.get('Expiration')) if ticker_info else None
+          expiration_future = _safe_int(ticker_info.get('Expiration')) if ticker_info else None
         if conId is None:
-          conId = int(ticker_info.get('ConId')) if ticker_info else None
+          conId = _safe_int(ticker_info.get('ConId')) if ticker_info else None
 
     # Create contract
     contract = _create_contract(sym, secType, currency, exchange, expiration_future, conId)
@@ -448,9 +456,9 @@ def get_iv_percentile_levels(sym, secType=None, currency=None, exchange=None,
 
     if secType == "FUT":
         if expiration_future is None:
-          expiration_future = int(ticker_info.get('Expiration')) if ticker_info else None
+          expiration_future = _safe_int(ticker_info.get('Expiration')) if ticker_info else None
         if conId is None:
-          conId = int(ticker_info.get('ConId')) if ticker_info else None
+          conId = _safe_int(ticker_info.get('ConId')) if ticker_info else None
 
     contract = _create_contract(sym, secType, currency, exchange, expiration_future)
     if contract is None:
