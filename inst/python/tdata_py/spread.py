@@ -144,6 +144,19 @@ def compute_spread_risk_reward(
         return pd.DataFrame()
 
     strikes = sorted(strikes)
+    print(f"DEBUG SPREAD: Got {len(strikes)} strikes: {strikes}")
+
+    # Check if any pairs can be formed with requested width
+    available_widths = sorted(set(
+        abs(strikes[i] - strikes[j])
+        for i in range(len(strikes))
+        for j in range(i + 1, len(strikes))
+    ))
+    has_valid_pairs = any(abs(w - spread_width) < 0.01 for w in available_widths)
+    if not has_valid_pairs:
+        log.warning(f"No strike pairs with width={spread_width}. Available widths: {available_widths}")
+        print(f"DEBUG SPREAD: No pairs with width={spread_width}. Available widths: {available_widths}")
+        return pd.DataFrame()
 
     # --------------------------------------------------------------
     # Fetch option prices & greeks
@@ -162,9 +175,12 @@ def compute_spread_risk_reward(
         log.warning("No option pricing data returned.")
         return pd.DataFrame()
 
+    print(f"DEBUG SPREAD: Option data:\n{opt_df.to_string()}")
     opt_df = opt_df.set_index("strike")
 
     results = []
+    skipped_width = 0
+    skipped_nan = 0
 
     # --------------------------------------------------------------
     # Enumerate spreads
@@ -174,7 +190,8 @@ def compute_spread_risk_reward(
     for short_strike in strikes:
         for long_strike in strikes:
 
-            if abs(short_strike - long_strike) != spread_width:
+            diff = abs(short_strike - long_strike)
+            if abs(diff - spread_width) > 0.01:
                 continue
 
             if short_strike not in opt_df.index or long_strike not in opt_df.index:
@@ -187,6 +204,8 @@ def compute_spread_risk_reward(
             long_price = long_row["value"]
 
             if pd.isna(short_price) or pd.isna(long_price):
+                skipped_nan += 1
+                print(f"DEBUG SPREAD: Skipping {short_strike}/{long_strike}: NaN prices (short={short_price}, long={long_price})")
                 continue
 
             # --------------------------------------------------
@@ -275,4 +294,5 @@ def compute_spread_risk_reward(
                 }
             )
 
+    print(f"DEBUG SPREAD: Enumeration complete: {len(results)} spreads found, {skipped_nan} skipped (NaN prices)")
     return pd.DataFrame(results)

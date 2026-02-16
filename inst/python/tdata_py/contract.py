@@ -409,14 +409,23 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
     logger.debug("CONTRACTS:", {"contracts":contracts})
 
     if(ib.qualifyContracts(*contracts)):
+        # Filter out unqualified contracts (conId == 0) to avoid reqTickers errors
+        qualified_pairs = [(c, s) for c, s in zip(contracts, strikes) if c.conId != 0]
+        if not qualified_pairs:
+            logger.warning(f"No contracts qualified for {sym} {expiration}")
+            ib.disconnect()
+            return None
+        contracts, strikes = zip(*qualified_pairs)
+        contracts, strikes = list(contracts), list(strikes)
+
         # Use frozen market data (type 2) for consistent pricing
         ib.reqMarketDataType(2)
-        
+
         tickers = ib.reqTickers(*contracts)
         ib.sleep(0.25)
-        
+
         logger.debug("TICKERS:", {"tickers":tickers})
-        
+
         # Handle potential None values in model Greeks - ROBUST VERSION
         result_dic = []
         for ticker, strike in zip(tickers, strikes):

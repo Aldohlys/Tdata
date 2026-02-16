@@ -133,8 +133,7 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=No
       logger.debug(f"Found {len(sub_chains)} chains for {exchangeOpt}")
       
       # Remove any chain where underlying contract Id does not match
-      # Ensure type-safe comparison: chain[1] should be int
-      sub_chains = [chain for chain in sub_chains if int(chain[1]) == underlying.conId]
+      sub_chains = [chain for chain in sub_chains if int(chain.underlyingConId) == underlying.conId]
       
       # Convert to proper data types before caching
       formatted_chains = []
