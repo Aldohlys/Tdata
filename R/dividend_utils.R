@@ -25,7 +25,7 @@ getSingleDivYield <- function(type="STK", name=NA, yahoo_name=NA, currency="USD"
       sum_div <- tdata_py$getNTMDividend(symbol=name, secType=type, currency=currency, exchange = exchange)
 
       ### If IBKR TWS API unable to provide next12months, then try past 12 month data from Yahoo and sum
-      if (sum_div == -1) {
+      if (is.null(sum_div) || length(sum_div) == 0 || sum_div == -1) {
         tryCatch({
           ### If no dividends are paid during the last year (e.g. SLV, GLD) then sum is equal to 0 because no records
           sum_div <- sum(quantmod::getDividends(yahoo_name, from = Sys.Date() - 365, to = Sys.Date()))
