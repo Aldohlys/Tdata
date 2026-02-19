@@ -122,7 +122,7 @@ def get_NTM_dividend(ib, contract):
 
         # If we still don't have valid dividend data, use fallback logic
         # This ensures fallback happens for any symbol that doesn't have IBKR dividend data
-        if dividend == -1:  # Still at initial value, meaning no valid data was found
+        if dividend is None or dividend == -1:
             logger.debug("Using fallback dividend values for symbol", {"symbol": symbol})
             
             if symbol in ['ESTX50', 'SX5E']:
