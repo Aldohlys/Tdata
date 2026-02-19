@@ -70,7 +70,8 @@ def compute_spread_risk_reward(
     multiplier=100,
     currency=None,
     exchangeSec=None,
-    exchangeOpt=None
+    exchangeOpt=None,
+    force_refresh=False
 ):
     """
     Compute risk/reward, expected value, and probability of success for
@@ -137,6 +138,7 @@ def compute_spread_risk_reward(
         strike_max=strike_max,
         currency=currency,
         exchangeOpt=exchangeOpt,
+        force_refresh=force_refresh,
     )
 
     if not strikes:
