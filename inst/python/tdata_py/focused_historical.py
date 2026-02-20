@@ -131,7 +131,7 @@ class FocusedHistoricalManager:
                 'high': float(bar.high) if bar.high > 0 else None,
                 'low': float(bar.low) if bar.low > 0 else None,
                 'close': float(bar.close) if bar.close > 0 else None,
-                'volume': int(bar.volume) if bar.volume >= 0 else 0,
+                'volume': bar.volume if bar.volume >= 0 else 0,
                 
                 # Option-specific market data
                 'bid': getattr(bar, 'bid', None),

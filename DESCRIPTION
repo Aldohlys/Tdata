@@ -1,6 +1,6 @@
 Package: Tdata
 Title: Provide basic utilities for trading IBKR account
-Version: 5.8.30
+Version: 5.8.31
 Authors@R: person("Alexis", "Martin", , "aldohlys@gmail.com", role =
         c("aut","cre"), comment = c(ORCID = ""))
 Description: This package contains various R and Python functions that

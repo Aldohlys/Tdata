@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-02-19
+## [Unreleased] - 2026-02-20
+
+### Fixed
+- **focused_historical.py**: Remove `int()` cast on `bar.volume` (line 134)
+  - Prepares for IBKR TWS 10.44 (Feb 23, 2026): LAST_SIZE tick type changes from Integer to Decimal
+  - `int()` would truncate fractional trade sizes; now passes through as-is
 
 ### Added
 - **spread.py**: Add `force_refresh` parameter to `compute_spread_risk_reward()`
