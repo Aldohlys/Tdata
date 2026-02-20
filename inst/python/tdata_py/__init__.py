@@ -257,6 +257,14 @@ except ImportError as e:
     def compute_spread_risk_reward(*args, **kwargs):
         return None
 
+# Position sizer (Monte Carlo)
+try:
+    from .position_sizer import size_position
+except ImportError as e:
+    print(f"Error importing position_sizer: {e}")
+    def size_position(*args, **kwargs):
+        return None
+
 # ============================================================================
 # PACKAGE METADATA AND CONVENIENCE
 # ============================================================================
@@ -317,6 +325,9 @@ __all__ = [
 
     # === SPREAD ANALYSIS ===
     'compute_spread_risk_reward',
+
+    # === POSITION SIZER ===
+    'size_position',
 
     # === LOGGING FUNCTIONS ===
     'get_logger',

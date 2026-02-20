@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - 2026-02-20
 
 ### Fixed
+- **volatility.R**: Fix `prepare_har_data()` crash on price data with NAs
+  - `TTR::volatility` fails with "not enough non-NA values" when Yahoo returns sparse data (e.g. UBSG.SW)
+  - Now removes NA rows from price data before row count check and TTR call
 - **contract.py**: Fix `getStrikesfromExpDate()` ignoring `force_refresh` parameter (line 602)
   - Was hardcoded to `force_refresh=False`, now passes through the caller's value
   - Affects `getIV_DTE` / `getIBKRMetrics` volatility computations using stale chain data
@@ -16,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `int()` would truncate fractional trade sizes; now passes through as-is
 
 ### Added
+- **position_sizer.py**: New generalized Monte Carlo position sizer engine
+  - Accepts arbitrary option combos (strangle, vertical, diagonal, iron condor, butterfly, etc.)
+  - Per-leg DTE support for multi-expiration strategies (diagonals, calendars)
+  - 3-scenario simulation: HV base, HV regime-adjusted (recommended), IV conservative
+  - ES/VaR risk budgeting at 95% and 99% confidence levels
+  - IVP/HVP regime analysis with sizing multiplier (IDEAL/FAVORABLE/NEUTRE/DEFAVORABLE/DANGEREUX)
+  - Student-t fat tails (df=5), full BS with r and div support
+- **position_sizer.R**: New `sizePosition()` exported R wrapper function
+  - Converts R data.frame legs to Python list-of-dicts format
+  - Returns nested list with lots, regime, scenarios, recommendation
 - **spread.py**: Add `force_refresh` parameter to `compute_spread_risk_reward()`
   - Passes through to `getOptionStrikes()` to refresh stale chain cache
   - Fixes issue where old cached chains had only $5-increment strikes, missing $1-increment strikes added by IBKR for near-the-money expirations

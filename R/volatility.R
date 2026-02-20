@@ -720,10 +720,19 @@ calculate_period_rv <- function(rv_daily, period_length) {
 #' @noRd
 prepare_har_data <- function(prices, calc = "close", n = 5, forecast_horizon = 1) {
 
+  if (is.null(prices) || nrow(prices) == 0) return(NULL)
+
+  # Remove rows with NA in Close (and OHLC columns used by TTR::volatility)
+  close_col <- grep("Close$", colnames(prices), value = TRUE)
+  if (length(close_col) > 0) {
+    valid_rows <- stats::complete.cases(prices[, close_col])
+    prices <- prices[valid_rows, ]
+  }
+
   # Check for minimum data requirements
   min_rows <- n + 22 + forecast_horizon  # n for vol, 22 for monthly RV, h for forecast
 
-  if (is.null(prices) || nrow(prices) < min_rows) {
+  if (nrow(prices) < min_rows) {
     logger::log_warn("Insufficient price data for HAR model: {nrow(prices)} rows (need {min_rows})", namespace = "Tdata")
     return(NULL)
   }
