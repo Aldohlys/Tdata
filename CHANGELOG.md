@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - 2026-02-20
 
 ### Fixed
+- **contract.py**: Fix `getStrikesfromExpDate()` ignoring `force_refresh` parameter (line 602)
+  - Was hardcoded to `force_refresh=False`, now passes through the caller's value
+  - Affects `getIV_DTE` / `getIBKRMetrics` volatility computations using stale chain data
 - **focused_historical.py**: Remove `int()` cast on `bar.volume` (line 134)
   - Prepares for IBKR TWS 10.44 (Feb 23, 2026): LAST_SIZE tick type changes from Integer to Decimal
   - `int()` would truncate fractional trade sizes; now passes through as-is

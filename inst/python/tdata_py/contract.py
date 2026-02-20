@@ -599,7 +599,7 @@ def getStrikesfromExpDate(sym, secType=None, currency=None, exchangeOpt=None, tr
 
     logger.info(f"Argts: sym:{sym}, tradingClass:{tradingClass}, expdate:{expdate}, exchangeOpt:{exchangeOpt}")
        
-    return getAllStrikes(sym, trading_class=tradingClass, expiration=expdate, exchangeOpt=exchangeOpt, force_refresh=False)
+    return getAllStrikes(sym, trading_class=tradingClass, expiration=expdate, exchangeOpt=exchangeOpt, force_refresh=force_refresh)
 
 def getStrikesFromRange(sym, current_price, expdate, implied_volatility, force_refresh=False):
     """
