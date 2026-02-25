@@ -43,3 +43,6 @@ tests/test-results-1
 !CHANGELOG.md
 
 historical_config.json
+
+renv/
+renv.lock
