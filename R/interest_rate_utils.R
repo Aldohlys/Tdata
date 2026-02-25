@@ -2,7 +2,7 @@
 
 #' Get and store interest rates for trading applications
 #'
-#' @description Retrieves interest rates for USD, EUR, and CHF for various tenors
+#' @description Retrieves interest rates for USD, EUR, CHF, and JPY for various tenors
 #' and stores them in the Currencies table of the configured database.
 #' @param update_db Logical, whether to update the database (default: TRUE). Database will be updated in percent terms.
 #' @return A data frame containing the retrieved interest rates, in decimal terms and not in percent terms.
@@ -37,10 +37,18 @@ getInterestRates <- function(update_db = TRUE) {
     message("Error retrieving CHF rates: ", e$message)
   })
 
+  # Try getting JPY rates
+  tryCatch({
+    jpy_rates <- get_jpy_rates()
+    rates <- rbind(rates, jpy_rates)
+  }, error = function(e) {
+    message("Error retrieving JPY rates: ", e$message)
+  })
+
   # If no rates were retrieved, create empty dataframe with currency names
   if (nrow(rates) == 0) {
     rates <- data.frame(
-      Name = c("USD", "EUR", "CHF"),
+      Name = c("USD", "EUR", "CHF", "JPY"),
       ir1week = NA_real_,
       ir1month = NA_real_,
       ir3months = NA_real_,
@@ -392,6 +400,77 @@ get_eur_rates <- function() {
     }
   }, error = function(e) {
     Tbasics::display_message("Using fall back value for 2 years")
+  })
+
+  return(rates)
+}
+
+####################################  JPY
+#' Get JPY interest rates from MOF Japan and FRED
+#'
+#' Retrieves current JPY interest rates: 1Y and 2Y from the Ministry of Finance
+#' Japan daily JGB yield CSV, and short-term tenors from FRED 3-month TIBOR.
+#'
+#' @return A data frame with columns: Name, last_ir_update, ir1week, ir1month,
+#'   ir3months, ir6months, ir1year, ir2years
+#' @noRd
+#' @keywords internal
+get_jpy_rates <- function() {
+  today_date <- format(Sys.Date(), "%Y%m%d")
+
+  # Default fallback rates based on Feb 2025 levels
+  rates <- data.frame(
+    Name = "JPY",
+    last_ir_update = today_date,
+    ir1week = 0.35,
+    ir1month = 0.40,
+    ir3months = 0.56,
+    ir6months = 0.70,
+    ir1year = 1.03,
+    ir2years = 1.27,
+    stringsAsFactors = FALSE
+  )
+
+  # --- 1Y and 2Y from MOF Japan daily JGB yields ---
+  tryCatch({
+    url <- "https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/jgbcme.csv"
+    jgb <- utils::read.csv(url, header = FALSE, skip = 1, stringsAsFactors = FALSE)
+    # Columns: Date, 1Y, 2Y, 3Y, 4Y, 5Y, 6Y, 7Y, 8Y, 9Y, 10Y, 15Y, 20Y, 25Y, 30Y, 40Y
+    colnames(jgb)[1:3] <- c("date", "Y1", "Y2")
+
+    # Get the last non-NA row
+    jgb$Y1 <- suppressWarnings(as.numeric(jgb$Y1))
+    jgb$Y2 <- suppressWarnings(as.numeric(jgb$Y2))
+    last_row <- utils::tail(jgb[!is.na(jgb$Y1), ], 1)
+
+    if (nrow(last_row) > 0) {
+      rates$ir1year <- last_row$Y1
+      rates$ir2years <- last_row$Y2
+      # Parse date from YYYY/M/D format
+      parsed_date <- as.Date(last_row$date, format = "%Y/%m/%d")
+      if (!is.na(parsed_date)) {
+        rates$last_ir_update <- format(parsed_date, "%Y%m%d")
+      }
+    }
+  }, error = function(e) {
+    warning("Error retrieving JGB yields from MOF Japan: ", e$message)
+  })
+
+  # --- Short-term: 3-month TIBOR from FRED ---
+  tryCatch({
+    quantmod::getSymbols("IR3TIB01JPM156N", src = "FRED",
+                         from = Sys.Date() - 90, auto.assign = TRUE)
+    tibor_3m <- as.numeric(xts::last(IR3TIB01JPM156N))
+    if (!is.na(tibor_3m)) {
+      rates$ir3months <- tibor_3m
+      # Approximate shorter tenors from TIBOR and BOJ policy rate (0.50%)
+      rates$ir1month <- round(tibor_3m * 0.75, 3)
+      rates$ir1week <- round(tibor_3m * 0.65, 3)
+      # Approximate 6-month between 3M TIBOR and 1Y JGB
+      rates$ir6months <- round((tibor_3m + rates$ir1year) / 2, 3)
+    }
+  }, error = function(e) {
+    warning("Error retrieving JPY TIBOR from FRED: ", e$message)
   })
 
   return(rates)

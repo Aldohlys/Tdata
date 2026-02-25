@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-02-25
 
+### Added
+- **interest_rate_utils.R**: JPY interest rate retrieval via `get_jpy_rates()`
+  - 1Y and 2Y yields from MOF Japan daily JGB CSV (https://www.mof.go.jp)
+  - 3-month TIBOR from FRED (`IR3TIB01JPM156N`)
+  - Short-term tenors approximated from TIBOR and JGB yields
+  - Hardcoded fallback values if both sources fail
+- **interest_rate_utils.R**: `getInterestRates()` now includes JPY alongside USD, EUR, CHF
+
 ### Changed
 - **IB_connection.py**: IBKR API port is now configurable via `config.yml` (`ibkr.api_port`)
   - `safe_ib_connect()` reads port from config instead of hardcoding 7496
