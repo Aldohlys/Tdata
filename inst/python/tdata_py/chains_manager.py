@@ -23,6 +23,21 @@ from fin_logger import get_logger
 
 logger = get_logger("tdata_py.chains_manager")
 
+# ---------------------------------------------------------------------------
+# Stale-warning accumulator
+# ---------------------------------------------------------------------------
+_stale_warnings = []
+
+
+def get_stale_warnings():
+    """Return a copy of accumulated stale-cache warnings."""
+    return list(_stale_warnings)
+
+
+def clear_stale_warnings():
+    """Clear the accumulated stale-cache warnings."""
+    _stale_warnings.clear()
+
 @contextmanager
 def suppress_ib_errors():
     """Context manager to temporarily suppress IB wrapper errors."""
@@ -55,7 +70,15 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=No
   """
   
   storage = ParquetChainsStorage()
-  
+
+  # TTL check: remove stale chain files so load_chains() triggers a fresh fetch
+  if not force_refresh:
+    stale_deleted = storage.check_and_remove_stale_chains(sym)
+    if stale_deleted:
+        for tc in stale_deleted:
+            warning_msg = f"Stale chain cache evicted for {sym}/{tc}"
+            _stale_warnings.append(warning_msg)
+
   # Try cache first (unless forced refresh)
   if not force_refresh:
     cached_chains = storage.load_chains(sym)
@@ -306,7 +329,13 @@ def getOptionStrikes(sym, trading_class, expiration, strike_min=None, strike_max
     
     # Load cached strike states (qualified + out_of_scope)
     strikes_storage = ParquetStrikesStorage()
-    
+
+    # TTL check: remove expired/stale strike cache before loading
+    if not force_refresh:
+        stale_msg = strikes_storage.check_and_remove_stale_strikes(sym, trading_class, expiration)
+        if stale_msg:
+            _stale_warnings.append(stale_msg)
+
     if force_refresh:
         # FORCE REFRESH: Don't load cache, start fresh
         qualified_strikes = set()

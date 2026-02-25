@@ -5,7 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-02-20
+## [Unreleased] - 2026-02-25
+
+### Added
+- **parquet_storage.py**: Cache TTL (time-to-live) staleness detection
+  - `get_file_age_days(file_path)` — returns file age in days from `st_mtime`
+  - `get_cache_ttl_days()` — reads `cache_ttl_days` from config (default 7)
+  - `ParquetChainsStorage.check_and_remove_stale_chains(symbol)` — deletes chain parquets older than TTL
+  - `ParquetStrikesStorage.check_and_remove_stale_strikes(symbol, tc, exp)` — deletes expired or stale strike caches
+- **chains_manager.py**: Stale-warning accumulator and automatic TTL enforcement
+  - `get_stale_warnings()` / `clear_stale_warnings()` — module-level warning accumulator for R callers
+  - `getChains()` now evicts stale chain files before loading cache (triggers IBKR re-fetch)
+  - `getOptionStrikes()` now evicts expired/stale strike files before loading cache
+- **__init__.py**: Export `get_stale_warnings`, `clear_stale_warnings`, `get_file_age_days`, `get_cache_ttl_days`
+
+### Changed
+- **_core.py**: `load_config()` now honors `R_CONFIG_ACTIVE` env var (production on VM, default on Windows)
+
+## [5.8.33] - 2026-02-20
 
 ### Fixed
 - **volatility.R**: Fix `prepare_har_data()` crash on price data with NAs

@@ -7,6 +7,8 @@ Separates storage concerns from business logic.
 
 import datetime
 import logging
+import os
+import time
 from pathlib import Path
 
 import pyarrow as pa
@@ -17,6 +19,34 @@ from .core import CONFIG
 from fin_logger import get_logger
 
 logger = get_logger("tdata_py.parquet_storage")
+
+
+def get_file_age_days(file_path):
+    """
+    Return the age of a file in days based on its modification time.
+
+    Args:
+        file_path: Path to the file (str or Path)
+
+    Returns:
+        float: Age in days, or -1 if file does not exist
+    """
+    file_path = Path(file_path)
+    if not file_path.exists():
+        return -1
+    mtime = file_path.stat().st_mtime
+    age_seconds = time.time() - mtime
+    return age_seconds / 86400.0
+
+
+def get_cache_ttl_days():
+    """
+    Read the cache TTL (time-to-live) in days from config.
+
+    Returns:
+        int: TTL in days (default 7)
+    """
+    return int(CONFIG.get("cache_ttl_days", 7))
 
 class ParquetChainsStorage:
     """Manages Parquet storage for option chains data."""
@@ -135,6 +165,39 @@ class ParquetChainsStorage:
         except Exception as e:
             logger.error(f"Error saving chains for {symbol}: {e}")
     
+    def check_and_remove_stale_chains(self, symbol):
+        """
+        Check all cached chain files for a symbol and delete those older than TTL.
+
+        Stale files are removed so that the next load_chains() call finds no cache
+        and triggers a fresh IBKR fetch.
+
+        Args:
+            symbol (str): Symbol to check
+
+        Returns:
+            list: Trading classes whose cache files were deleted
+        """
+        symbol_dir = self.base_dir / symbol
+        if not symbol_dir.exists():
+            return []
+
+        ttl = get_cache_ttl_days()
+        deleted_trading_classes = []
+
+        for chain_file in symbol_dir.glob("*_chain.parquet"):
+            age = get_file_age_days(chain_file)
+            if age > ttl:
+                trading_class = chain_file.stem.replace("_chain", "")
+                logger.warning(
+                    f"Stale chain cache for {symbol}/{trading_class}: "
+                    f"{age:.1f} days old (TTL={ttl}). Deleting to force refresh."
+                )
+                chain_file.unlink()
+                deleted_trading_classes.append(trading_class)
+
+        return deleted_trading_classes
+
     def get_chain_for_trading_class(self, symbol, trading_class):
         """
         Get specific trading class chain data.
@@ -280,6 +343,53 @@ class ParquetStrikesStorage:
         except Exception as e:
             logger.error(f"Error caching strike states for {symbol} {trading_class} {expiration}: {e}")
     
+    def check_and_remove_stale_strikes(self, symbol, trading_class, expiration):
+        """
+        Check a specific strike cache file and remove it if expired or stale.
+
+        Rules:
+        - If expiration date < today → always delete (expired contract)
+        - If file age > TTL → delete (stale cache)
+
+        Args:
+            symbol (str): Symbol
+            trading_class (str): Trading class
+            expiration (str): Expiration date (YYYYMMDD)
+
+        Returns:
+            str or None: Warning message if file was removed, None otherwise
+        """
+        strikes_file = self.base_dir / symbol / trading_class / f"{expiration}_strikes.parquet"
+
+        if not strikes_file.exists():
+            return None
+
+        today = datetime.date.today().strftime("%Y%m%d")
+
+        # Check if the option contract itself has expired
+        if expiration < today:
+            strikes_file.unlink()
+            msg = (
+                f"Expired strike cache deleted: {symbol}/{trading_class}/{expiration} "
+                f"(contract expired)"
+            )
+            logger.info(msg)
+            return msg
+
+        # Check file age against TTL
+        ttl = get_cache_ttl_days()
+        age = get_file_age_days(strikes_file)
+        if age > ttl:
+            strikes_file.unlink()
+            msg = (
+                f"Stale strike cache for {symbol}/{trading_class}/{expiration}: "
+                f"{age:.1f} days old (TTL={ttl}). Deleted to force refresh."
+            )
+            logger.warning(msg)
+            return msg
+
+        return None
+
     def get_strike_statistics(self, symbol, trading_class, expiration):
         """
         Get statistics about cached strike states.

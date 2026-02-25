@@ -82,7 +82,9 @@ try:
         getStrikesAuto,
         printSymbolSummary,
         getAllStrikes,
-        getStrikesInRange
+        getStrikesInRange,
+        get_stale_warnings,
+        clear_stale_warnings
     )
       
     from .parquet_storage import (
@@ -94,7 +96,10 @@ try:
         get_chain_for_trading_class,
         get_strikes_for_expiration,
         get_strikes_summary,
-        compare_trading_class_strikes
+        compare_trading_class_strikes,
+        # Cache TTL utilities
+        get_file_age_days,
+        get_cache_ttl_days
     )
   
     # Utility functions for file management
@@ -308,6 +313,12 @@ __all__ = [
     # === MAINTENANCE FUNCTIONS ===
     'clearStrikesCache',
     'clearCache',
+
+    # === CACHE TTL / STALENESS ===
+    'get_stale_warnings',
+    'clear_stale_warnings',
+    'get_file_age_days',
+    'get_cache_ttl_days',
 
     # === CONTRACT FUNCTIONS ===
     'getValue',

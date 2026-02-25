@@ -126,7 +126,7 @@ def process_r_expressions(config):
     
     return config
 # Global config object to avoid reloading the config for each function call
-CONFIG = load_config()
+CONFIG = load_config(env=os.environ.get("R_CONFIG_ACTIVE", "default"))
 
 class TickerDatabase:
     """
