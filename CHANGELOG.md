@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-02-25
 
+### Changed
+- **IB_connection.py**: IBKR API port is now configurable via `config.yml` (`ibkr.api_port`)
+  - `safe_ib_connect()` reads port from config instead of hardcoding 7496
+  - Default: 7496 (live TWS on Windows), production: 4002 (paper Gateway on VM)
+
 ### Added
 - **parquet_storage.py**: Cache TTL (time-to-live) staleness detection
   - `get_file_age_days(file_path)` — returns file age in days from `st_mtime`

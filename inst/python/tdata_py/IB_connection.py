@@ -3,9 +3,14 @@ import socket
 import random
 from ib_async import *
 from fin_logger import get_logger, DEBUG, INFO
+from tdata_py._core import CONFIG
 
 # Get logger for this module
 logger = get_logger()
+
+# Read IBKR API port from config (default: 7496)
+_ibkr_config = CONFIG.get("ibkr", {})
+DEFAULT_IB_PORT = int(_ibkr_config.get("api_port", 7496)) if isinstance(_ibkr_config, dict) else 7496
 
 def is_port_in_use(port):
     """
@@ -42,7 +47,7 @@ def getPort():
     # If we've tried max_attempts times and found no open port
     raise RuntimeError(f"Could not find an available port after {max_attempts} attempts")
 
-def safe_ib_connect(host='127.0.0.1', port=7496, client_id=None, readonly=False):
+def safe_ib_connect(host='127.0.0.1', port=None, client_id=None, readonly=False):
     """
     Safely connect to Interactive Brokers with proper error handling.
     
@@ -55,9 +60,11 @@ def safe_ib_connect(host='127.0.0.1', port=7496, client_id=None, readonly=False)
     Returns:
         IB instance - The IB instance
     """
+    if port is None:
+        port = DEFAULT_IB_PORT
     if client_id is None:
         client_id = getPort()
-        
+
     ib = IB()
     
     try:
