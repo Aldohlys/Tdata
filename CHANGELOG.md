@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.37] - 2026-02-26
+
+### Fixed
+- **currency.R**: `getLastCHFValue()` Yahoo cross-rate formula was wrong for non-direct currencies (JPY, CAD, HKD)
+  - Old formula `USDXXX / CHFUSD` gave nonsensical values (e.g., 133 for JPY instead of 0.006)
+  - Fixed to `1 / (USDXXX * CHFUSD)` which correctly computes CHF per 1 foreign unit
+  - Also ensured `CHFUSD=X` ticker is always fetched when cross-rate currencies are processed (was missing when USD not in request)
+- **currency.R**: `getLastCHFValue()` rate precision increased from `round(chf_value, 4)` to `round(chf_value, 6)`
+  - JPY rate ~0.005923 was stored as 0.0059 (only 2 sig figs), causing ~0.4% error on large JPY→CHF conversions
+- **prices.R**: `getYahooData()` was discarding valid FX data for long date ranges
+  - quantmod's benign "contains missing values" warning was caught by `tryCatch` warning handler, which discarded the entire valid dataset and generated a synthetic NA-filled frame
+  - Fixed using `withCallingHandlers` to muffle the benign warning while preserving the data
+  - Actual Yahoo error warnings still propagate correctly
+
 ## [Unreleased] - 2026-02-25
 
 ### Added

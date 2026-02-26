@@ -215,8 +215,15 @@ getLastCHFValue <- function(currency) {
       }
     })
 
+    # Ensure CHFUSD=X is fetched when cross-rate currencies need it
+    fetch_tickers <- yahoo_tickers
+    needs_cross_rate <- any(!currency_detail$Name %in% c("EUR", "USD"))
+    if (needs_cross_rate && !"CHFUSD=X" %in% fetch_tickers) {
+      fetch_tickers <- c(fetch_tickers, "CHFUSD=X")
+    }
+
     # Get Yahoo data for CHF pairs and cross-rates
-    price_list <- getYahooData(yahoo_tickers, from_date = Sys.Date() - 3)
+    price_list <- getYahooData(fetch_tickers, from_date = Sys.Date() - 3)
 
     if (nrow(price_list) == 0) {
       logger::log_info("No currency data found!", namespace="Tdata")
@@ -249,11 +256,11 @@ getLastCHFValue <- function(currency) {
       } else if (curr == "USD") {
         1 / ticker_data$Adjusted  # Invert CHF/USD to get USD/CHF
       } else {
-        # For other currencies, need cross-rate via USD
-        # Get USD/CHF rate for cross-calculation
+        # For non-direct currencies: YahooName is USDXXX=X (foreign per USD)
+        # CHF per 1 foreign unit = (1/USDXXX) / CHFUSD = 1 / (USDXXX * CHFUSD)
         usd_chf_data <- last_price |> dplyr::filter(ticker == "CHFUSD=X")
         if (nrow(usd_chf_data) > 0) {
-          ticker_data$Adjusted / usd_chf_data$Adjusted  # Currency/USD divided by CHF/USD
+          1 / (ticker_data$Adjusted * usd_chf_data$Adjusted)
         } else {
           NA  # Cannot calculate without USD/CHF rate
         }
@@ -263,7 +270,7 @@ getLastCHFValue <- function(currency) {
         result_prices <- rbind(result_prices, data.frame(
           date = as.integer(format(ticker_data$date, "%Y%m%d")),
           currency = curr,
-          chf_value = round(chf_value, 4)
+          chf_value = round(chf_value, 6)
         ))
       }
     }

@@ -698,7 +698,10 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
         logger::log_debug(sprintf("    Attempt %d for %s", attempt, ticker), namespace="Tdata")
 
         # Try to get data - if Yahoo raises an error/warning, exit immediately
-        attempt_result <- tryCatch({
+        # withCallingHandlers muffles benign quantmod warnings (e.g. "contains missing values")
+        # so valid data isn't discarded. Actual Yahoo errors still propagate to tryCatch.
+        attempt_result <- tryCatch(
+        withCallingHandlers({
           ticker_data <- quantmod::getSymbols(ticker,
                                               from = from_date,
                                               to = to_date,
@@ -716,8 +719,14 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
 
           # Data retrieved successfully (even if empty) - exit retry loop
           "success"
-
         },
+        warning = function(w) {
+          # Muffle benign quantmod data quality warnings - data is still valid
+          if (grepl("contains missing values", conditionMessage(w))) {
+            invokeRestart("muffleWarning")
+          }
+          # Other warnings propagate to outer tryCatch handler
+        }),
         warning = function(w) {
           # Yahoo raised a warning - this means ticker is invalid/not found
           warning_msg <- conditionMessage(w)
