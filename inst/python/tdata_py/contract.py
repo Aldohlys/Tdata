@@ -199,7 +199,7 @@ def getValue(list_sym, secType=None, exchange=None, currency=None, expiration=No
                 return -1
         except Exception as e:
             # Handle any unexpected errors
-            logger.error("Error getting values:", e)
+            logger.error(f"Error getting values: {e}")
             return -1
         finally:
             # Ensure connection is always closed - except if ib was given as parameter

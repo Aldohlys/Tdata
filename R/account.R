@@ -356,12 +356,12 @@ greeksNet = function(portf) {
   if (!all(c("type","pos", "multiplier", "delta", "uPrice", "gamma", "theta", "vega")
       %in% colnames(portf))) {
     portf=dplyr::mutate(portf, mktPrice=c_to_base(mktPrice, currency))
-    dplyr::summarize(dplyr::mutate(portf, dnet = pos, ddnet = pos*mktPrice, gnet = 0, tnet = NA, vnet = NA),
+    dplyr::summarize(dplyr::mutate(portf, dnet = pos, ddnet = pos*mktPrice, gnet = 0, tnet = NA_real_, vnet = NA_real_),
                      delta=sum(dnet,na.rm=FALSE),
                      deltanotional=sum(ddnet,na.rm=FALSE),
                      gamma=0,
-                     theta= NA,
-                     vega= NA)
+                     theta= NA_real_,
+                     vega= NA_real_)
   }
 
   else {
@@ -441,7 +441,8 @@ getIBKR <- function() {
   l = tdata_py$getIBKRData()
 
   if (typeof(l) != "list") {
-    Tbasics::display_error_message("No value returned from IB!")
+    warning("No value returned from IB!")
+    return(exit_code)
   }
 
   #### 1. Process new account data
@@ -786,11 +787,20 @@ getGonet <- function(use_defaults = FALSE) {
   ### Test first if IB is available - no use to continue if not
   if (!isIBAvailable()) return()
 
-  gonet_pos = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetPos.csv",delim=";",
+  gonet_dir <- config::get("gonet_dir")
+  gonet_pos_file <- file.path(gonet_dir, "GonetPos.csv")
+  gonet_trades_file <- file.path(gonet_dir, "GonetTrades.csv")
+
+  if (!file.exists(gonet_pos_file) || !file.exists(gonet_trades_file)) {
+    warning("Gonet CSV files not found in ", gonet_dir)
+    return(invisible())
+  }
+
+  gonet_pos = suppressWarnings(readr::read_delim(file=gonet_pos_file,delim=";",
                                                     show_col_types = FALSE,
                                                     locale=readr::locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
 
-  gonet_trades = suppressWarnings(readr::read_delim(file="C:/Users/aldoh/Documents/NewTrading/GonetTrades.csv",delim=";",
+  gonet_trades = suppressWarnings(readr::read_delim(file=gonet_trades_file,delim=";",
                                                     show_col_types = FALSE,
                                              locale=readr::locale(date_names="en",decimal_mark=".",grouping_mark="",encoding="UTF-8")))
 
@@ -1006,7 +1016,7 @@ getGonet <- function(use_defaults = FALSE) {
     result
   }, error = function(e) {
     logger::log_error("Failed to retrieve stored cash positions: {e$message}", namespace = "Tdata")
-    Tbasics::display_error_message(paste("Could not retrieve previous cash positions:", e$message))
+    warning("Could not retrieve previous cash positions: ", e$message)
     data.frame(CashBalanceCHF = 0, CashBalanceUSD = 0, CashBalanceEUR = 0)
   })
 
@@ -1072,7 +1082,8 @@ getAccountGonet <- function(gonet_cash = NULL) {
   acc = dplyr::summarize(portf, StockMarketValue = round(sum(convert_to_base_date(mktValue, currency, Sys.Date()), na.rm = FALSE),2),
                 UnrealizedPnL = round(sum(convert_to_base_date(unPnL, currency, Sys.Date()), na.rm = FALSE),2))
   if (any(is.na(acc))) {
-    Tbasics::display_error_message("Could not get a complete potfolio record - some prices are missing -> no account recorded")
+    warning("Could not get a complete portfolio record - some prices are missing -> no account recorded")
+    return(invisible())
   }
 
   ### Get cash positions from getGonet() return value, or use legacy hard-coded values if not provided
@@ -1170,7 +1181,8 @@ getAccountLive <- function() {
   data = data[!is.na(data$NetLiquidation.2),]
 
   if(!nrow(data)) {
-      Tbasics::display_error_message("Not enough data to process for write_account_live function!!! Needs both Uxx and Gonet data")
+      warning("Not enough data to process for write_account_live function! Needs both Uxx and Gonet data")
+      return(invisible())
   }
 
   #### Add all the columns that are common to Gonet and Uxxx -
@@ -1353,11 +1365,39 @@ getCurrencyExposure <- function(account_name, date = NULL) {
   }
 
   portf_data <- tryCatch({
-    DBI::dbGetQuery(conn, portf_query)
+    result <- DBI::dbGetQuery(conn, portf_query)
+    ### If date-specific query returned 0 rows, fall back to latest available data
+    if (nrow(result) == 0 && !is.null(date)) {
+      fallback_query <- glue::glue("SELECT
+                        CASE
+                          WHEN type = 'CASH' THEN symbol
+                          ELSE currency
+                        END as currency,
+                        SUM(mktValue) as market_value,
+                        SUM(unPnL) as unrealized_pnl
+                      FROM (
+                        SELECT type, symbol, currency, mktValue, unPnL
+                        FROM {`account_name`}
+                        WHERE (date, heure) = (
+                          SELECT date, heure FROM {`account_name`}
+                          ORDER BY date DESC, heure DESC LIMIT 1
+                        )
+                      )
+                      GROUP BY 1")
+      result <- DBI::dbGetQuery(conn, fallback_query)
+    }
+    result
   }, error = function(e) {
     logger::log_debug("No portfolio table for {account_name}: {e$message}", namespace = "Tdata")
     data.frame(currency = character(), market_value = numeric(), unrealized_pnl = numeric())
   })
+
+  ### Ensure currency column is character even when query returns 0 rows (DBI defaults to logical)
+  if (nrow(portf_data) > 0 && !is.character(portf_data$currency)) {
+    portf_data$currency <- as.character(portf_data$currency)
+  } else if (nrow(portf_data) == 0) {
+    portf_data <- data.frame(currency = character(), market_value = numeric(), unrealized_pnl = numeric())
+  }
 
   ### 3. Build cash positions data frame (only non-zero positions)
   cash_data <- data.frame(
