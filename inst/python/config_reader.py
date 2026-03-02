@@ -24,31 +24,33 @@ def read_config(config_path=None):
         dict: Configuration dictionary
     """
     # Get config environment from R_CONFIG_ACTIVE or default to 'default'
-    ## config_env = os.environ.get('R_CONFIG_ACTIVE', 'default')
-    config_env = "default"
-    
-    # If config_path is None, search in common locations
+    config_env = os.environ.get('R_CONFIG_ACTIVE', 'default')
+
+    # If config_path is None, check R_CONFIG_FILE first, then search common locations
     if config_path is None:
-        # Common locations to check, matching R implementation
-        possible_paths = [
-            os.path.join(os.environ.get("USERPROFILE", ""), "config.yml"),  # Windows user directory
-            os.path.join(os.path.expanduser("~"), "config.yml"),           # Cross-platform home directory
-            os.path.join(os.getcwd(), "config.yml"),                       # Current working directory
-            os.path.join(os.environ.get("R_CONFIG_DIR", ""), "config.yml"), # R_CONFIG_DIR env variable
-            os.path.join(os.getcwd(), "conf", "config.yml"),               # conf subdirectory
-            os.path.join(os.getcwd(), "inst", "config.yml"),               # inst directory for packages
-            # Additional Python-specific paths
-            os.path.join(os.path.dirname(__file__), "config.yml"),         # Same directory as this file
-            os.path.join(os.path.dirname(__file__), "..", "config.yml"),   # Parent directory
-            os.path.join(os.path.dirname(__file__), "..", "..", "config.yml")  # Two levels up
-        ]
-        
-        # Find first existing file
-        for path in possible_paths:
-            if os.path.exists(path):
-                config_path = path
-                print(f"[PY] Found config file at: {config_path}")
-                break
+        r_config_file = os.environ.get('R_CONFIG_FILE', '')
+        if r_config_file and os.path.exists(r_config_file):
+            config_path = r_config_file
+        else:
+            # Common locations to check, matching R implementation
+            possible_paths = [
+                os.path.join(os.path.expanduser("~"), "config.yml"),           # Cross-platform home directory
+                os.path.join(os.environ.get("USERPROFILE", ""), "config.yml"),  # Windows user directory
+                os.path.join(os.getcwd(), "config.yml"),                       # Current working directory
+                os.path.join(os.environ.get("R_CONFIG_DIR", ""), "config.yml"), # R_CONFIG_DIR env variable
+                os.path.join(os.getcwd(), "conf", "config.yml"),               # conf subdirectory
+                os.path.join(os.getcwd(), "inst", "config.yml"),               # inst directory for packages
+                # Additional Python-specific paths
+                os.path.join(os.path.dirname(__file__), "config.yml"),         # Same directory as this file
+                os.path.join(os.path.dirname(__file__), "..", "config.yml"),   # Parent directory
+                os.path.join(os.path.dirname(__file__), "..", "..", "config.yml")  # Two levels up
+            ]
+
+            # Find first existing file
+            for path in possible_paths:
+                if os.path.exists(path):
+                    config_path = path
+                    break
     
     if config_path is None or not os.path.exists(config_path):
         print("[PY] No config file found")
@@ -62,8 +64,10 @@ def read_config(config_path=None):
         print(f"[PY] Error reading config file: {e}")
         return None
     
-    # Get ONLY the specific environment section - no merging
-    config = all_config.get(config_env, {})
+    # Start with default, then merge environment-specific overrides
+    config = all_config.get('default', {})
+    if config_env != 'default' and config_env in all_config:
+        config = merge_dicts(config, all_config[config_env])
     
     return config
 

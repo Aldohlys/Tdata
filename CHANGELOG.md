@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.38] - 2026-03-02
+
+### Fixed
+- **config_reader.py**: `R_CONFIG_ACTIVE` was commented out and hardcoded to "default"
+  - Python logging used Windows `log_dir` path on the VM, creating a literal `C:` directory
+  - Restored `os.environ.get('R_CONFIG_ACTIVE', 'default')` to read the env var
+  - Added `R_CONFIG_FILE` env var lookup as primary config path (before fallback search)
+  - Enabled default+production config merging via `merge_dicts()` (was returning only one section)
+
 ## [5.8.37] - 2026-02-26
 
 ### Fixed
