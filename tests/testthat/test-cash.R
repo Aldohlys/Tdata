@@ -52,8 +52,6 @@ test_that("get_exchange_rate handles same currency", {
 })
 
 test_that("get_exchange_rate returns numeric rate", {
-  # Test with real currency conversion (requires ConvertToUSD table)
-  # This test will only pass if database has exchange rate data
   skip_if_not(DBI::dbCanConnect(RSQLite::SQLite(), Sys.getenv("R_DB_PATH")),
               "Database not available")
 
@@ -78,13 +76,9 @@ test_that("CASH P&L calculation handles no CASH trades", {
 })
 
 test_that("CASH P&L calculation includes commission in cost basis (integration test)", {
-  # This is an integration test that requires:
-  # 1. ConvertToUSD table with exchange rates
-  # 2. BaseCurrency parameter set
   skip_if_not(DBI::dbCanConnect(RSQLite::SQLite(), Sys.getenv("R_DB_PATH")),
               "Database not available")
 
-  # Skip if base currency not configured
   skip_if(is.null(try(getParam("BaseCurrency"), silent = TRUE)),
           "BaseCurrency not configured")
 
@@ -107,15 +101,11 @@ test_that("CASH P&L calculation includes commission in cost basis (integration t
   expect_true(is.numeric(result$UnrealizedPnL[1]))
 
   # Cost basis calculation test: abs(Total) should include commission
-  # If Total = -37501.60, then cost_basis = 37501.60
-  # This is independent of exchange rates
   cost_basis <- abs(trade$Total[1])
   expect_equal(cost_basis, 37501.60, tolerance = 0.01)
 })
 
 test_that("create_cash_portfolio_row skips base currency", {
-  # Test with hardcoded base currency check
-  # Assumes BaseCurrency parameter is accessible
   skip_if(is.null(try(getParam("BaseCurrency"), silent = TRUE)),
           "BaseCurrency not configured")
 
@@ -135,8 +125,6 @@ test_that("create_cash_portfolio_row skips zero balance", {
   skip_if(is.null(try(getParam("BaseCurrency"), silent = TRUE)),
           "BaseCurrency not configured")
 
-  # Provide non-base currency with zero balance
-  # Assumes base currency is not USD
   result <- create_cash_portfolio_row(
     currency = "USD",
     balance = 0.001,
@@ -154,7 +142,6 @@ test_that("create_cash_portfolio_row creates valid row for non-base currency (in
           "BaseCurrency not configured")
 
   base_curr <- getParam("BaseCurrency")
-  # Use a currency that's not the base currency
   test_currency <- if (base_curr == "CHF") "USD" else "CHF"
 
   result <- create_cash_portfolio_row(
@@ -180,45 +167,156 @@ test_that("create_cash_portfolio_row creates valid row for non-base currency (in
   expect_equal(result$unPnL, 0)
 })
 
-test_that("create_cash_portfolio_row calculates P&L with linked trade (integration test)", {
+# --- resolve_cash_cost_basis tests ---
+
+test_that("resolve_cash_cost_basis returns Prix directly when Instrument matches", {
+  # Trade: Instrument=EUR, Currency=CHF, Prix=0.93 (CHF per EUR)
+  # Looking up EUR balance -> Instrument matches -> use Prix as-is
+  trade_result <- data.frame(
+    TradeNr = 659L,
+    Prix = 0.93,
+    Instrument = "EUR",
+    Currency = "CHF",
+    stringsAsFactors = FALSE
+  )
+
+  cost_basis <- resolve_cash_cost_basis(trade_result, "EUR")
+  expect_equal(cost_basis, 0.93)
+})
+
+test_that("resolve_cash_cost_basis inverts Prix when Currency matches", {
+  # Trade 687: Instrument=CHF, Currency=JPY, Prix=201.665 (JPY per CHF)
+  # Looking up JPY balance -> matched on Currency -> invert Prix
+  trade_result <- data.frame(
+    TradeNr = 687L,
+    Prix = 201.665,
+    Instrument = "CHF",
+    Currency = "JPY",
+    stringsAsFactors = FALSE
+  )
+
+  cost_basis <- resolve_cash_cost_basis(trade_result, "JPY")
+  expect_equal(cost_basis, 1 / 201.665, tolerance = 1e-8)
+})
+
+# --- create_cash_portfolio_row with mocked trade lookup ---
+
+test_that("create_cash_portfolio_row links trade via Instrument match", {
   skip_if_not(DBI::dbCanConnect(RSQLite::SQLite(), Sys.getenv("R_DB_PATH")),
               "Database not available")
   skip_if(is.null(try(getParam("BaseCurrency"), silent = TRUE)),
           "BaseCurrency not configured")
+  skip_if(getParam("BaseCurrency") != "CHF", "Test designed for CHF base currency")
 
-  # This test verifies P&L calculation when CASH position links to existing trade
-  # Uses existing trades 659 (EUR) and 660 (USD) from database
-
-  base_curr <- getParam("BaseCurrency")
-  skip_if(base_curr != "CHF", "Test designed for CHF base currency")
-
-  # Get default account
-  default_account <- getParam("DefaultAccount")
-  skip_if(is.null(default_account), "No default account configured")
-
-  # Test with EUR (should link to TradeNr 659)
-  result_eur <- create_cash_portfolio_row(
-    currency = "EUR",
-    balance = 12154.52,
-    snapshot_date = as.integer(format(Sys.Date(), "%Y%m%d")),
-    snapshot_heure = format(Sys.time(), "%H:%M:%S"),
-    account_table = default_account
+  # Mock: EUR trade where Instrument=EUR (direct match)
+  mock_result <- data.frame(
+    TradeNr = 659L,
+    Prix = 0.93,
+    Instrument = "EUR",
+    Currency = "CHF",
+    stringsAsFactors = FALSE
   )
 
-  expect_false(is.null(result_eur))
-  expect_equal(result_eur$symbol, "EUR")
-  expect_equal(result_eur$TradeNr, 659)  # Should link to existing trade
-  # avgCost should come from trade, not current rate
-  expect_true(result_eur$avgCost != result_eur$mktPrice || abs(result_eur$unPnL) < 0.01)
-  # unPnL should be calculated: (mktPrice - avgCost) * pos
-  expected_pnl <- (result_eur$mktPrice - result_eur$avgCost) * result_eur$pos
-  expect_equal(result_eur$unPnL, expected_pnl, tolerance = 0.01)
+  with_mocked_bindings(
+    getCashTradeForCurrency = function(account_table, currency) mock_result, {
+      result <- create_cash_portfolio_row(
+        currency = "EUR",
+        balance = 12154.52,
+        snapshot_date = as.integer(format(Sys.Date(), "%Y%m%d")),
+        snapshot_heure = "16:00:00",
+        account_table = "U1804173"
+      )
+
+      expect_false(is.null(result))
+      expect_equal(result$TradeNr, 659L)
+      # avgCost = Prix directly (Instrument match)
+      expect_equal(result$avgCost, 0.93)
+      # unPnL = (exchange_rate - 0.93) * 12154.52
+      expected_pnl <- (result$mktPrice - 0.93) * 12154.52
+      expect_equal(result$unPnL, expected_pnl, tolerance = 0.01)
+    }
+  )
 })
 
+test_that("create_cash_portfolio_row links trade via Currency match and inverts Prix", {
+  skip_if_not(DBI::dbCanConnect(RSQLite::SQLite(), Sys.getenv("R_DB_PATH")),
+              "Database not available")
+  skip_if(is.null(try(getParam("BaseCurrency"), silent = TRUE)),
+          "BaseCurrency not configured")
+  skip_if(getParam("BaseCurrency") != "CHF", "Test designed for CHF base currency")
+
+  # Mock: Trade 687 — Instrument=CHF, Currency=JPY, Prix=201.665 JPY/CHF
+  # When looking up JPY balance, this trade matches on Currency
+  mock_result <- data.frame(
+    TradeNr = 687L,
+    Prix = 201.665,
+    Instrument = "CHF",
+    Currency = "JPY",
+    stringsAsFactors = FALSE
+  )
+
+  with_mocked_bindings(
+    getCashTradeForCurrency = function(account_table, currency) mock_result, {
+      result <- create_cash_portfolio_row(
+        currency = "JPY",
+        balance = -503061,
+        snapshot_date = as.integer(format(Sys.Date(), "%Y%m%d")),
+        snapshot_heure = "16:00:00",
+        account_table = "U1804173"
+      )
+
+      expect_false(is.null(result))
+      expect_equal(result$TradeNr, 687L)
+      # avgCost = 1/Prix (Currency match -> inversion)
+      expect_equal(result$avgCost, 1 / 201.665, tolerance = 1e-8)
+      # unPnL must be reasonable (NOT 101 million)
+      expect_true(abs(result$unPnL) < 10000,
+                  label = paste("unPnL should be reasonable, got", result$unPnL))
+      # unPnL = (exchange_rate - 1/201.665) * (-503061)
+      expected_pnl <- (result$mktPrice - 1 / 201.665) * (-503061)
+      expect_equal(result$unPnL, expected_pnl, tolerance = 0.01)
+    }
+  )
+})
+
+test_that("create_cash_portfolio_row defaults to zero PnL when no trade found", {
+  skip_if_not(DBI::dbCanConnect(RSQLite::SQLite(), Sys.getenv("R_DB_PATH")),
+              "Database not available")
+  skip_if(is.null(try(getParam("BaseCurrency"), silent = TRUE)),
+          "BaseCurrency not configured")
+  skip_if(getParam("BaseCurrency") != "CHF", "Test designed for CHF base currency")
+
+  # Mock: no matching trade
+  empty_result <- data.frame(
+    TradeNr = integer(0),
+    Prix = numeric(0),
+    Instrument = character(0),
+    Currency = character(0),
+    stringsAsFactors = FALSE
+  )
+
+  with_mocked_bindings(
+    getCashTradeForCurrency = function(account_table, currency) empty_result, {
+      result <- create_cash_portfolio_row(
+        currency = "USD",
+        balance = 45000,
+        snapshot_date = as.integer(format(Sys.Date(), "%Y%m%d")),
+        snapshot_heure = "16:00:00",
+        account_table = "U1804173"
+      )
+
+      expect_false(is.null(result))
+      # No trade -> avgCost = mktPrice, unPnL = 0
+      expect_equal(result$avgCost, result$mktPrice)
+      expect_equal(result$unPnL, 0)
+    }
+  )
+})
+
+# --- Reconciliation and filtering tests ---
+
 test_that("reconcile_cash_positions works with real data (unit test with inline data)", {
-  # Create a wrapper function that uses inline test data
   test_reconcile <- function() {
-    # Create test data inline
     trades <- data.frame(
       Instrument = c("USD", "EUR"),
       Ssjacent = c("CASH", "CASH"),
@@ -236,18 +334,15 @@ test_that("reconcile_cash_positions works with real data (unit test with inline 
       stringsAsFactors = FALSE
     )
 
-    # Filter for CASH only
     trades_cash <- dplyr::filter(trades, Ssjacent == "CASH")
     portfolio_cash <- dplyr::filter(portfolio, type == "CASH")
 
-    # Join
     reconciled <- dplyr::left_join(
       trades_cash,
       portfolio_cash |> dplyr::select(symbol, pos, mktPrice, mktValue, unPnL),
       by = c("Instrument" = "symbol")
     )
 
-    # Flag discrepancies
     reconciled <- reconciled |>
       dplyr::mutate(
         position_match = abs(Pos - pos) < 0.01,
@@ -268,7 +363,6 @@ test_that("reconcile_cash_positions works with real data (unit test with inline 
 })
 
 test_that("get_cash_positions filters correctly (unit test)", {
-  # Test the filtering logic directly
   all_trades <- data.frame(
     Instrument = c("SPY", "AAPL", "USD"),
     Ssjacent = c("", "", "CASH"),

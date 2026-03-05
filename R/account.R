@@ -485,7 +485,7 @@ getIBKR <- function() {
 
   ### Extract TradeNr and Instrument - some instrument may have been part of the trade but closed and still appear here
   ### currency, expdate is empty for treasury bills
-  open_trades_instrument=dplyr::distinct(dplyr::select(open_trades, TradeNr, Strategy, Instrument, Currency, Exp.Date))
+  open_trades_instrument=dplyr::distinct(dplyr::select(open_trades, TradeNr, Strategy, Instrument, Ssjacent, Currency, Exp.Date))
 
   ### Generate type field from secType IBKR field - default case it is equal to secType
   portf_data = dplyr::mutate(portf_data, type= dplyr::case_match(secType,"STK" ~ "Stock",
@@ -517,7 +517,22 @@ getIBKR <- function() {
                              symbol = dplyr::if_else(type=="TreasuryBill", "US-T", symbol)
                              )
 
-  portf_data = dplyr::left_join(portf_data, open_trades_instrument, multiple="first")
+  ### Stocks: join on symbol == Ssjacent (Instrument is IBKR company name, doesn't match ticker)
+  ### Options/Futures/TreasuryBill: join on Instrument (buildInstrumentName matches trade Instrument)
+  portf_stocks <- dplyr::filter(portf_data, type == "Stock")
+  portf_other <- dplyr::filter(portf_data, type != "Stock")
+
+  if (nrow(portf_stocks) > 0) {
+    trades_for_stocks <- dplyr::distinct(dplyr::select(open_trades_instrument, TradeNr, Strategy, Ssjacent, Currency, Exp.Date))
+    portf_stocks <- dplyr::left_join(portf_stocks, trades_for_stocks,
+                                     by = c("symbol" = "Ssjacent"), multiple = "first")
+  }
+  if (nrow(portf_other) > 0) {
+    trades_for_other <- dplyr::distinct(dplyr::select(open_trades_instrument, TradeNr, Strategy, Instrument, Currency, Exp.Date))
+    portf_other <- dplyr::left_join(portf_other, trades_for_other,
+                                    by = "Instrument", multiple = "first")
+  }
+  portf_data <- dplyr::bind_rows(portf_stocks, portf_other)
 
   ### No portfolio data to process further - this may happen if opened trades and portfolio are not in sync
   if (nrow(portf_data) == 0) return(exit_code)

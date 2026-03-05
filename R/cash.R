@@ -190,6 +190,53 @@ get_cash_positions <- function(account) {
   return(cash_positions)
 }
 
+#' Look up the most recent open CASH trade for a currency
+#'
+#' @param account_table Account code (e.g., "U1804173")
+#' @param currency Currency code to search for (e.g., "JPY")
+#' @return Data frame with TradeNr, Prix, Instrument, Currency columns (0 rows if no match)
+#' @keywords internal
+getCashTradeForCurrency <- function(account_table, currency) {
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  # Convert account code to database format (Live/Simu)
+  account_db <- switch(account_table,
+                      "U1804173" = "Live",
+                      "DU5221795" = "Simu",
+                      account_table)
+
+  query <- "SELECT TradeNr, Prix, Instrument, Currency FROM Trades
+            WHERE Account = ? AND (Instrument = ? OR Currency = ?) AND Ssjacent = 'CASH' AND Statut != 'Fermé'
+            ORDER BY TradeDate DESC LIMIT 1"
+  DBI::dbGetQuery(conn, query, params = list(account_db, currency, currency))
+}
+
+#' Resolve cost basis from a CASH trade query result
+#'
+#' Handles the quoting convention: when trade matches on Instrument, Prix is
+#' already in base/foreign units. When trade matches on Currency, Prix is in
+#' foreign/base units and must be inverted.
+#'
+#' @param trade_result Data frame row from getCashTradeForCurrency (must have Prix, Instrument, Currency)
+#' @param position_currency The currency of the CASH balance being valued
+#' @return Cost basis in base_currency per position_currency
+#' @keywords internal
+resolve_cash_cost_basis <- function(trade_result, position_currency) {
+  prix <- trade_result$Prix[1]
+
+  if (trade_result$Instrument[1] == position_currency) {
+    # Trade Instrument matches — Prix is in Currency/Instrument
+    # e.g., Instrument=JPY, Currency=CHF, Prix = CHF per JPY
+    return(prix)
+  } else {
+    # Trade matched on Currency — Prix is in position_currency per Instrument
+    # e.g., Instrument=CHF, Currency=JPY, Prix=201.665 JPY/CHF
+    # Need CHF/JPY, so invert
+    return(1 / prix)
+  }
+}
+
 #' Create CASH portfolio row from currency balance
 #'
 #' @param currency Currency code (e.g., "CHF", "USD", "EUR")
@@ -231,24 +278,12 @@ create_cash_portfolio_row <- function(currency, balance, snapshot_date, snapshot
 
   if (!is.null(account_table)) {
     tryCatch({
-      conn <- safe_db_connect()
-      on.exit(DBI::dbDisconnect(conn), add = TRUE)
-
-      # Convert account code to database format (Live/Simu)
-      # Database stores "Live"/"Simu" (old design), not actual IBKR account codes
-      account_db <- switch(account_table,
-                          "U1804173" = "Live",
-                          "DU5221795" = "Simu",
-                          account_table)  # Pass through if already in correct format
-
-      query <- "SELECT TradeNr, Prix FROM Trades
-                WHERE Account = ? AND Instrument = ? AND Ssjacent = 'CASH' AND Statut != 'Fermé'
-                ORDER BY TradeDate DESC LIMIT 1"
-      result <- DBI::dbGetQuery(conn, query, params = list(account_db, currency))
+      result <- getCashTradeForCurrency(account_table, currency)
 
       if (nrow(result) > 0) {
         trade_nr <- result$TradeNr[1]
-        trade_cost_basis <- result$Prix[1]
+        trade_cost_basis <- resolve_cash_cost_basis(result, currency)
+
         logger::log_debug("Linked CASH position {currency} to TradeNr {trade_nr}, cost basis: {trade_cost_basis}",
                          namespace = "Tdata")
       }

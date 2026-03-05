@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Pure-R and DB functions (`greeksNet`, `readAccount`, etc.) no longer pay the Python startup cost
   - Fixes Shiny app startup timeouts (`routine`, `rreporting`) caused by 50s+ combined init time
 
+## [5.8.39] - 2026-03-05
+
+### Fixed
+- **cash.R**: Extracted `getCashTradeForCurrency()` — query now searches `Instrument OR Currency` to find CASH trades for cross-currency pairs (e.g., Trade 687 CHF.JPY matched via Currency=JPY)
+- **cash.R**: Added `resolve_cash_cost_basis()` — inverts Prix when trade matched on Currency (not Instrument), fixing 101M CHF unPnL bug for JPY CASH position
+- **account.R**: Split portfolio-to-trade join — stocks match on `symbol == Ssjacent` (ticker), options/futures match on `Instrument`. Fixes mismatch where IBKR portfolio has ticker (e.g., "DSY") but Trades has company name (e.g., "DASSAULT SYSTEMES SE")
+
 ## [5.8.38] - 2026-03-02
 
 ### Fixed
