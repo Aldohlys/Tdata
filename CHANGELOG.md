@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **zzz.R**: Lazy Python initialization — `tdata_py` is now an active binding that defers Python/reticulate setup to first use
+  - `library(Tdata)` load time reduced from ~26s to ~1.3s on the VM
+  - Pure-R and DB functions (`greeksNet`, `readAccount`, etc.) no longer pay the Python startup cost
+  - Fixes Shiny app startup timeouts (`routine`, `rreporting`) caused by 50s+ combined init time
+
 ## [5.8.38] - 2026-03-02
 
 ### Fixed

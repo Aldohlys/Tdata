@@ -2,9 +2,16 @@
 
 
 #' @title Python module for Tdata
-#' @description Access to tdata_py Python functionality
+#' @description Access to tdata_py Python functionality (lazy-loaded via active binding).
+#'   Accessing \code{tdata_py} for the first time triggers Python initialization.
+#' @name tdata_py
 #' @export
-tdata_py <- NULL  # Will be assigned in .onLoad()
+NULL
+
+# Internal mutable state for lazy Python init (environment contents stay mutable after namespace lock)
+.tdata_state <- new.env(parent = emptyenv())
+.tdata_state$value <- NULL
+.tdata_state$initialized <- FALSE
 
 #' @title Setup Tdata package in .onLoad
 #' @param libname Library name
@@ -20,8 +27,19 @@ tdata_py <- NULL  # Will be assigned in .onLoad()
   # Global logging
   .init_package_logging(pkgname)
 
-  # Python logging
-  .init_python_environment(pkgname)
+  # Create active binding: accessing tdata_py triggers lazy Python init
+  ns <- asNamespace(pkgname)
+  # Remove any pre-existing regular binding (e.g. from old installed version)
+  if (exists("tdata_py", envir = ns, inherits = FALSE) &&
+      !bindingIsActive("tdata_py", ns)) {
+    rm("tdata_py", envir = ns)
+  }
+  makeActiveBinding("tdata_py", function() {
+    if (!.tdata_state$initialized) {
+      .tdata_state$initialized <- .init_python_environment(pkgname)
+    }
+    .tdata_state$value
+  }, env = ns)
 
   invisible()
 }
@@ -147,7 +165,7 @@ print(f"Python LC_NUMERIC changed from {old_locale} to C")
 
     # Assign to the actual package namespace
     ## This is the way to go so it works with both library(Tdata) and box::use(Tdata[tdata_py])
-    assign("tdata_py", tdata_py, envir = asNamespace(pkgname))
+    .tdata_state$value <- tdata_py
 
     # Verify assignment
     logger::log_debug(sprintf("tdata_py assigned to namespace: %s",
