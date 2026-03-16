@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.1] - 2026-03-16
+
+### Fixed
+- **historical_options.R**: All functions bypassed the lazy Python active binding by calling `reticulate::import("tdata_py")` directly, which failed because the Python path was never added to `sys.path`
+  - Created `get_tdata_py()` helper that uses the package active binding (triggers `zzz.R` initialization)
+  - Fixed 6 functions: `get_or_retrieve_option_historical`, `clear_on_demand_cache`, `qualify_contract`, `add_option_tracking`, `remove_option_tracking`, `update_tracked_options`, `list_tracked_options`
+  - Symptom: "Python module 'tdata_py' not available" error when viewing historical option data in Tuser/routine
+
 ## [5.9.0] - 2026-03-10
 
 ### Changed

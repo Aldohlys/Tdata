@@ -3,6 +3,17 @@
 #' R wrappers for on-demand historical option data retrieval from IBKR,
 #' plus contract tracking for incremental daily data accumulation.
 
+#' Get tdata_py module via package active binding (ensures Python path is set up)
+#' @return tdata_py module or NULL if unavailable
+#' @keywords internal
+get_tdata_py <- function() {
+  py <- tdata_py
+  if (is.null(py)) {
+    logger::log_error("Python module 'tdata_py' not available", namespace = "Tdata")
+  }
+  py
+}
+
 #' Get or Retrieve Historical Option Data
 #'
 #' Retrieve historical option data with automatic on-demand fetching from IBKR.
@@ -102,13 +113,8 @@ get_or_retrieve_option_historical <- function(
   }
 
   tryCatch({
-    # Import Python module
-    if (!reticulate::py_module_available("tdata_py")) {
-      logger::log_error("Python module 'tdata_py' not available", namespace="Tdata")
-      return(NULL)
-    }
-
-    tdata_py <- reticulate::import("tdata_py")
+    tdata_py <- get_tdata_py()
+    if (is.null(tdata_py)) return(NULL)
 
     logger::log_info(paste0(
       "Retrieving option data: ", symbol, " ", strike, right_normalized, " ", expiration,
@@ -184,13 +190,8 @@ get_or_retrieve_option_historical <- function(
 clear_on_demand_cache <- function(symbol = NULL, older_than_days = 30) {
 
   tryCatch({
-    # Import Python module
-    if (!reticulate::py_module_available("tdata_py")) {
-      logger::log_error("Python module 'tdata_py' not available", namespace="Tdata")
-      return(list(error = "Python module not available"))
-    }
-
-    tdata_py <- reticulate::import("tdata_py")
+    tdata_py <- get_tdata_py()
+    if (is.null(tdata_py)) return(list(error = "Python module not available"))
 
     logger::log_info(paste0(
       "Clearing on-demand cache",
@@ -253,7 +254,8 @@ qualify_contract <- function(symbol, expiration, strike, right,
   right_normalized <- if (right %in% c("Call", "C")) "C" else "P"
 
   tryCatch({
-    tdata_py <- reticulate::import("tdata_py")
+    tdata_py <- get_tdata_py()
+    if (is.null(tdata_py)) return(NULL)
 
     result <- tdata_py$qualify_contract(
       sym = symbol,
@@ -317,7 +319,8 @@ add_option_tracking <- function(symbol, trading_class, expiration, strike, right
   right_normalized <- if (right %in% c("Call", "C")) "C" else "P"
 
   tryCatch({
-    tdata_py <- reticulate::import("tdata_py")
+    tdata_py <- get_tdata_py()
+    if (is.null(tdata_py)) return(FALSE)
 
     contract_config <- list(
       symbol = symbol,
@@ -375,7 +378,8 @@ remove_option_tracking <- function(symbol, trading_class, expiration, strike, ri
   right_normalized <- if (right %in% c("Call", "C")) "C" else "P"
 
   tryCatch({
-    tdata_py <- reticulate::import("tdata_py")
+    tdata_py <- get_tdata_py()
+    if (is.null(tdata_py)) return(FALSE)
 
     result <- tdata_py$manage_contracts(
       action = "remove",
@@ -433,7 +437,8 @@ remove_option_tracking <- function(symbol, trading_class, expiration, strike, ri
 update_tracked_options <- function(data_type = "both") {
 
   tryCatch({
-    tdata_py <- reticulate::import("tdata_py")
+    tdata_py <- get_tdata_py()
+    if (is.null(tdata_py)) return(list(error = "Python module not available"))
 
     logger::log_info("Updating tracked options (data_type={data_type})", namespace = "Tdata")
 
@@ -479,7 +484,8 @@ update_tracked_options <- function(data_type = "both") {
 list_tracked_options <- function() {
 
   tryCatch({
-    tdata_py <- reticulate::import("tdata_py")
+    tdata_py <- get_tdata_py()
+    if (is.null(tdata_py)) return(list(error = "Python module not available"))
 
     result <- tdata_py$list_historical_config(return_dict = TRUE)
     return(reticulate::py_to_r(result))
