@@ -157,6 +157,9 @@ getSymMetricIntervalDate = function(sym, from_date, to_date = Sys.Date(), metric
   ### Extract column equal to OHLCVA value (by default equal to "Adjusted")
   df_subcols = res[, c("date", "ticker", metric)]
 
+  ### Deduplicate before pivoting (Yahoo can return duplicate date-ticker rows)
+  df_subcols <- df_subcols[!duplicated(df_subcols[, c("date", "ticker")]), ]
+
   ### Pivot data to from long to wide format
   wide_df <- tidyr::pivot_wider(
     data = df_subcols,

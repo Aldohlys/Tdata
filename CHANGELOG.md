@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.2] - 2026-03-16
+
+### Fixed
+- **prices.R**: `getSymMetricIntervalDate()` — deduplicate `(date, ticker)` rows before `pivot_wider` to prevent list-columns when Yahoo returns duplicate data
+  - Root cause of "Error retrieving data for In index: 1" in RPreTrade technical indicators (xts cannot handle list-columns)
+  - Also eliminates "Values from `Adjusted` are not uniquely identified" warnings in correlation analysis
+
 ## [5.9.1] - 2026-03-16
 
 ### Fixed
