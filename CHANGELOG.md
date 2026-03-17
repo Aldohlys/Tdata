@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.6] - 2026-03-17
+
+### Fixed
+- **ScannerUniverse DB**: DXY ticker corrected from `DXY=X` to `DX-Y.NYB` (correct Yahoo Finance symbol)
+- **macro_context/analyze.R**: Updated all `DXY=X` references to `DX-Y.NYB` so DXY data fetches succeed
+
 ## [5.9.5] - 2026-03-17
 
 ### Added
