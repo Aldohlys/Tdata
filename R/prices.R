@@ -298,8 +298,9 @@ getLastSymPrice <- function(sym) {
     # Apply the slicing operation (default is 1, i.e. get max slice)
     # Use base R pipe operator instead of magrittr %>%
     result <- df |>
+      dplyr::filter(!is.na(value)) |>
       dplyr::group_by(sym) |>
-      dplyr::slice_max(date) |>
+      dplyr::slice_max(date, n = 1, with_ties = FALSE) |>
       dplyr::ungroup() |>
       dplyr::arrange(sym)  # This respects factor level ordering
 
