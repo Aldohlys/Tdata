@@ -205,7 +205,7 @@ getSliceAllIBKRMetrics <- function(first=1, last=0) {
 
 #### Used by Ligne module
 ###
-#'getOptPrice
+#'getOptIBKRPrice
 #'
 #'Retrieves an option price from IBKR. This function is not vectorized.
 #'
@@ -221,12 +221,12 @@ getSliceAllIBKRMetrics <- function(first=1, last=0) {
 #'@returns a number, either option value or -1 is not found
 #'@examples
 #'\dontrun{
-#'getOptPrice("SPX", "SPX", "P", 5000, "20291220", "USD", "SMART")
-#'getOptPrice("SPY", "SPY", "Call", 500.0, as.Date("2026-12-18"), "USD", "SMART")
-#'getOptPrice(sym="SPY", right="Call", strike=500.0, expiration=as.Date("2026-12-18"))
+#'getOptIBKRPrice("SPX", "SPX", "P", 5000, "20291220", "USD", "SMART")
+#'getOptIBKRPrice("SPY", "SPY", "Call", 500.0, as.Date("2026-12-18"), "USD", "SMART")
+#'getOptIBKRPrice(sym="SPY", right="Call", strike=500.0, expiration=as.Date("2026-12-18"))
 #'}
 #'@export
-getOptPrice = function(sym, tradingClass, right, strike, expiration, currency="USD", exchange="SMART") {
+getOptIBKRPrice = function(sym, tradingClass, right, strike, expiration, currency="USD", exchange="SMART") {
   if (tradingClass == "Stock") {
     Tbasics::display_error_message("A valid Trading Class must be provided!")
     return(NA)
