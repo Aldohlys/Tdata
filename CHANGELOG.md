@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.5] - 2026-03-17
+
+### Added
+- **ticker.R**: `getScannerUniverse()` — query ScannerUniverse DB table with filters (role, sector, active_only)
+- **ticker.R**: `addScannerSymbol()` — insert new symbol into ScannerUniverse table
+- **ticker.R**: `removeScannerSymbol()` — soft-delete (IsActive=0) symbol from ScannerUniverse
+- New `ScannerUniverse` DB table replaces hardcoded stock lists in breakout analysis scripts
+- Seeded with ~170 symbols (147 scanner stocks, 14 macro tickers, 9 sector ETFs) across 10 sectors
+
 ## [5.9.4] - 2026-03-17
 
 ### Fixed

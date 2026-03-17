@@ -546,3 +546,112 @@ reloadTickerCache <- function() {
     return(FALSE)
   })
 }
+
+# ════════════════════════════════════════════════════════════════════════════════
+# ScannerUniverse functions
+# ════════════════════════════════════════════════════════════════════════════════
+
+#' Get Scanner Universe
+#'
+#' Returns filtered symbols from the ScannerUniverse table.
+#' Used by swing scanner and macro context scripts to load their ticker lists
+#' from DB instead of hardcoded vectors.
+#'
+#' @param role Optional filter: "scanner", "etf", "macro", or NULL for all
+#' @param sector Optional filter: sector name (e.g. "Energy", "Macro"), or NULL for all
+#' @param active_only Logical. If TRUE (default), only return active symbols (IsActive = 1)
+#' @return A data.frame with columns Symbol, Sector, Role, IsActive, Notes
+#' @examples
+#' \dontrun{
+#' getScannerUniverse()                              # all active symbols
+#' getScannerUniverse(role = "macro")                # macro tickers only
+#' getScannerUniverse(sector = "Energy")             # Energy sector (stocks + ETF)
+#' getScannerUniverse(role = "scanner", sector = "Technology")
+#' }
+#' @export
+getScannerUniverse <- function(role = NULL, sector = NULL, active_only = TRUE) {
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  sql <- "SELECT * FROM ScannerUniverse WHERE 1=1"
+  params <- list()
+
+  if (active_only) {
+    sql <- paste(sql, "AND IsActive = ?")
+    params <- c(params, 1L)
+  }
+  if (!is.null(role)) {
+    sql <- paste(sql, "AND Role = ?")
+    params <- c(params, role)
+  }
+  if (!is.null(sector)) {
+    sql <- paste(sql, "AND Sector = ?")
+    params <- c(params, sector)
+  }
+
+  sql <- paste(sql, "ORDER BY Sector, Symbol")
+  DBI::dbGetQuery(conn, sql, params = params)
+}
+
+#' Add Symbol to Scanner Universe
+#'
+#' Inserts a new symbol into the ScannerUniverse table.
+#' If the symbol already exists, a message is shown and 0 is returned.
+#'
+#' @param symbol Ticker symbol (e.g. "AAPL")
+#' @param sector Sector name (e.g. "Technology")
+#' @param role Role: "scanner", "etf", or "macro". Default "scanner"
+#' @param notes Optional notes string
+#' @return Integer: 1 if inserted, 0 if already exists
+#' @examples
+#' \dontrun{
+#' addScannerSymbol("CRWD", "Technology")
+#' addScannerSymbol("XLE", "Energy", role = "etf", notes = "Sector ETF")
+#' }
+#' @export
+addScannerSymbol <- function(symbol, sector, role = "scanner", notes = NULL) {
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  existing <- DBI::dbGetQuery(conn,
+    "SELECT Symbol FROM ScannerUniverse WHERE Symbol = ?",
+    params = list(symbol))
+
+  if (nrow(existing) > 0) {
+    message("Symbol ", symbol, " already exists in ScannerUniverse")
+    return(0L)
+  }
+
+  df <- data.frame(
+    Symbol = symbol, Sector = sector, Role = role,
+    IsActive = 1L, Notes = if (is.null(notes)) NA_character_ else notes,
+    stringsAsFactors = FALSE)
+
+  safe_db_append(conn, "ScannerUniverse", df)
+  message("Added ", symbol, " to ScannerUniverse (", sector, "/", role, ")")
+  return(1L)
+}
+
+#' Remove Symbol from Scanner Universe (Soft Delete)
+#'
+#' Sets IsActive = 0 for the given symbol. Does not physically delete the row.
+#'
+#' @param symbol Ticker symbol to deactivate
+#' @return Integer: number of rows affected (1 if found, 0 if not)
+#' @examples
+#' \dontrun{
+#' removeScannerSymbol("BIOX")
+#' }
+#' @export
+removeScannerSymbol <- function(symbol) {
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  result <- DBI::dbExecute(conn,
+    "UPDATE ScannerUniverse SET IsActive = 0 WHERE Symbol = ?",
+    params = list(symbol))
+
+  if (result == 0) message("Symbol ", symbol, " not found in ScannerUniverse")
+  else message("Deactivated ", symbol, " in ScannerUniverse")
+  return(result)
+}
