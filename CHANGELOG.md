@@ -5,9 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.9.6] - 2026-03-17
+## [5.9.6] - 2026-03-23
 
 ### Fixed
+- **volatility.R**: `fit_volatility_parabola()` — guard against all-NA IV data before calling `lm()`
+  - When IBKR returns no option IVs (e.g., ABBN with no market data subscription), `lm.fit` crashed with "aucun cas ne contient autre chose que des valeurs manquantes"
+  - Now returns `c(NA, NA, NA)` when fewer than 3 valid data points, propagating NA gracefully
 - **ScannerUniverse DB**: DXY ticker corrected from `DXY=X` to `DX-Y.NYB` (correct Yahoo Finance symbol)
 - **macro_context/analyze.R**: Updated all `DXY=X` references to `DX-Y.NYB` so DXY data fetches succeed
 

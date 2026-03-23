@@ -97,6 +97,12 @@ calculate_forward_index <- function(options, interest_rate, time_to_expiry, divi
 # Helper function to fit a parabola to volatility data
 #'@noRd
 fit_volatility_parabola <- function(strikes, ivs) {
+  # Guard: need at least 3 non-NA IV values to fit a quadratic
+  valid <- !is.na(ivs) & !is.na(strikes)
+  if (sum(valid) < 3) {
+    return(rep(NA_real_, 3))
+  }
+
   # Fit quadratic model: IV = a*strike^2 + b*strike + c
   model <- stats::lm(ivs ~ poly(strikes, 2, raw = TRUE))
 
