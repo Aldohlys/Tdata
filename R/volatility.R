@@ -402,7 +402,7 @@ getVolMetrics <- function(sym_list) {
 
     ### Compute iv180 from option chains (handle NA return from getIV_DTE safely)
     iv180_data <- tryCatch(getIV_DTE(sym, currency, metrics$price, 180), error = function(e) NA)
-    metrics$iv180 <- if (is.list(iv180_data) && !is.na(iv180_data$v)) round(iv180_data$v, 4) else NA_real_
+    metrics$iv180 <- if (is.list(iv180_data) && !is.null(iv180_data[["v"]]) && !is.na(iv180_data[["v"]])) round(iv180_data[["v"]], 4) else NA_real_
 
     ### Append to DB
     safe_db_append(conn, "Prices", metrics)

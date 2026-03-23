@@ -403,7 +403,7 @@ getYahooName <- function(sym) {
     ### One ticker has been found - if type equals FUT or TBILL no Yahoo search
     if (ticker$Type %in% c("STK", "CASH", "IND"))  {
       ### Case where no Yahoo historical data available
-      if (ticker$YahooName == "") return(NA)
+      if (is.na(ticker$YahooName) || ticker$YahooName == "") return(NA)
       else return(ticker$YahooName)
     }
 
