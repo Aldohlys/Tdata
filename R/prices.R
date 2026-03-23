@@ -489,14 +489,58 @@ getStockPrice = function(sym = NULL, close = FALSE) {
 
     ### Most recent data requested and IB is available
     else {
-      ### Determine reqType based on exchange (delayed data for LSEETF, frozen for others)
-      req_type <- determine_req_type(sym)
+      ### Filter out symbols with no Yahoo/IBKR ticker (e.g. Gonet-only identifiers like PM_15606539)
+      has_ticker <- !is.na(getYahooName(sym))
 
-      ### get prices from IBKR
-      line <- tdata_py$getValue(list_sym=sym, ib=NULL, reqType=req_type)
-      conn <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
-      on.exit(DBI::dbDisconnect(conn), add=TRUE)
-      safe_db_append(conn,"Prices", line)
+      ibkr_sym <- sym[has_ticker]
+      no_ibkr_sym <- sym[!has_ticker]
+
+      ### Fetch prices from IBKR for valid symbols
+      line <- data.frame(datetime = character(0), sym = character(0), price = numeric(0),
+                         stringsAsFactors = FALSE)
+      if (length(ibkr_sym) > 0) {
+        req_type <- determine_req_type(ibkr_sym)
+        ibkr_line <- tdata_py$getValue(list_sym=ibkr_sym, ib=NULL, reqType=req_type)
+        if (is.data.frame(ibkr_line) && nrow(ibkr_line) > 0) {
+          conn <- DBI::dbConnect(RSQLite::SQLite(),  config::get("DB"))
+          on.exit(DBI::dbDisconnect(conn), add=TRUE)
+          safe_db_append(conn,"Prices", ibkr_line)
+          line <- ibkr_line
+        }
+
+        ### Fall back to DB for symbols IBKR failed to return (e.g. SPX as STK)
+        missing_sym <- setdiff(ibkr_sym, line$sym)
+        if (length(missing_sym) > 0) {
+          conn_fb <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
+          on.exit(DBI::dbDisconnect(conn_fb), add = TRUE)
+          placeholders <- paste(rep("?", length(missing_sym)), collapse = ", ")
+          query <- sprintf("SELECT t1.datetime, t1.sym, t1.price
+                            FROM Prices t1
+                            INNER JOIN (
+                              SELECT sym, MAX(ROWID) as max_rowid
+                              FROM Prices
+                              WHERE sym IN (%s)
+                              GROUP BY sym
+                            ) t2 ON t1.sym = t2.sym AND t1.ROWID = t2.max_rowid", placeholders)
+          db_fallback <- DBI::dbGetQuery(conn_fb, query, params = as.list(missing_sym))
+
+          ### For symbols not even in DB, add NA rows
+          still_missing <- setdiff(missing_sym, db_fallback$sym)
+          if (length(still_missing) > 0) {
+            db_fallback <- rbind(db_fallback,
+              data.frame(datetime = as.character(NA), sym = still_missing,
+                         price = as.numeric(NA), stringsAsFactors = FALSE))
+          }
+          line <- rbind(line, db_fallback)
+        }
+      }
+
+      ### Add fallback NA rows for symbols without IBKR ticker
+      if (length(no_ibkr_sym) > 0) {
+        fallback <- data.frame(datetime = as.character(NA), sym = no_ibkr_sym,
+                               price = as.numeric(NA), stringsAsFactors = FALSE)
+        line <- rbind(line, fallback)
+      }
     }
 
   }

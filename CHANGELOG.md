@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.9] - 2026-03-23
+
+### Fixed
+- **prices.R**: `getStockPrice()` — handle symbols without IBKR tickers (e.g., Gonet-only `PM_15606539`)
+  - Filter out symbols where `getYahooName()` returns NA before IBKR API call
+  - DB fallback for symbols IBKR fails to return (e.g., SPX as STK type)
+  - NA rows for completely missing symbols instead of crash
+  - Previously crashed entire price fetch when non-IBKR symbols were in the list
+
 ## [5.9.7] - 2026-03-23
 
 ### Fixed
