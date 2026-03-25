@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.11] - 2026-03-25
+
+### Added
+- **ticker.R**: `syncTickersToScanner()` — auto-sync Tickers (IV=YES, Type=STK) into ScannerUniverse
+  - Skips tickers above configurable `max_price` (default $500)
+  - Auto-detects ETFs by naming patterns and sets Role accordingly
+  - Supports `dry_run = TRUE` for preview without changes
+  - Called automatically by swing scanner's `get_universe()` on startup
+
 ## [5.9.9] - 2026-03-23
 
 ### Fixed
