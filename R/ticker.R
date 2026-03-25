@@ -655,3 +655,82 @@ removeScannerSymbol <- function(symbol) {
   else message("Deactivated ", symbol, " in ScannerUniverse")
   return(result)
 }
+
+#' Sync Tickers to ScannerUniverse
+#'
+#' Finds Tickers with IV=YES and Type=STK that are missing from
+#' ScannerUniverse and inserts them. Skips tickers whose latest
+#' price exceeds \code{max_price}.
+#'
+#' @param max_price Numeric. Skip tickers with price above this (default 500)
+#' @param dry_run Logical. If TRUE, only report what would be added (default FALSE)
+#' @return Integer: number of symbols added
+#' @export
+syncTickersToScanner <- function(max_price = 500, dry_run = FALSE) {
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  missing <- DBI::dbGetQuery(conn, "
+    SELECT t.Name, t.Sector, t.Type
+    FROM Tickers t
+    LEFT JOIN ScannerUniverse s ON t.Name = s.Symbol
+    WHERE t.IV = 'YES'
+      AND t.Type = 'STK'
+      AND s.Symbol IS NULL
+    ORDER BY t.Sector, t.Name
+  ")
+
+  if (nrow(missing) == 0) {
+    message("ScannerUniverse is in sync with Tickers")
+    return(0L)
+  }
+
+  # Check prices to skip expensive tickers
+  if (nrow(missing) > 0 && max_price < Inf) {
+    placeholders <- paste0("'", missing$Name, "'", collapse = ",")
+    prices <- DBI::dbGetQuery(conn, sprintf("
+      SELECT sym, price FROM Prices
+      WHERE sym IN (%s)
+      GROUP BY sym HAVING ROWID = MAX(ROWID)
+    ", placeholders))
+
+    expensive <- prices$sym[!is.na(prices$price) & prices$price > max_price]
+    if (length(expensive) > 0) {
+      message("Skipping (price > $", max_price, "): ", paste(expensive, collapse = ", "))
+      missing <- missing[!missing$Name %in% expensive, ]
+    }
+  }
+
+  if (nrow(missing) == 0) return(0L)
+
+  # Detect ETFs by common patterns
+  etf_patterns <- c("^XL[A-Z]$", "^IW[A-Z]$", "^QQQ$", "^SPY$", "^GLD$",
+                     "^SLV$", "^SMH$", "^ITB$", "^EWJ$", "^EW[A-Z]$",
+                     "^VXX$", "^FXC$", "^XLRE$", "^XLU$")
+  is_etf <- grepl(paste(etf_patterns, collapse = "|"), missing$Name)
+
+  missing$Role <- ifelse(is_etf, "etf", "scanner")
+
+  message("Sync: ", nrow(missing), " tickers to add to ScannerUniverse:")
+  for (i in seq_len(nrow(missing))) {
+    message("  + ", missing$Name[i], " (", missing$Sector[i], "/", missing$Role[i], ")")
+  }
+
+  if (dry_run) {
+    message("Dry run — no changes made")
+    return(0L)
+  }
+
+  added <- 0L
+  for (i in seq_len(nrow(missing))) {
+    df <- data.frame(
+      Symbol = missing$Name[i], Sector = missing$Sector[i],
+      Role = missing$Role[i], IsActive = 1L, Notes = NA_character_,
+      stringsAsFactors = FALSE)
+    safe_db_append(conn, "ScannerUniverse", df)
+    added <- added + 1L
+  }
+
+  message("Added ", added, " symbols to ScannerUniverse")
+  return(added)
+}
