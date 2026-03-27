@@ -517,6 +517,11 @@ getIBKR <- function() {
                              symbol = dplyr::if_else(type=="TreasuryBill", "US-T", symbol)
                              )
 
+  ### Remove CASH positions from IBKR portfolio — they are handled separately
+  ### by create_cash_portfolio_row() using currency_balances data, which correctly
+  ### links to open trades via getCashTradeForCurrency()
+  portf_data <- dplyr::filter(portf_data, type != "CASH")
+
   ### Stocks: join on symbol == Ssjacent (Instrument is IBKR company name, doesn't match ticker)
   ### Options/Futures/TreasuryBill: join on Instrument (buildInstrumentName matches trade Instrument)
   portf_stocks <- dplyr::filter(portf_data, type == "Stock")
