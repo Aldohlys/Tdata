@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.13] - 2026-04-17
+
+### Added
+- **account.R**: `getAccountChoices(type)` — centralized account list from config.yml
+  - Types: "all" (all accounts), "ibkr" (IBKR accounts only), "trade" (tradeable accounts)
+  - Replaces hardcoded account lists in 12+ UI dropdown files
+- **account.R**: `getIBKR(account)` now accepts optional account parameter for multi-account support
+- **account.py**: `getIBKRData(account)` — filters accountSummary and portfolio by sub-account
+  - Uses `reqAccountUpdates()` for sub-account portfolio subscription
+  - Computes per-account StockMarketValue/OptionMarketValue/UnrealizedPnL from portfolio positions
+  - Handles IBKR sub-account API where market value tags only exist under 'All'
+
+### Changed
+- **account.R**: `getAccountLive()` now aggregates U1804173 + U25343478 + Gonet (was U1804173 + Gonet)
+- **trades.R**: `getActiveTrades()`, `getClosedTrades()`, `getTradeNr()` — removed Live/Simu switch() mappings, now use account codes directly matching migrated Trades table
+- **cash.R**: `getCashTradeForCurrency()` — removed Live/Simu switch() mapping
+
+## [5.9.12] - 2026-03-27
+
+### Fixed
+- **account.R**: Filter out CASH positions from IBKR portfolio data before Instrument-based trade matching
+  - CASH rows from `ib.portfolio()` joined on Instrument, which doesn't match FX trade conventions (e.g., trade has Instrument="CHF" but portfolio has symbol="USD")
+  - CASH positions are now handled exclusively by `create_cash_portfolio_row()` via `getCashTradeForCurrency()`, which correctly matches on both Instrument and Currency fields
+
 ## [5.9.11] - 2026-03-25
 
 ### Added

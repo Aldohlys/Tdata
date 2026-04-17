@@ -101,9 +101,8 @@ getActiveTradeQuery <- function(account) {
 #'}
 #'@export
 getActiveTrades = function(account) {
-  ### Convert account selection to right account name
-  account <- switch(account, "U1804173"="Live", "DU5221795"="Simu")
-  if (is.null(account)) Tbasics::display_error_message("No account exists !")
+  if (!account %in% getAccountChoices("ibkr"))
+    Tbasics::display_error_message("No account exists !")
 
   activetrades = getActiveTradeQuery(account)
 
@@ -134,9 +133,8 @@ getActiveTrades = function(account) {
 #'getClosedTrades("DUxxx", as.Date("2024-02-01"))
 #'}
 getClosedTrades = function(account, windowDate = Sys.Date()-200) {
-  ### Convert account selection to right account name
-  account <- switch(account, "U1804173"="Live", "DU5221795"="Simu")
-  if (is.null(account)) Tbasics::display_error_message("No account exists !")
+  if (!account %in% getAccountChoices("ibkr"))
+    Tbasics::display_error_message("No account exists !")
   if (!inherits(windowDate,"Date")) Tbasics::display_error_message("window date must be a date !")
 
   ### Transform windowDate from Date to integer
@@ -382,8 +380,8 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
     return(NA)
   }
 
-  if (!is.na(account_type) && !(account_type %in% c("Live","Simu")))
-    stop("Trades.csv understands only Live/Simu types of account or must be equal to NA")
+  if (!is.na(account_type) && !(account_type %in% getAccountChoices("ibkr")))
+    stop("Invalid account_type: must be an IBKR account code or NA")
   if (is.unsorted(v_instrument)) stop("Instrument must be sorted - prog. error")
   ### Read Trades.csv file and extract open/adjusted trades, to select all instruments present in dt argument
   ### Only opened trades can be retrieved

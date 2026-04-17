@@ -426,11 +426,7 @@ greeksNet = function(portf) {
 #'getIBKR()
 #'}
 #'@export
-getIBKR <- function() {
-
-  # replace_date  <- function(x) {
-  #   sub("(\\d{2}).(\\d{2}).(\\d{4})","\\3\\2\\1",x)
-  # }
+getIBKR <- function(account = NULL) {
 
   exit_code = 0
 
@@ -438,7 +434,7 @@ getIBKR <- function() {
   if (!isIBAvailable()) return(exit_code)
 
   ### Retrieve account and portfolio data in a list
-  l = tdata_py$getIBKRData()
+  l = tdata_py$getIBKRData(account)
 
   if (typeof(l) != "list") {
     warning("No value returned from IB!")
@@ -1162,6 +1158,31 @@ getAccountGonet <- function(gonet_cash = NULL) {
     DBI::dbDisconnect(conn)
 }
 
+#' Get Account Choices from Config
+#'
+#' Returns account list from config.yml, optionally filtered by type.
+#' This is the single source of truth for account dropdowns across all UIs.
+#'
+#' @param type One of "all" (all accounts including Live/Gonet),
+#'   "ibkr" (IBKR accounts only: U.../DU...), or "trade" (tradeable IBKR accounts).
+#' @return Character vector of account names
+#' @export
+#' @examples
+#' \dontrun{
+#' getAccountChoices("all")   # U1804173, U25343478, DU5221795, Gonet, Live
+#' getAccountChoices("ibkr")  # U1804173, U25343478, DU5221795
+#' getAccountChoices("trade") # U1804173, U25343478, DU5221795
+#' }
+getAccountChoices <- function(type = c("all", "ibkr", "trade")) {
+  type <- match.arg(type)
+  accounts <- config::get("account")
+  switch(type,
+    "all"   = accounts,
+    "ibkr"  = accounts[grepl("^[UD]", accounts)],
+    "trade" = accounts[!accounts %in% c("Live", "Gonet")]
+  )
+}
+
 #'   getAccountLive
 #'
 #'This function reads last portfolio from Gonet and then deduces account record similar to IBKR
@@ -1176,53 +1197,64 @@ getAccountGonet <- function(gonet_cash = NULL) {
 #'}
 getAccountLive <- function() {
 
-  account.var=c("account","date","heure","NetLiquidation","EquityWithLoanValue","FullAvailableFunds","FullInitMarginReq","FullMaintMarginReq","FullExcessLiquidity","OptionMarketValue","StockMarketValue","UnrealizedPnL","RealizedPnL","TotalCashBalance","CashFlow")
-  account.var.gonet = c(account.var[1:6],account.var[10:15])
-  s_date = format(Sys.Date(),"%Y%m%d")
+  account.var = c("account","date","heure","NetLiquidation","EquityWithLoanValue",
+                  "FullAvailableFunds","FullInitMarginReq","FullMaintMarginReq",
+                  "FullExcessLiquidity","OptionMarketValue","StockMarketValue",
+                  "UnrealizedPnL","RealizedPnL","TotalCashBalance","CashFlow")
+  ## Gonet has fewer columns (no margin fields)
+  account.var.gonet = c(account.var[1:6], account.var[10:15])
+  ## Numeric fields that get summed (exclude account, date, heure)
+  sum.var = account.var[-(1:3)]
+  sum.var.gonet = account.var.gonet[-(1:3)]
 
-  #### Assumes that Gonet and Uxxx are already in this file -
-  #### This is a post processing function that computes Live data from these 2 accounts
+  s_date = format(Sys.Date(), "%Y%m%d")
 
-  ### Processes only data that is posterior to s_date - so it can be used on a regular basis (every day or so)
+  #### Post-processing function: computes Live = U1804173 + U25343478 + Gonet
+  #### Assumes all three accounts are already stored in Account table
 
   conn <- safe_db_connect()
-  account_d <- DBI::dbReadTable(conn,"Account")
-
-  ### No need to transform date format, comparison done using character comparison
+  account_d <- DBI::dbReadTable(conn, "Account")
   account_d <- dplyr::filter(account_d, date >= s_date)
 
-  acc1 = dplyr::select(dplyr::filter(account_d,account=="U1804173"), dplyr::all_of(account.var))
-  acc2 = dplyr::select(dplyr::filter(account_d,account=="Gonet"), dplyr::all_of(account.var.gonet))
+  acc_ib1 = dplyr::select(dplyr::filter(account_d, account == "U1804173"), dplyr::all_of(account.var))
+  acc_ib2 = dplyr::select(dplyr::filter(account_d, account == "U25343478"), dplyr::all_of(account.var))
+  acc_gon = dplyr::select(dplyr::filter(account_d, account == "Gonet"), dplyr::all_of(account.var.gonet))
 
-  data = dplyr::inner_join(acc1, acc2, by="date", multiple="any", suffix=c(".1",".2"))
+  ## Join IBKR sub-accounts (same trading calendar -> inner_join)
+  ibkr = dplyr::inner_join(acc_ib1, acc_ib2, by = "date", multiple = "any", suffix = c(".ib1", ".ib2"))
 
-  #### Empty lines in Gonet account due to closed days in Europe that are not closed in US (ex: 10.04.2023 - Easter Monday)
-  #### And vice-versa - in this case it is not possible to produce a Live account -> exit function
-  data = data[!is.na(data$NetLiquidation.2),]
-
-  if(!nrow(data)) {
-      warning("Not enough data to process for write_account_live function! Needs both Uxx and Gonet data")
-      return(invisible())
+  if (!nrow(ibkr)) {
+    warning("Not enough data: need both U1804173 and U25343478 for Live account")
+    DBI::dbDisconnect(conn)
+    return(invisible())
   }
 
-  #### Add all the columns that are common to Gonet and Uxxx -
-  #### knowing that Gonet columns is a subset of Uxxx columns
-  ### Remove fields that can't be added: account, date, heure
-  sub.var.gonet = account.var.gonet[-(1:3)]
-  account.var.1 = paste0(sub.var.gonet,".1")
-  account.var.2 = paste0(sub.var.gonet,".2")
+  ## Sum IBKR numeric fields
+  ibkr_sum = round(ibkr[paste0(sum.var, ".ib1")] + ibkr[paste0(sum.var, ".ib2")], 2)
+  names(ibkr_sum) = sum.var
 
-  ### Compute sum of fields - Live is a virtual account sum of Uxx and Gonet account
-  sub_res= round(data[account.var.1] + data[account.var.2],2)
-  names(sub_res) = sub.var.gonet
+  ## Left-join with Gonet (different holiday calendar — may be missing some days)
+  ibkr_base = data.frame(date = ibkr$date, heure = ibkr$heure.ib1, ibkr_sum)
+  gonet_num = dplyr::select(acc_gon, date, dplyr::all_of(sum.var.gonet))
 
-  #### Build Live account record from previous data
-  data=cbind(account = "Live", date = data$date, heure = data["heure.1"],
-             data[c("FullInitMarginReq", "FullMaintMarginReq", "FullExcessLiquidity")], sub_res)
-  data = dplyr::rename(data, heure = heure.1)
-  data= dplyr::select(data,dplyr::all_of(account.var))
+  merged = dplyr::left_join(ibkr_base, gonet_num, by = "date", multiple = "any", suffix = c("", ".gon"))
 
-  ### Stored in DB the Live account record
+  ## Add Gonet values where available (fill missing with 0)
+  for (v in sum.var.gonet) {
+    gon_col = if (paste0(v, ".gon") %in% names(merged)) paste0(v, ".gon") else v
+    if (gon_col != v && gon_col %in% names(merged)) {
+      gon_vals = merged[[gon_col]]
+      gon_vals[is.na(gon_vals)] = 0
+      merged[[v]] = merged[[v]] + gon_vals
+      merged[[gon_col]] = NULL
+    }
+  }
+
+  ## Build Live account record
+  data = cbind(account = "Live", merged)
+  data = dplyr::select(data, dplyr::all_of(account.var))
+
+  ### Store in DB
   safe_db_append(conn, "Account", data)
   DBI::dbDisconnect(conn)
 }

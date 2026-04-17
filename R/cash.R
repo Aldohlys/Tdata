@@ -200,11 +200,7 @@ getCashTradeForCurrency <- function(account_table, currency) {
   conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
-  # Convert account code to database format (Live/Simu)
-  account_db <- switch(account_table,
-                      "U1804173" = "Live",
-                      "DU5221795" = "Simu",
-                      account_table)
+  account_db <- account_table
 
   query <- "SELECT TradeNr, Prix, Instrument, Currency FROM Trades
             WHERE Account = ? AND (Instrument = ? OR Currency = ?) AND Ssjacent = 'CASH' AND Statut != 'Fermé'

@@ -94,38 +94,53 @@ def retrieveAccountHistory(ib, days_back=180):
     log.debug("No bars returned")   
     return pd.DataFrame()  # Return empty DataFrame if no data
 
-def retrieveAccountData(ib):
+def _get_tag_value(df, tag, currency=None, default='0'):
+    """Safely extract a tag value from accountSummary DataFrame."""
+    mask = df['tag'] == tag
+    if currency is not None:
+        mask = mask & (df['currency'] == currency)
+    rows = df[mask]
+    if len(rows) > 0:
+        return rows.iloc[0, 2]
+    return default
+
+
+def retrieveAccountData(ib, account):
 
     df = util.df(ib.accountSummary())
-    
+
     # Add a short sleep
     ib.sleep(1)
 
-    dt = datetime.date.today()
-    
-    #### This script looks only into BASE currency stats - it does not look for currency specifics
-    NetLiquidation = df[df['tag'] == 'NetLiquidation'].iloc[0,2]
-    EquityWithLoanValue = df[df['tag'] == 'EquityWithLoanValue'].iloc[0,2]
-    FullAvailableFunds = df[df['tag'] == 'FullAvailableFunds'].iloc[0,2]
-    FullInitMarginReq = df[df['tag'] == 'FullInitMarginReq'].iloc[0,2]
-    FullMaintMarginReq = df[df['tag'] == 'FullMaintMarginReq'].iloc[0,2]
-    FullExcessLiquidity = df[df['tag'] == 'FullExcessLiquidity'].iloc[0,2]
-    StockMarketValue = df[(df['tag'] == 'StockMarketValue') & (df['currency'] == 'BASE')].iloc[0,2]
-    OptionMarketValue = df[(df['tag'] == 'OptionMarketValue') & (df['currency'] == 'BASE')].iloc[0,2]
-    UnrealizedPnL = df[(df['tag'] == 'UnrealizedPnL') & (df['currency'] == 'BASE')].iloc[0,2]
-    RealizedPnL = df[(df['tag'] == 'RealizedPnL') & (df['currency'] == 'BASE')].iloc[0,2]
-    TotalCashBalance = df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'BASE')].iloc[0,2]
-    CashBalanceCHF = df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'CHF')].iloc[0,2]
-    CashBalanceEUR = df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'EUR')].iloc[0,2]
-    CashBalanceUSD = df[(df['tag'] == 'TotalCashBalance') & (df['currency'] == 'USD')].iloc[0,2]
+    # Per-account data: margin/equity fields exist per sub-account
+    acct_df = df[df['account'] == account]
+    # Aggregate data: market value, PnL, cash only exist under 'All'
+    all_df = df[df['account'] == 'All']
 
-    #### Looks only on the first element
-    account = ib.managedAccounts()[0]
-    
+    #### Per-account fields (margin/equity)
+    NetLiquidation = _get_tag_value(acct_df, 'NetLiquidation')
+    EquityWithLoanValue = _get_tag_value(acct_df, 'EquityWithLoanValue')
+    FullAvailableFunds = _get_tag_value(acct_df, 'FullAvailableFunds')
+    FullInitMarginReq = _get_tag_value(acct_df, 'FullInitMarginReq')
+    FullMaintMarginReq = _get_tag_value(acct_df, 'FullMaintMarginReq')
+    FullExcessLiquidity = _get_tag_value(acct_df, 'FullExcessLiquidity')
+
+    #### Market value / PnL / cash fields are only under 'All' in sub-account setups.
+    #### Compute per-account values from portfolio positions instead.
+    #### These will be overwritten below in getIBKRData() after portfolio filtering.
+    StockMarketValue = 0
+    OptionMarketValue = 0
+    UnrealizedPnL = 0
+    RealizedPnL = _get_tag_value(all_df, 'RealizedPnL', currency='BASE', default='0')
+    TotalCashBalance = _get_tag_value(acct_df, 'TotalCashValue', default='0')
+    CashBalanceCHF = 0
+    CashBalanceEUR = 0
+    CashBalanceUSD = 0
+
     #### Takes integer type of date
     dd = int((datetime.datetime.now()).strftime('%Y%m%d'))
     dh = (datetime.datetime.now()).strftime("%H:%M:%S")
-    
+
     df = pd.DataFrame({'account': account,
                       'date': [dd],
                       'heure': [dh],
@@ -258,9 +273,13 @@ def retrievePortfolioData(ib, df):
                             'averageCost': 'avgCost', 'unrealizedPNL': 'unPnL'})
     return df
   
-def getIBKRData():
+def getIBKRData(account=None):
     """
-    Retrieve account and portfolio data from Interactive Brokers.
+    Retrieve account and portfolio data from Interactive Brokers for a specific account.
+
+    Args:
+        account: IBKR account code (e.g., "U1804173", "U25343478").
+                 If None, uses the first managed account (backward compatible).
 
     Returns:
         list: A list containing account_data, portfolio_data, and currency_balances DataFrames
@@ -273,20 +292,32 @@ def getIBKRData():
     if not ib.isConnected():
         return 0
 
-    #### Get account related data #########
-    print("\n#####  Retrieving account data...\n")
+    # Resolve account
+    managed = ib.managedAccounts()
+    if account is None:
+        account = managed[0]
+    elif account not in managed:
+        logger.error(f"Account {account} not in managed accounts: {managed}")
+        ib.disconnect()
+        return 0
 
-    account_data = retrieveAccountData(ib)
+    #### Get account related data #########
+    print(f"\n#####  Retrieving account data for {account}...\n")
+
+    account_data = retrieveAccountData(ib, account)
     print(account_data)
 
     ### Extract currency balances for CASH position tracking
-    ### Use accountSummary for comprehensive currency balance data
+    ### TotalCashBalance only exists under 'All' in sub-account setups
+    ### Use 'All' account as source — these are master-level balances
     print("\n#####  Extracting currency balances...\n")
 
     account_summary_df = util.df(ib.accountSummary())
 
-    # Filter for TotalCashBalance tag and extract all currencies
-    cash_balances = account_summary_df[account_summary_df['tag'] == 'TotalCashBalance']
+    cash_balances = account_summary_df[
+        (account_summary_df['tag'] == 'TotalCashBalance') &
+        (account_summary_df['account'] == 'All')
+    ]
 
     # Create currency_balances DataFrame with currency and balance columns
     currency_balances = pd.DataFrame({
@@ -299,27 +330,24 @@ def getIBKRData():
 
     print(currency_balances)
 
-    ### Store portfolio in df, then split contract definition (first column) into multiple columns
-    ### Merge resulting split with the other columns
+    print(f"\n#####  Retrieving portfolio data for {account}... \n")
 
-    #### For options, get the list of contract definitions
-    #### i index is necessary to iterate over df
-    #### Consider only row that are of secType = OPT
-    ###  Extract only 'contract' column in row
-
-    print("\n#####  Retrieving portfolio data... \n")
-
-    df = util.df(ib.portfolio())
+    # Sub-accounts require explicit subscription before portfolio() returns data
+    ib.reqAccountUpdates(account=account)
+    ib.sleep(2)
+    portfolio_items = ib.portfolio(account)
+    # Cancel subscription to avoid hitting IBKR API limits
+    ib.reqAccountUpdates(account='')
 
     ### Initialize portf data and contract definition variables
     c_def = pd.DataFrame()
     portf_data = pd.DataFrame()
 
-    ### First check if data retrieved is not None
-    if df is not None:
+    ### First check if data retrieved is not empty
+    if portfolio_items:
+        df = util.df(portfolio_items)
 
         #### Iterate over each line of portfolio, retrieve contract definition which is the first column value
-        ### If no line then this is skipped, df still is None
         for row in df.itertuples():
             line = row[1]  # First column value (row[0] is the DataFrame index)
             c_def = pd.concat([c_def, pd.DataFrame([row[1]])], ignore_index=True)
@@ -329,6 +357,16 @@ def getIBKRData():
 
         ### Wait until all data has been received
         ib.sleep(1)
+
+        ### Compute per-account market values from portfolio positions
+        ### (accountSummary only provides these under 'All' for sub-accounts)
+        stock_mv = df[df['secType'].isin(['STK'])]['marketValue'].sum()
+        option_mv = df[df['secType'].isin(['OPT', 'FOP'])]['marketValue'].sum()
+        unrealized = df['unrealizedPNL'].sum()
+
+        account_data.at[0, 'StockMarketValue'] = round(stock_mv, 2)
+        account_data.at[0, 'OptionMarketValue'] = round(option_mv, 2)
+        account_data.at[0, 'UnrealizedPnL'] = round(unrealized, 2)
 
         print(portf_data)
 
