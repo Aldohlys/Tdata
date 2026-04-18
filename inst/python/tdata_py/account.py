@@ -336,8 +336,8 @@ def getIBKRData(account=None):
     ib.reqAccountUpdates(account=account)
     ib.sleep(2)
     portfolio_items = ib.portfolio(account)
-    # Cancel subscription to avoid hitting IBKR API limits
-    ib.reqAccountUpdates(account='')
+    # Filter out ghost positions (position=0) from internal transfers
+    portfolio_items = [p for p in portfolio_items if p.position != 0]
 
     ### Initialize portf data and contract definition variables
     c_def = pd.DataFrame()

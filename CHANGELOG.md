@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.15] - 2026-04-18
+
+### Fixed
+- **account.py**: Filter out ghost positions (position=0) from IBKR portfolio data in `getIBKRData()`
+  - Ghost positions appear after internal transfers between sub-accounts, polluting portfolio with zero-quantity rows
+  - Replaced `ib.reqAccountUpdates(account='')` cancel call with list comprehension filtering `p.position != 0`
+
 ## [5.9.13] - 2026-04-17
 
 ### Added
