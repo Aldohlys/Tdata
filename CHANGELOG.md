@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [5.9.16] - 2026-04-20
 
 ### Fixed
+- **account.py** (`getIBKRData`, lines 361-380): Mixed-currency sum for per-account StockMarketValue / OptionMarketValue / UnrealizedPnL in sub-accounts
+  - Previous code did blind `df['marketValue'].sum()` across all positions regardless of `currency` field
+  - Produced bogus values for sub-accounts holding JPY/EUR/GBP positions (e.g. U25343478 stored StockMV=1,233,246 which was a raw JPY+EUR+GBP sum, not CHF)
+  - Fix: added `_get_chf_rates()` helper that reads latest rates from `ConvertToCHF` table; portfolio marketValue/unrealizedPNL are now multiplied by the per-position rate before summing
+  - Also casts StockMarketValue/OptionMarketValue/UnrealizedPnL columns to float first to silence the pandas FutureWarning about int64 dtype assignment
 - **currency.R** (`getLastCHFValue`, lines 254-273): Wrong cross-rate formula for GBP/CHF
   - Comment claimed "YahooName is USDXXX=X (foreign per USD)" and applied `1 / (ticker × CHFUSD)`
   - But GBP's YahooName is `GBPUSD=X` (direct quote, USD per 1 GBP), not inverse

@@ -1,15 +1,64 @@
 import datetime
 import dataclasses
+import sqlite3
 import pandas as pd
 from ib_async import *
 
 # Import from other modules
 from .IB_connection import safe_ib_connect
-from .core import util
+from .core import util, CONFIG
 from fin_logger import get_logger
 
 # Get logger for this module
 logger = get_logger("tdata_py.account")
+
+
+def _get_chf_rates(currencies):
+    """
+    Look up the latest CHF conversion rate for each currency from the ConvertToCHF DB table.
+    CHF itself always has rate 1.0. Missing rates raise a warning and default to 1.0
+    (best we can do without aborting the whole portfolio retrieval).
+
+    Args:
+        currencies: iterable of ISO currency codes (e.g. ['USD', 'JPY', 'EUR'])
+
+    Returns:
+        dict[str, float]: currency code → CHF conversion rate
+    """
+    rates = {'CHF': 1.0}
+    non_chf = [c for c in set(currencies) if c != 'CHF']
+    if not non_chf:
+        return rates
+
+    db_path = CONFIG.get("DB")
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            placeholders = ','.join('?' * len(non_chf))
+            query = f"""
+                SELECT currency, chf_value
+                FROM ConvertToCHF
+                WHERE currency IN ({placeholders})
+                  AND (currency, date) IN (
+                    SELECT currency, MAX(date) FROM ConvertToCHF
+                    WHERE currency IN ({placeholders})
+                    GROUP BY currency
+                  )
+            """
+            cur = conn.execute(query, non_chf + non_chf)
+            for curr, rate in cur.fetchall():
+                rates[curr] = float(rate)
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        logger.error(f"Failed to read ConvertToCHF: {e}")
+
+    # Fallback for missing currencies
+    for c in non_chf:
+        if c not in rates:
+            logger.warning(f"No ConvertToCHF rate for {c}; defaulting to 1.0 (sum will be inaccurate)")
+            rates[c] = 1.0
+    return rates
 
 def retrieveCurrencyPairs(currencies, currency_pairs, direct_conv):
     # Use safe_ib_connect instead of direct connection
@@ -358,15 +407,27 @@ def getIBKRData(account=None):
         ### Wait until all data has been received
         ib.sleep(1)
 
-        ### Compute per-account market values from portfolio positions
-        ### (accountSummary only provides these under 'All' for sub-accounts)
-        stock_mv = df[df['secType'].isin(['STK'])]['marketValue'].sum()
-        option_mv = df[df['secType'].isin(['OPT', 'FOP'])]['marketValue'].sum()
-        unrealized = df['unrealizedPNL'].sum()
+        ### Compute per-account market values from portfolio positions, converted to
+        ### base currency (CHF) using latest rates from ConvertToCHF DB table.
+        ### accountSummary only provides these under 'All' for sub-accounts, and the
+        ### portfolio marketValue/unrealizedPNL are reported in each position's native currency.
+        rates = _get_chf_rates(df['currency'].unique())
+        df_conv = df.assign(
+            mv_chf=df['marketValue'] * df['currency'].map(rates),
+            upnl_chf=df['unrealizedPNL'] * df['currency'].map(rates),
+        )
 
-        account_data.at[0, 'StockMarketValue'] = round(stock_mv, 2)
-        account_data.at[0, 'OptionMarketValue'] = round(option_mv, 2)
-        account_data.at[0, 'UnrealizedPnL'] = round(unrealized, 2)
+        stock_mv = df_conv[df_conv['secType'].isin(['STK'])]['mv_chf'].sum()
+        option_mv = df_conv[df_conv['secType'].isin(['OPT', 'FOP'])]['mv_chf'].sum()
+        unrealized = df_conv['upnl_chf'].sum()
+
+        # Cast to float first so pandas doesn't warn about incompatible int64 dtype
+        account_data['StockMarketValue'] = account_data['StockMarketValue'].astype(float)
+        account_data['OptionMarketValue'] = account_data['OptionMarketValue'].astype(float)
+        account_data['UnrealizedPnL'] = account_data['UnrealizedPnL'].astype(float)
+        account_data.at[0, 'StockMarketValue'] = round(float(stock_mv), 2)
+        account_data.at[0, 'OptionMarketValue'] = round(float(option_mv), 2)
+        account_data.at[0, 'UnrealizedPnL'] = round(float(unrealized), 2)
 
         print(portf_data)
 
