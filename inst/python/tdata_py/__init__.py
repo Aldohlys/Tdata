@@ -231,11 +231,21 @@ except ImportError as e:
 # Dividend functions
 try:
     from .dividend_utils import (
-        getNTMDividend  
+        getNTMDividend
     )
 except ImportError as e:
     print(f"Error importing dividend_utils: {e}")
     def getNTMDividend(*args, **kwargs):
+        return None
+
+# Earnings date functions (Wall Street Horizon via IBKR)
+try:
+    from .earnings_utils import (
+        getNextEarningsDate
+    )
+except ImportError as e:
+    print(f"Error importing earnings_utils: {e}")
+    def getNextEarningsDate(*args, **kwargs):
         return None
 
 # Volatility functions

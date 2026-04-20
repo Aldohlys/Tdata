@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.0] - 2026-04-20
+
+### Added
+- **earnings.R** (new): `getNextEarningsDate()`, `updateEarnings()`, `updateStaleEarnings()` — populate `Tickers.NextEarnings` (YYYYMMDD) via yfinance. Uses `YahooName` for correct resolution of European tickers (`.SW`, `.PA`, etc.)
+- **earnings_utils.py** (new, `inst/python/tdata_py/`): yfinance wrapper with two-level fallback (`Ticker.calendar` → `get_earnings_dates(limit=8)`). Robust against pandas NaN in `ticker_db` lookups.
+- **requirements.txt**: added `yfinance>=0.2.40` (installed via `reticulate::py_install` into the `r-reticulate` conda env).
+- **Staleness policy** in `updateStaleEarnings()`:
+  - NextEarnings is past → always retry (date rolled over)
+  - NextEarnings is NULL → retry only if `EarningsLastUpdate` is older than 7 days. Prevents daily re-hitting for ETFs and non-US tickers with broken YahooName.
+
+### Notes
+- Original design target was IBKR Wall Street Horizon via `ib.getWshEventData`, but WSH API access requires a News Feed entitlement beyond the calendar subscription (Error 10276). Switched to yfinance which is free and covers both US + European names.
+- Schema migration lives at `scripts/migrate_earnings_schema.R` (adds `NextEarnings` and `EarningsLastUpdate` TEXT columns to Tickers).
+
 ## [5.9.21] - 2026-04-20
 
 ### Fixed
