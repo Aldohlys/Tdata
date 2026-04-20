@@ -356,34 +356,32 @@ def getIBKRData(account=None):
     account_data = retrieveAccountData(ib, account)
     print(account_data)
 
-    ### Extract currency balances for CASH position tracking
-    ### TotalCashBalance only exists under 'All' in sub-account setups
-    ### Use 'All' account as source — these are master-level balances
-    print("\n#####  Extracting currency balances...\n")
-
-    account_summary_df = util.df(ib.accountSummary())
-
-    cash_balances = account_summary_df[
-        (account_summary_df['tag'] == 'TotalCashBalance') &
-        (account_summary_df['account'] == 'All')
-    ]
-
-    # Create currency_balances DataFrame with currency and balance columns
-    currency_balances = pd.DataFrame({
-        'currency': cash_balances['currency'].values,
-        'balance': pd.to_numeric(cash_balances['value']).values
-    })
-
-    # Filter out zero or near-zero balances
-    currency_balances = currency_balances[abs(currency_balances['balance']) >= 0.01]
-
-    print(currency_balances)
-
     print(f"\n#####  Retrieving portfolio data for {account}... \n")
 
     # Sub-accounts require explicit subscription before portfolio() returns data
+    # and before accountValues() reports per-sub-account cash balances by currency.
     ib.reqAccountUpdates(account=account)
     ib.sleep(2)
+
+    ### Extract per-sub-account cash balances by currency.
+    ### Using ib.accountValues(account) — accountSummary only exposes TotalCashBalance
+    ### broken down by currency under 'All' (master-level aggregate, NOT per sub-account),
+    ### which wrongly attributes master cash to every sub-account.
+    ### accountValues(account) gives the sub-account's own cash split after reqAccountUpdates.
+    print("\n#####  Extracting currency balances...\n")
+
+    cash_rows = [
+        v for v in ib.accountValues(account)
+        if v.tag == 'CashBalance' and v.currency != 'BASE'
+    ]
+    currency_balances = pd.DataFrame({
+        'currency': [v.currency for v in cash_rows],
+        'balance': [float(v.value) for v in cash_rows]
+    })
+    # Filter out zero or near-zero balances
+    currency_balances = currency_balances[abs(currency_balances['balance']) >= 0.01]
+    print(currency_balances)
+
     portfolio_items = ib.portfolio(account)
     # Filter out ghost positions (position=0) from internal transfers
     portfolio_items = [p for p in portfolio_items if p.position != 0]

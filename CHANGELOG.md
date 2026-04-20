@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.21] - 2026-04-20
+
+### Fixed
+- **account.py** (`getIBKRData`, cash extraction): Master-level cash wrongly attributed to sub-accounts
+  - Previously used `ib.accountSummary()` filtered by `account='All'` for per-currency cash breakdown
+  - Problem: 'All' is the master-level aggregate (sum across all sub-accounts) — this cash was then copied into each sub-account's portfolio table as CASH rows
+  - Example: U25343478 ended up with phantom USD 13,986.45, JPY 439,109.75, etc. (actually held in master U1804173). Currency Exposure view showed 38.6% USD for U25343478, which holds zero USD positions
+  - Fix: use `ib.accountValues(account)` filtered by `tag='CashBalance'` and `currency != 'BASE'`. Requires `reqAccountUpdates(account=...)` to have been called first (already done before portfolio retrieval). Returns true per-sub-account cash breakdown (verified: U25343478 reports no USD row)
+  - Also reordered `reqAccountUpdates` to happen BEFORE the cash extraction (was after)
+
 ## [5.9.16] - 2026-04-20
 
 ### Fixed
