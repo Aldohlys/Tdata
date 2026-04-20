@@ -655,7 +655,8 @@ getIBKRActiveCurrencyValues <- function() {
   conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
-  ### Skip USD, CHF and all inactive currencies
+  ### Skip USD, CHF and all inactive currencies for the IBKR-pair loop
+  ### (USD has no IBKRPair; CHF is the base currency with ratio 1.0)
   Tbasics::display_message("Retrieve currencies from DB...")
   currency_data <- DBI::dbGetQuery(conn, "SELECT Name, IBKRPair, DirectConversion FROM Currencies
                                           WHERE Active = 'Yes' AND Name NOT IN ('USD', 'CHF')")
@@ -667,6 +668,13 @@ getIBKRActiveCurrencyValues <- function() {
   # Get stored values for both USD and CHF
   stored_usd_values <- getLastUSDValue(currencies)
   stored_chf_values <- getLastCHFValue(currencies)
+
+  ### Refresh USD/CHF rate separately via Yahoo CHFUSD=X (USD has no IBKRPair,
+  ### so it's excluded from the main loop; getLastCHFValue handles USD as special case)
+  usd_active <- DBI::dbGetQuery(conn, "SELECT 1 FROM Currencies WHERE Name='USD' AND Active='Yes'")
+  if (nrow(usd_active) > 0) {
+    getLastCHFValue("USD")  # side effect: appends to ConvertToCHF if newer
+  }
 
   ### Check if data is already current for today
   today_date <- as.integer(format(Sys.Date(), "%Y%m%d"))

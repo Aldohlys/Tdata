@@ -252,15 +252,22 @@ getLastCHFValue <- function(currency) {
       }
 
       chf_value <- if (curr == "EUR") {
-        ticker_data$Adjusted  # Direct EUR/CHF rate
+        ticker_data$Adjusted  # Direct EUR/CHF rate from EURCHF=X
       } else if (curr == "USD") {
-        1 / ticker_data$Adjusted  # Invert CHF/USD to get USD/CHF
+        1 / ticker_data$Adjusted  # Invert CHFUSD=X to get USD/CHF
       } else {
-        # For non-direct currencies: YahooName is USDXXX=X (foreign per USD)
-        # CHF per 1 foreign unit = (1/USDXXX) / CHFUSD = 1 / (USDXXX * CHFUSD)
+        # Cross-rate via USD: formula depends on Yahoo ticker direction.
+        # DirectConversion="Yes" (e.g. GBP → GBPUSD=X = USD per 1 GBP):
+        #   XXX/CHF = XXXUSD / CHFUSD
+        # DirectConversion="No" (e.g. JPY → USDJPY=X = JPY per 1 USD):
+        #   XXX/CHF = 1 / (USDXXX * CHFUSD)
         usd_chf_data <- last_price |> dplyr::filter(ticker == "CHFUSD=X")
         if (nrow(usd_chf_data) > 0) {
-          1 / (ticker_data$Adjusted * usd_chf_data$Adjusted)
+          if (currency_detail$DirectConversion[i] == "Yes") {
+            ticker_data$Adjusted / usd_chf_data$Adjusted
+          } else {
+            1 / (ticker_data$Adjusted * usd_chf_data$Adjusted)
+          }
         } else {
           NA  # Cannot calculate without USD/CHF rate
         }

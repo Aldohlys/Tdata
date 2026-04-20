@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.16] - 2026-04-20
+
+### Fixed
+- **currency.R** (`getLastCHFValue`, lines 254-273): Wrong cross-rate formula for GBP/CHF
+  - Comment claimed "YahooName is USDXXX=X (foreign per USD)" and applied `1 / (ticker × CHFUSD)`
+  - But GBP's YahooName is `GBPUSD=X` (direct quote, USD per 1 GBP), not inverse
+  - Buggy path produced rate 0.577806 instead of ~1.06 on 2026-04-20
+  - Fix: use `DirectConversion` flag to pick formula — Yes → `XXXUSD / CHFUSD`, No → `1 / (USDXXX × CHFUSD)`
+- **account.R** (`getIBKRActiveCurrencyValues`, lines 672-677): USD/CHF rate never refreshed
+  - SQL at line 661 excluded USD from the active-currency loop (`NOT IN ('USD', 'CHF')`)
+  - USD has no IBKRPair so it can't use the main loop, but Yahoo path (CHFUSD=X) handles it
+  - USD/CHF rate had been stale since 2025-11-12 (159 days) on this system
+  - Fix: explicit `getLastCHFValue("USD")` call after the main Yahoo loop for USD-active configurations
+
 ## [5.9.15] - 2026-04-18
 
 ### Fixed
