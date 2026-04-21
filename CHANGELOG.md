@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.4] - 2026-04-21
+
+### Fixed
+- **impliedvol.py** (`_fetch_historical_data`): Added `timeout=60` (seconds) to the `ib.reqHistoricalData` call. Without it, a lost-in-flight IBKR request after a socket drop could block the asyncio event loop indefinitely — observed on 2026-04-20 where `update_missing_iv_safe.R` hung for 5+ hours on a single ticker before being killed manually. With the timeout, the call now returns cleanly (bars = None / empty) and the existing downstream NaN-handling (`_process_volatility_data`, `_process_price_data`) passes through a NaN result so the pipeline can move on to the next ticker. Matches the existing pattern already used in `historical_option.py._collect_bars`. Closes TODO #51
+- Error path in `_fetch_historical_data` now uses `logger.warning` (not `print`) and includes the symbol, so timeouts are visible in structured logs.
+
 ## [5.10.3] - 2026-04-21
 
 ### Added

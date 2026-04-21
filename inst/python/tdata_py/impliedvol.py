@@ -49,8 +49,15 @@ def _create_contract(sym, secType, currency, exchange, expiration_future, conId=
         return None
 
 
-def _fetch_historical_data(ib, contract, duration_str, bar_size, data_type):
-    """Fetch historical data from IBKR for specified data type."""
+def _fetch_historical_data(ib, contract, duration_str, bar_size, data_type, timeout=60):
+    """Fetch historical data from IBKR for specified data type.
+
+    The `timeout` kwarg (seconds) guards against the IBKR socket dropping
+    mid-request: without it, a lost-in-flight call can block the asyncio
+    event loop indefinitely even after the connection reconnects. Caller
+    (e.g. R's getVolMetrics) can then detect the failure as an empty/None
+    result and move on to the next ticker. See TODO #51.
+    """
     try:
         return ib.reqHistoricalData(
             contract,
@@ -59,10 +66,11 @@ def _fetch_historical_data(ib, contract, duration_str, bar_size, data_type):
             barSizeSetting=bar_size,
             whatToShow=data_type,
             useRTH=True,
-            formatDate=1
+            formatDate=1,
+            timeout=timeout
         )
     except Exception as e:
-        print(f"Error requesting {data_type} data: {e}")
+        logger.warning(f"Error requesting {data_type} data for {contract.symbol}: {e}")
         return None
 
 
