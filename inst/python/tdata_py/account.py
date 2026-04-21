@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import dataclasses
 import sqlite3
@@ -360,7 +361,18 @@ def getIBKRData(account=None):
 
     # Sub-accounts require explicit subscription before portfolio() returns data
     # and before accountValues() reports per-sub-account cash balances by currency.
-    ib.reqAccountUpdates(account=account)
+    # Bounded with asyncio.wait_for so a stalled TWS socket cannot hang the R
+    # caller indefinitely (reticulate/asyncio is uninterruptible from R's side).
+    try:
+        util.run(asyncio.wait_for(ib.reqAccountUpdatesAsync(account), timeout=60))
+    except asyncio.TimeoutError:
+        logger.warning(f"reqAccountUpdates timeout for {account} — TWS unresponsive; skipping")
+        try:
+            ib.cancelAccountUpdates(account)
+        except Exception:
+            pass
+        ib.disconnect()
+        return 0
     ib.sleep(2)
 
     ### Extract per-sub-account cash balances by currency.

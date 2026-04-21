@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.5] - 2026-04-21
+
+### Fixed
+- **account.py** (`getIBKRData`, portfolio subscription path): bounded `ib.reqAccountUpdates(account)` with `asyncio.wait_for(..., timeout=60)` via `reqAccountUpdatesAsync`. Without it, a stalled TWS socket left the sub-account subscription pending forever and the scheduled `daily_portfolio_update.R` / `RGetIBKR.R` hung indefinitely (observed 2026-04-21 on `U1804173`: accountSummary returned fine, then `reqAccountUpdates` blocked with no further progress — R/reticulate can't interrupt an asyncio call from the outside). On timeout: logs a warning, best-effort `cancelAccountUpdates`, disconnects, and returns 0 so the caller's loop can move on to the next account. Matches the 5.10.4 pattern already applied to `_fetch_historical_data`.
+- Added `import asyncio` to `account.py`.
+
 ## [5.10.4] - 2026-04-21
 
 ### Fixed
