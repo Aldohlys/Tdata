@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.10.0] - 2026-04-20
+## [5.10.2] - 2026-04-21
+
+### Fixed
+- **volatility.R** (`getVolMetrics`, lines ~373-413): Skip option-chain fallback when spot price is NaN
+  - Problem: when IBKR aggregate path returns NaN for both iv30 and price, the fallback called `getIV_DTE(sym, currency, NaN, ...)`. Strike selection via `Tbasics::get_nearest_values(strikes, NaN)` produced NaN strikes, which were shipped to IBKR and triggered `Error 320: Error reading request. Unable to parse field: 'Strike'` followed by a connection drop cascading to subsequent tickers in the batch
+  - Observed 2026-04-20 on KGC during swing scanner — iv180 silently NA, downstream "NO DATA" cells
+  - Fix: guard both iv30 fallback (line 373) and iv180 computation (line 405) with `is.finite(metrics$price)`. When price is not finite, skip the option-chain call and emit a `log_warn` instead. Preserves happy path; no API change
+  - Closes TODO #49
+
+
 
 ### Added
 - **earnings.R** (new): `getNextEarningsDate()`, `updateEarnings()`, `updateStaleEarnings()` — populate `Tickers.NextEarnings` (YYYYMMDD) via yfinance. Uses `YahooName` for correct resolution of European tickers (`.SW`, `.PA`, etc.)

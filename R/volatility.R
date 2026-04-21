@@ -371,11 +371,17 @@ getVolMetrics <- function(sym_list) {
 
     ### Fallback: iv30 from option chains when IBKR aggregate IV unavailable
     if (is.na(metrics$iv30)) {
-      logger::log_info("IBKR aggregate IV unavailable for {sym}, computing iv30 from option chains", namespace = "Tdata")
-      iv30_data <- tryCatch(getIV_DTE(sym, currency, metrics$price, 30), error = function(e) NA)
-      if (is.list(iv30_data) && !is.na(iv30_data$v)) {
-        metrics$iv30 <- round(iv30_data$v, 4)
-        logger::log_info("iv30 fallback for {sym}: {metrics$iv30}", namespace = "Tdata")
+      ### Option-strike selection needs a finite spot; otherwise NaN strikes get
+      ### shipped to IBKR (Error 320, connection drop). See TODO #49.
+      if (!is.finite(metrics$price)) {
+        logger::log_warn("iv30 unavailable for {sym} and spot price is NaN — skipping option-chain fallback", namespace = "Tdata")
+      } else {
+        logger::log_info("IBKR aggregate IV unavailable for {sym}, computing iv30 from option chains", namespace = "Tdata")
+        iv30_data <- tryCatch(getIV_DTE(sym, currency, metrics$price, 30), error = function(e) NA)
+        if (is.list(iv30_data) && !is.na(iv30_data$v)) {
+          metrics$iv30 <- round(iv30_data$v, 4)
+          logger::log_info("iv30 fallback for {sym}: {metrics$iv30}", namespace = "Tdata")
+        }
       }
     }
 
@@ -403,8 +409,14 @@ getVolMetrics <- function(sym_list) {
     }
 
     ### Compute iv180 from option chains (handle NA return from getIV_DTE safely)
-    iv180_data <- tryCatch(getIV_DTE(sym, currency, metrics$price, 180), error = function(e) NA)
-    metrics$iv180 <- if (is.list(iv180_data) && !is.null(iv180_data[["v"]]) && !is.na(iv180_data[["v"]])) round(iv180_data[["v"]], 4) else NA_real_
+    ### Skip if spot price is not finite — same rationale as iv30 fallback. See TODO #49.
+    if (is.finite(metrics$price)) {
+      iv180_data <- tryCatch(getIV_DTE(sym, currency, metrics$price, 180), error = function(e) NA)
+      metrics$iv180 <- if (is.list(iv180_data) && !is.null(iv180_data[["v"]]) && !is.na(iv180_data[["v"]])) round(iv180_data[["v"]], 4) else NA_real_
+    } else {
+      logger::log_warn("iv180 skipped for {sym} — spot price is NaN, cannot price option chain", namespace = "Tdata")
+      metrics$iv180 <- NA_real_
+    }
 
     ### Append to DB
     safe_db_append(conn, "Prices", metrics)
