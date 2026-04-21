@@ -408,14 +408,57 @@ getVolMetrics <- function(sym_list) {
       }
     }
 
-    ### Compute iv180 from option chains (handle NA return from getIV_DTE safely)
-    ### Skip if spot price is not finite — same rationale as iv30 fallback. See TODO #49.
-    if (is.finite(metrics$price)) {
-      iv180_data <- tryCatch(getIV_DTE(sym, currency, metrics$price, 180), error = function(e) NA)
-      metrics$iv180 <- if (is.list(iv180_data) && !is.null(iv180_data[["v"]]) && !is.na(iv180_data[["v"]])) round(iv180_data[["v"]], 4) else NA_real_
-    } else {
-      logger::log_warn("iv180 skipped for {sym} — spot price is NaN, cannot price option chain", namespace = "Tdata")
-      metrics$iv180 <- NA_real_
+    ### Compute iv15, iv90, iv180 from option chains — skip if spot is non-finite (see TODO #49).
+    ### iv15 is event-sensitive and noisy near expiry; interpret as indicative, not decision-grade.
+    compute_iv_dte <- function(target_dte) {
+      if (!is.finite(metrics$price)) {
+        logger::log_warn("iv{target_dte} skipped for {sym} — spot price is NaN", namespace = "Tdata")
+        return(NA_real_)
+      }
+      res <- tryCatch(getIV_DTE(sym, currency, metrics$price, target_dte), error = function(e) NA)
+      if (is.list(res) && !is.null(res[["v"]]) && !is.na(res[["v"]])) round(res[["v"]], 4) else NA_real_
+    }
+
+    metrics$iv15  <- compute_iv_dte(15)
+    metrics$iv90  <- compute_iv_dte(90)
+    metrics$iv180 <- compute_iv_dte(180)
+
+    ### VRP (Volatility Risk Premium) = log(iv30/rv30) * 100
+    ### Positive = options priced richer than realized (premium-sell edge)
+    ### Negative = options cheap vs realized (favor long gamma / debit structures)
+    metrics$vrp <- if (!is.na(metrics$iv30) && !is.na(metrics$rv30) &&
+                      metrics$iv30 > 0 && metrics$rv30 > 0) {
+      round(log(metrics$iv30 / metrics$rv30) * 100, 2)
+    } else NA_real_
+
+    ### IVR (IV Rank) over last 1y = 100 * (current - min) / (max - min)
+    ### IVP_2y (IV Percentile) over last 2y = % of historical iv30 at-or-below current
+    ### Both computed from Prices table (excluding current row since not yet written)
+    iv30_history_1y <- DBI::dbGetQuery(conn,
+      "SELECT iv30 FROM Prices WHERE sym = ? AND iv30 IS NOT NULL AND datetime >= ?",
+      params = list(sym, format(Sys.Date() - 365, "%Y%m%d"))
+    )$iv30
+    iv30_history_2y <- DBI::dbGetQuery(conn,
+      "SELECT iv30 FROM Prices WHERE sym = ? AND iv30 IS NOT NULL AND datetime >= ?",
+      params = list(sym, format(Sys.Date() - 730, "%Y%m%d"))
+    )$iv30
+
+    ### Sample-size thresholds kept low because Prices history is sparse at feature-launch.
+    ### Metrics will become statistically meaningful once the scanner writes to Prices regularly.
+    ### Until then, IVR/IVP_2y are approximate — IBKR's aggregate ivp remains the robust baseline.
+    metrics$ivr <- if (!is.na(metrics$iv30) && length(iv30_history_1y) >= 5) {
+      iv_min <- min(iv30_history_1y, na.rm = TRUE)
+      iv_max <- max(iv30_history_1y, na.rm = TRUE)
+      if (iv_max - iv_min > 1e-6) round(100 * (metrics$iv30 - iv_min) / (iv_max - iv_min), 2) else NA_real_
+    } else NA_real_
+
+    metrics$ivp_2y <- if (!is.na(metrics$iv30) && length(iv30_history_2y) >= 10) {
+      round(100 * sum(iv30_history_2y <= metrics$iv30, na.rm = TRUE) / length(iv30_history_2y), 2)
+    } else NA_real_
+
+    if (length(iv30_history_1y) > 0 && length(iv30_history_1y) < 20) {
+      logger::log_info("ivr for {sym} uses only {length(iv30_history_1y)} historical rows — warm-up phase",
+                       namespace = "Tdata")
     }
 
     ### Append to DB

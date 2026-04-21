@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.3] - 2026-04-21
+
+### Added
+- **volatility.R** (`getVolMetrics`): 5 new columns persisted to Prices
+  - `iv15`, `iv90` — short-dated and mid-dated IV from option chains via `getIV_DTE` (variance-interpolated). Completes the term structure iv15/iv30/iv90/iv180
+  - `vrp` — Volatility Risk Premium = `log(iv30/rv30) * 100` (log-ratio form, not additive). Positive = options priced richer than recent realized; negative = cheap vs realized
+  - `ivr` — IV Rank over 1y Prices history = `100*(iv30-min)/(max-min)`. Requires >=5 historical rows; logs warm-up warning when <20
+  - `ivp_2y` — IV Percentile over 2y Prices history (density-based, complements IBKR's 1y `ivp`). Requires >=10 historical rows
+- **trend.R** (new): `isTrendContinuation(sym, bench='SPY', lookback_days=400)` — diagnostic function returning a list with stage-2 flags, HH/HL counts, RSI bucket, pullback state, and relative-strength vs benchmark. Designed as a gate for the swing scanner to narrow candidates to "confirmed trend + pullback active" setups before the expensive deep vol pull
+  - MA stack check uses 5% inter-MA tolerance (qualitative — converging stacks in base-to-trend transitions can have SMAs within a couple of percent)
+  - RSI in-trend band [40, 75] — upper widened beyond 70 to accommodate momentum names with pullback-in-progress
+  - Stage2 criteria: price>SMA50, SMA stack (50/150/200), SMA200 rising, price within 1-25% of 52wh
+  - Pullback detection: price within 5% of SMA20, OR RSI recently retraced from >65 to 40-55
+
+### Schema migration
+- Prices table: `iv15`, `iv90`, `vrp`, `ivr`, `ivp_2y` columns added (all REAL, NULL-able). Migration script: `scripts/migrate_prices_vol_metrics.R` (idempotent)
+
+### Context
+- Extensions support the "asymmetric trade" scanner design: filter universe via `isTrendContinuation`, then pull rich vol metrics only on survivors. IVR and IVP_2y answer different questions (range-position vs density-position) and especially diverge when the IV history has a single outlier spike or floor — both kept so downstream logic can read them independently
+- Based on empirical review of BOT trade history (108 trades, Apr 2023 - Apr 2026): 30-60 DTE band produced best per-trade economics; filter design favors "2nd-3rd inning" trend-continuation over first-inning breakout detection
+
 ## [5.10.2] - 2026-04-21
 
 ### Fixed
