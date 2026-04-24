@@ -10,20 +10,40 @@
 #' To be sure that correct data types will be used, it converts field types to the target fields, i.e.
 #' * Integer for \code{TradeNr} and \code{Pos}
 #' * Real (double) for \code{Prix, Comm., Total, Risk, Reward, PnL}
+#'
+#' Concurrency safety: aborts when the DB has TradeNrs that are absent from `trades`.
+#' Without this guard a stale in-memory snapshot (e.g. a second RReporting session,
+#' or any other writer that touched Trades after Load) would silently destroy the
+#' newer rows on overwrite. Pass `force = TRUE` to skip the check when the deletion
+#' is genuinely intended.
 #'@param trades data frame with the following fields:
 #'\code{TradeNr, Account, TradeDate, DateTime, TimeZoneSource, Strategy, Instrument, Ssjacent, Pos, Prix,
 #'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
+#'@param force logical, default FALSE. Bypass the freshness check and overwrite unconditionally.
 #'@return No value or Error code from dbWriteTable
 #'@export
-saveTrades = function(trades) {
-
-  # file.copy(from=paste0(config::get("DirNewTrading"),"Trades.csv"),
-  #           to=paste0(config::get("DirNewTrading"),"Trades-old.csv"),overwrite = T)
-  #
-  # utils::write.table(trades,file=paste0(config::get("DirNewTrading"),"Trades.csv"),append=F,
-  #             col.names=TRUE,row.names=FALSE,sep=";",dec=".",quote=TRUE)
+saveTrades = function(trades, force = FALSE) {
 
   conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  if (!isTRUE(force)) {
+    db_tradenrs <- DBI::dbGetQuery(conn, "SELECT DISTINCT TradeNr FROM Trades")$TradeNr
+    input_tradenrs <- unique(trades$TradeNr)
+    missing <- setdiff(db_tradenrs, input_tradenrs)
+    if (length(missing) > 0) {
+      preview <- paste(utils::head(sort(missing), 20), collapse = ", ")
+      msg <- sprintf(
+        "saveTrades aborted: %d TradeNr(s) in DB are absent from input (%s%s). This usually means another writer modified the Trades table after you loaded RReporting. Reload and retry. If the deletion is intentional, call saveTrades(trades, force = TRUE).",
+        length(missing), preview,
+        if (length(missing) > 20) ", ..." else ""
+      )
+      logger::log_error(msg, namespace = "Tdata")
+      Tbasics::display_message(msg)
+      return(invisible(NULL))
+    }
+  }
+
   safe_db_write(conn, "Trades", trades, #### This will overwrite table in DB
                     field.types=c("TradeNr"=	"INTEGER","TradeDate"	= "INTEGER",
                                   "DateTime" = "TEXT",
@@ -35,7 +55,6 @@ saveTrades = function(trades) {
                                   "Risk"=	"REAL",
                                   "Reward"=	"REAL",
                                   "PnL"= "REAL" ))
-  DBI::dbDisconnect(conn)
 }
 
 #' getAllTrades
