@@ -84,7 +84,8 @@ try:
         getAllStrikes,
         getStrikesInRange,
         get_stale_warnings,
-        clear_stale_warnings
+        clear_stale_warnings,
+        get_chain_oi
     )
       
     from .parquet_storage import (
@@ -294,9 +295,10 @@ __all__ = [
     
     # === CORE CHAIN FUNCTIONS ===
     'getChains',
-    'getChain', 
+    'getChain',
     'getExpirationDates',
     'getOptionStrikes',
+    'get_chain_oi',
 
     # === MULTI-TRADING-CLASS DISCOVERY ===
     'getAvailableTradingClasses',

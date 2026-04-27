@@ -1010,22 +1010,151 @@ def initializeMultipleSymbols(symbols, force_refresh=False):
 def exploreMultipleSymbols(symbols):
     """
     Explore multiple symbols and return combined summary.
-    
+
     Args:
         symbols (list): List of symbols to explore
-    
+
     Returns:
         dict: Combined exploration results
     """
     try:
         if isinstance(symbols, str):
             symbols = [symbols]
-        
+
         results = {}
         for symbol in symbols:
             results[symbol] = discoverSymbol(symbol, 'summary')
-        
+
         return results
     except Exception as e:
         package_logger.error(f"Error exploring multiple symbols: {e}")
         return {'error': str(e)}
+
+
+def get_chain_oi(sym, expiration, strike_min=None, strike_max=None,
+                 trading_class=None, ib_connection=None,
+                 wait_seconds=2.0, batch_size=40):
+    """
+    Walk an option chain at a single expiry and return per-strike Open Interest.
+
+    For each qualified strike in [strike_min, strike_max], requests both call and
+    put market data with genericTickList='101, 105' (OpenInterest + avOptionVolume)
+    and returns a DataFrame.
+
+    Used by swing_scanner Step D.3 (chain positioning, per-strike OI walk).
+
+    Args:
+        sym (str): Underlying symbol
+        expiration (str): YYYYMMDD
+        strike_min (float, optional): Lower strike bound. None = no lower bound.
+        strike_max (float, optional): Upper strike bound. None = no upper bound.
+        trading_class (str, optional): If None, uses ticker_db default.
+        ib_connection: Existing IB connection to reuse. If None, opens a new one.
+        wait_seconds (float): Seconds to wait after issuing reqMktData calls
+                              before reading values. Default 2.0.
+        batch_size (int): Number of (call, put) pairs to subscribe simultaneously
+                          before draining and unsubscribing. TWS market-data line
+                          limit is ~100 by default. Default 40 (80 lines).
+
+    Returns:
+        pandas.DataFrame with columns:
+            strike, right ('C' or 'P'), open_interest, avg_volume, qualified (bool)
+        Empty DataFrame if no strikes resolved.
+        None on connection error.
+    """
+    expiration = str(expiration)
+
+    ticker_info = ticker_db.get_ticker_info(sym)
+    if ticker_info is None:
+        logger.warning(f"No ticker info for {sym}, using STK/USD/SMART defaults")
+        secType = 'STK'; currency = 'USD'
+        exchangeSec = 'SMART'; exchangeOpt = 'SMART'
+    else:
+        secType    = ticker_info.get('Type')    or 'STK'
+        currency   = ticker_info.get('Currency') or 'USD'
+        exchangeSec = ticker_info.get('Exchange') or 'SMART'
+        exchangeOpt = ticker_info.get('OptExchange') or 'SMART'
+
+    if trading_class is None:
+        trading_class = (ticker_info or {}).get('TradingClass') or sym
+
+    qualified = getOptionStrikes(
+        sym, trading_class, expiration,
+        strike_min=strike_min, strike_max=strike_max,
+        secType=secType, currency=currency,
+        exchangeSec=exchangeSec, exchangeOpt=exchangeOpt,
+        force_refresh=False)
+    if qualified is None or len(qualified) == 0:
+        logger.warning(f"No qualified strikes for {sym} {trading_class} {expiration}"
+                       f" in [{strike_min}, {strike_max}]")
+        return pd.DataFrame(columns=['strike', 'right', 'open_interest',
+                                     'avg_volume', 'qualified'])
+
+    own_connection = ib_connection is None
+    ib = ib_connection or safe_ib_connect()
+    if ib is None:
+        logger.error(f"Could not establish IB connection for {sym}")
+        return None
+
+    try:
+        ib.reqMarketDataType(1)  # live + frozen fallback after hours
+
+        rows = []
+        # Process strikes in batches to stay under TWS market-data line limit.
+        for batch_start in range(0, len(qualified), batch_size):
+            batch = qualified[batch_start:batch_start + batch_size]
+            contracts = []
+            tickers = []
+            for strike in batch:
+                call = Option(sym, expiration, float(strike), 'C',
+                              exchangeOpt, currency=currency,
+                              tradingClass=trading_class)
+                put  = Option(sym, expiration, float(strike), 'P',
+                              exchangeOpt, currency=currency,
+                              tradingClass=trading_class)
+                contracts.extend([call, put])
+
+            with suppress_ib_errors():
+                ib.qualifyContracts(*contracts)
+
+            for c in contracts:
+                qualified_ok = c.conId != 0
+                if qualified_ok:
+                    t = ib.reqMktData(c, genericTickList='101, 105')
+                    tickers.append((c, t, True))
+                else:
+                    tickers.append((c, None, False))
+
+            ib.sleep(wait_seconds)
+
+            for c, t, qok in tickers:
+                if not qok:
+                    rows.append({'strike': float(c.strike), 'right': c.right,
+                                 'open_interest': float('nan'),
+                                 'avg_volume': float('nan'),
+                                 'qualified': False})
+                    continue
+                if c.right == 'C':
+                    oi = getattr(t, 'callOpenInterest', float('nan'))
+                else:
+                    oi = getattr(t, 'putOpenInterest', float('nan'))
+                avg_vol = getattr(t, 'avOptionVolume', float('nan'))
+                rows.append({
+                    'strike': float(c.strike), 'right': c.right,
+                    'open_interest': (None if (oi is None or
+                                       (isinstance(oi, float) and math.isnan(oi)))
+                                      else int(oi)),
+                    'avg_volume': (None if (avg_vol is None or
+                                    (isinstance(avg_vol, float) and math.isnan(avg_vol)))
+                                   else int(avg_vol)),
+                    'qualified': True,
+                })
+                ib.cancelMktData(c)
+
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            df = df.sort_values(['strike', 'right']).reset_index(drop=True)
+        return df
+    finally:
+        if own_connection:
+            ib.disconnect()
