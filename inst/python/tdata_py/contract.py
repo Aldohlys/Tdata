@@ -40,6 +40,7 @@ from .core import CONFIG, ticker_db, validate_contract_params, find_nearest_numb
 from .IB_connection import safe_ib_connect
 from .chains_manager import getChains, getAllStrikes
 from .dividend_utils import getNTMDividend
+from .parquet_storage import ParquetQuotesStorage, get_quotes_ttl_minutes
 from fin_logger import get_logger, log_execution_time
 
 # Créez un logger pour ce module
@@ -330,7 +331,8 @@ def qualify_contract(sym, expiration, strike, right, exchange=None, currency=Non
             ib.disconnect()
 
 
-def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, tradingClass=None):
+def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None,
+                tradingClass=None, force_refresh=False, cache_ttl_minutes=None):
     """
     Get option values, implied volatility and delta for one or multiple strikes.
 
@@ -342,6 +344,12 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
         currency (str, optional): Currency code. If None, uses value from ticker database.
         exchange (str, optional): Exchange name. If None, uses value from ticker database.
         tradingClass (str, optional): Trading class. If None, uses value from ticker database.
+        force_refresh (bool): If True, bypass the parquet quote cache and pull
+            fresh values from TWS. Use at order-submit time (ROrder) where
+            staleness is dangerous. The freshly fetched quotes are still
+            written back so the next non-forced caller benefits.
+        cache_ttl_minutes (int, optional): Override the per-row freshness
+            window. None falls through to CONFIG['quotes_ttl_minutes'] (default 30).
 
     Returns:
         DataFrame or None:
@@ -388,24 +396,57 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
         "currency": currency
     })
     
+    # Convert single strike to list if needed (done before cache lookup so the
+    # cache layer always sees a list).
+    if (type(strikes) != list):
+        strikes = [strikes]
+
+    # ---- Quote cache: serve fresh strikes from parquet, fetch only the rest ----
+    quotes_storage = ParquetQuotesStorage()
+    ttl = cache_ttl_minutes if cache_ttl_minutes is not None else get_quotes_ttl_minutes()
+    requested_strikes = [float(s) for s in strikes]
+    cached_rows = {}
+    if not force_refresh:
+        cached_rows = quotes_storage.load_fresh(
+            symbol=sym, trading_class=tradingClass, expiration=expiration,
+            right=right, strikes=requested_strikes, ttl_minutes=ttl,
+        )
+        if cached_rows:
+            logger.debug(f"Quote cache hit: {len(cached_rows)}/{len(requested_strikes)} "
+                         f"strikes for {sym} {expiration} {right}")
+
+    missing_strikes = [s for s in requested_strikes if s not in cached_rows]
+
+    # Full cache hit — no TWS round-trip.
+    if not missing_strikes and not force_refresh:
+        ordered = [
+            {"strike": s, **{k: cached_rows[s].get(k, float('nan'))
+                             for k in ("value", "bid", "ask", "last",
+                                       "spread", "impliedvol", "delta")}}
+            for s in requested_strikes
+        ]
+        return pd.DataFrame(ordered)
+
+    # On force_refresh we re-fetch the full requested set so the cache reflects
+    # a single coherent snapshot.
+    fetch_strikes = requested_strikes if force_refresh else missing_strikes
+
     # Use safe_ib_connect instead of direct connection
     ib = safe_ib_connect()
 
     # If connection not available return None
     if not ib.isConnected():
         return None
-       
-    # Convert single strike to list if needed
-    if (type(strikes) != list): 
-        strikes = [strikes]
-        
-    # Create option contracts for each strike
-    
+
+    # Create option contracts for each strike to be fetched
     contracts = [Contract(symbol=sym, secType=secOptType, lastTradeDateOrContractMonth=expiration,
                         strike=strike_c, right=right,
-                        exchange=exchange, currency=currency, tradingClass=tradingClass) 
-                for strike_c in strikes]
-    
+                        exchange=exchange, currency=currency, tradingClass=tradingClass)
+                for strike_c in fetch_strikes]
+
+    # `strikes` from here on refers to the strikes we actually fetched.
+    strikes = list(fetch_strikes)
+
     logger.debug("CONTRACTS:", {"contracts":contracts})
 
     if(ib.qualifyContracts(*contracts)):
@@ -468,13 +509,37 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None, t
             }
             
             result_dic.append(row)
-        
-        # Convert to pandas DataFrame
-        result = pd.DataFrame(result_dic)
-        
+
+        # Persist the freshly fetched rows so subsequent callers can hit the cache.
+        if result_dic:
+            now_iso = datetime.datetime.now().isoformat()
+            cache_rows = [{**r, "cached_timestamp": now_iso} for r in result_dic]
+            try:
+                quotes_storage.upsert(
+                    symbol=sym, trading_class=tradingClass,
+                    expiration=expiration, right=right, rows=cache_rows,
+                )
+            except Exception as e:
+                logger.warning(f"Quote cache writeback failed for {sym} {expiration} {right}: {e}")
+
+        # Merge fetched rows with anything already served from the cache,
+        # preserving the caller's requested strike order.
+        fetched_by_strike = {float(r["strike"]): r for r in result_dic}
+        merged = []
+        for s in requested_strikes:
+            if s in fetched_by_strike:
+                merged.append(fetched_by_strike[s])
+            elif s in cached_rows:
+                merged.append({"strike": s, **{k: cached_rows[s].get(k, float('nan'))
+                                               for k in ("value", "bid", "ask", "last",
+                                                         "spread", "impliedvol", "delta")}})
+            # else: dropped (couldn't qualify and no cache entry); caller sees a missing strike.
+
+        result = pd.DataFrame(merged) if merged else pd.DataFrame(result_dic)
+
     else:
-        result = None 
-    
+        result = None
+
     ib.disconnect()
     return result
 

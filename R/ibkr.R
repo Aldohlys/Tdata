@@ -226,7 +226,8 @@ getSliceAllIBKRMetrics <- function(first=1, last=0) {
 #'getOptIBKRPrice(sym="SPY", right="Call", strike=500.0, expiration=as.Date("2026-12-18"))
 #'}
 #'@export
-getOptIBKRPrice = function(sym, tradingClass, right, strike, expiration, currency="USD", exchange="SMART") {
+getOptIBKRPrice = function(sym, tradingClass, right, strike, expiration, currency="USD", exchange="SMART",
+                            force_refresh = FALSE) {
   if (tradingClass == "Stock") {
     Tbasics::display_error_message("A valid Trading Class must be provided!")
     return(NA)
@@ -247,7 +248,7 @@ getOptIBKRPrice = function(sym, tradingClass, right, strike, expiration, currenc
   # message("NBBO Option value Sym:",sym," Type:",right," Strike:",strike," Expiration:",expiration,
   #         " Currency:",currency," Exchange:",exchange," tradingClass:",tradingClass)
   val = tdata_py$getOptValue(sym=sym,expiration=expiration,strikes=strike,
-                             right=right)$value
+                             right=right, force_refresh = force_refresh)$value
 
   if (is.null(val) || is.nan(val)) val=-1
   return(val)
@@ -273,7 +274,8 @@ getOptIBKRPrice = function(sym, tradingClass, right, strike, expiration, currenc
 #'getOptMarketData("SPY", "Call", 500, as.Date("2026-03-20"))
 #'}
 #'@export
-getOptMarketData = function(sym, right, strikes, expiration, currency = "USD", exchange = "SMART") {
+getOptMarketData = function(sym, right, strikes, expiration, currency = "USD", exchange = "SMART",
+                             force_refresh = FALSE) {
   ## Normalize right
   if (right == "Put") right = "P"
   if (right == "Call") right = "C"
@@ -286,7 +288,8 @@ getOptMarketData = function(sym, right, strikes, expiration, currency = "USD", e
   strikes = as.numeric(strikes)
 
   result = tdata_py$getOptValue(sym = sym, expiration = expiration,
-                                strikes = as.list(strikes), right = right)
+                                strikes = as.list(strikes), right = right,
+                                force_refresh = force_refresh)
 
   if (is.null(result)) return(NULL)
 

@@ -48,6 +48,24 @@ def get_cache_ttl_days():
     """
     return int(CONFIG.get("cache_ttl_days", 7))
 
+
+def get_file_age_minutes(file_path):
+    """Age of a file in minutes (mtime-based). -1 if file does not exist."""
+    file_path = Path(file_path)
+    if not file_path.exists():
+        return -1
+    return (time.time() - file_path.stat().st_mtime) / 60.0
+
+
+def get_quotes_ttl_minutes():
+    """
+    Read the live-quote cache TTL (in minutes) from config.
+
+    Returns:
+        int: TTL in minutes (default 30)
+    """
+    return int(CONFIG.get("quotes_ttl_minutes", 30))
+
 class ParquetChainsStorage:
     """Manages Parquet storage for option chains data."""
     
@@ -629,12 +647,155 @@ class ParquetStrikesStorage:
         
         return filtered_strikes
 
+class ParquetQuotesStorage:
+    """
+    Per-strike live-quote cache.
+
+    Layout:  quotes/<sym>/<trading_class>/<expiration>_<right>_quotes.parquet
+    Schema:  one row per strike with the columns returned by getOptValue
+             (strike, value, bid, ask, last, spread, impliedvol, delta) plus
+             cached_timestamp (ISO 8601). Per-row TTL via cached_timestamp;
+             file mtime is used only by the maintenance pass for expired
+             contracts.
+    """
+
+    QUOTE_COLUMNS = (
+        "strike", "value", "bid", "ask", "last",
+        "spread", "impliedvol", "delta",
+    )
+
+    def __init__(self):
+        self.base_dir = Path(CONFIG.get("quotes_dir", "quotes"))
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+
+    def _file_for(self, symbol, trading_class, expiration, right):
+        return (
+            self.base_dir / str(symbol) / str(trading_class) /
+            f"{expiration}_{right}_quotes.parquet"
+        )
+
+    def load_fresh(self, symbol, trading_class, expiration, right,
+                   strikes, ttl_minutes):
+        """
+        Return cached quote rows that are within the TTL window.
+
+        Args:
+            symbol, trading_class, expiration, right: cache key.
+            strikes (list[float]): strikes the caller is interested in.
+            ttl_minutes (int): per-row freshness window.
+
+        Returns:
+            dict[float, dict]: {strike: row_dict} for rows that are both
+                requested AND fresh. Strikes absent from this dict are cache
+                misses for the caller.
+        """
+        f = self._file_for(symbol, trading_class, expiration, right)
+        if not f.exists():
+            return {}
+
+        try:
+            df = pq.read_table(f).to_pandas()
+        except Exception as e:
+            logger.warning(f"Could not read quote cache {f}: {e}")
+            return {}
+
+        if df.empty or "cached_timestamp" not in df.columns:
+            return {}
+
+        cutoff = datetime.datetime.now() - datetime.timedelta(minutes=ttl_minutes)
+        ts = pd.to_datetime(df["cached_timestamp"], errors="coerce")
+        fresh = df[ts >= cutoff]
+        if fresh.empty:
+            return {}
+
+        wanted = {float(s) for s in strikes}
+        out = {}
+        for _, row in fresh.iterrows():
+            try:
+                k = float(row["strike"])
+            except (TypeError, ValueError):
+                continue
+            if k in wanted:
+                out[k] = {col: row[col] for col in self.QUOTE_COLUMNS if col in row}
+        return out
+
+    def upsert(self, symbol, trading_class, expiration, right, rows):
+        """
+        Merge `rows` into the cache file (overwrite-by-strike).
+
+        Args:
+            rows (list[dict]): each row must have all QUOTE_COLUMNS plus
+                `cached_timestamp` (ISO str). Strikes already present are
+                replaced; other strikes in the file are preserved so that
+                neighbouring callers can still hit them.
+        """
+        if not rows:
+            return
+        f = self._file_for(symbol, trading_class, expiration, right)
+        f.parent.mkdir(parents=True, exist_ok=True)
+
+        new_df = pd.DataFrame(rows)
+        new_df["strike"] = new_df["strike"].astype(float)
+
+        if f.exists():
+            try:
+                old_df = pq.read_table(f).to_pandas()
+                old_df["strike"] = old_df["strike"].astype(float)
+                # Drop rows whose strike is being overwritten, then concat.
+                old_df = old_df[~old_df["strike"].isin(new_df["strike"])]
+                merged = pd.concat([old_df, new_df], ignore_index=True)
+            except Exception as e:
+                logger.warning(f"Quote cache rewrite (read failed) for {f}: {e}")
+                merged = new_df
+        else:
+            merged = new_df
+
+        try:
+            pq.write_table(pa.Table.from_pandas(merged), f, compression="snappy")
+        except Exception as e:
+            logger.error(f"Failed to write quote cache {f}: {e}")
+
+    def check_and_remove_expired(self, symbol=None, trading_class=None):
+        """
+        Delete cache files for already-expired option contracts.
+
+        Returns:
+            list[Path]: files deleted.
+        """
+        if not self.base_dir.exists():
+            return []
+
+        today = datetime.date.today().strftime("%Y%m%d")
+        if symbol and trading_class:
+            pattern = f"{symbol}/{trading_class}/*_quotes.parquet"
+        elif symbol:
+            pattern = f"{symbol}/**/*_quotes.parquet"
+        else:
+            pattern = "**/*_quotes.parquet"
+
+        deleted = []
+        for f in self.base_dir.glob(pattern):
+            stem = f.stem.replace("_quotes", "")  # "<expiry>_<right>"
+            parts = stem.rsplit("_", 1)
+            if len(parts) != 2:
+                continue
+            expiration = parts[0]
+            if len(expiration) == 8 and expiration.isdigit() and expiration < today:
+                try:
+                    f.unlink()
+                    deleted.append(f)
+                except Exception as e:
+                    logger.warning(f"Could not delete expired quote file {f}: {e}")
+        return deleted
+
+
 class ParquetMaintenanceManager:
     """Handles cleanup and maintenance operations for Parquet files."""
-    
+
     def __init__(self):
         self.chains_dir = Path(CONFIG.get("chains_dir", "chains"))
         self.strikes_dir = Path(CONFIG.get("strikes_dir", "strikes"))
+        self.quotes_dir = Path(CONFIG.get("quotes_dir", "quotes"))
     
     def cleanup_expired_options(self, symbol=None, trading_class=None, dry_run=True):
         """
@@ -655,11 +816,22 @@ class ParquetMaintenanceManager:
                 "dry_run": dry_run,
                 "timestamp": datetime.datetime.now().isoformat()
             }
-            
+
+            # Quotes cleanup — only delete files whose contract has already expired.
+            # The per-row TTL governs read freshness, so non-expired files stay.
+            if not dry_run:
+                deleted_quote_files = ParquetQuotesStorage().check_and_remove_expired(
+                    symbol=symbol, trading_class=trading_class
+                )
+                results["quotes_cleanup"] = {"deleted_files": len(deleted_quote_files)}
+            else:
+                results["quotes_cleanup"] = {"deleted_files": 0, "note": "dry_run"}
+
             # Calculate totals
             chains_updated = results["chains_cleanup"].get("files_updated", 0)
             strikes_deleted = results["strikes_cleanup"].get("deleted_files", 0)
-            results["total_files_affected"] = chains_updated + strikes_deleted
+            quotes_deleted = results["quotes_cleanup"].get("deleted_files", 0)
+            results["total_files_affected"] = chains_updated + strikes_deleted + quotes_deleted
             
             # Cleanup empty directories
             if not dry_run:

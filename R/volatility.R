@@ -334,7 +334,7 @@ get180dIV <- function(tickers, LastIBKRPrice) {
 #' getVolMetrics("SBSW")
 #' }
 #' @export
-getVolMetrics <- function(sym_list) {
+getVolMetrics <- function(sym_list, force_refresh = FALSE) {
 
   if (!all(is.character(sym_list))) {
     logger::log_info("getVolMetrics: argument is not all character: {sym_list}", namespace="Tdata")
@@ -377,7 +377,7 @@ getVolMetrics <- function(sym_list) {
         logger::log_warn("iv30 unavailable for {sym} and spot price is NaN — skipping option-chain fallback", namespace = "Tdata")
       } else {
         logger::log_info("IBKR aggregate IV unavailable for {sym}, computing iv30 from option chains", namespace = "Tdata")
-        iv30_data <- tryCatch(getIV_DTE(sym, currency, metrics$price, 30), error = function(e) NA)
+        iv30_data <- tryCatch(getIV_DTE(sym, currency, metrics$price, 30, force_refresh = force_refresh), error = function(e) NA)
         if (is.list(iv30_data) && !is.na(iv30_data$v)) {
           metrics$iv30 <- round(iv30_data$v, 4)
           logger::log_info("iv30 fallback for {sym}: {metrics$iv30}", namespace = "Tdata")
@@ -415,7 +415,7 @@ getVolMetrics <- function(sym_list) {
         logger::log_warn("iv{target_dte} skipped for {sym} — spot price is NaN", namespace = "Tdata")
         return(NA_real_)
       }
-      res <- tryCatch(getIV_DTE(sym, currency, metrics$price, target_dte), error = function(e) NA)
+      res <- tryCatch(getIV_DTE(sym, currency, metrics$price, target_dte, force_refresh = force_refresh), error = function(e) NA)
       if (is.list(res) && !is.null(res[["v"]]) && !is.na(res[["v"]])) round(res[["v"]], 4) else NA_real_
     }
 
@@ -486,7 +486,7 @@ getVolMetrics <- function(sym_list) {
 #'   getIV_DTE("AI", "EUR", 175.5, 30)
 #' }
 #' @export
-getIV_DTE <- function(sym, currency, spot_price, DTE=30){
+getIV_DTE <- function(sym, currency, spot_price, DTE=30, force_refresh=FALSE){
 
   #### Validate input arguments
   ### Should not be used for DTE smaller than 10 days or greater than 730 days
@@ -553,9 +553,9 @@ getIV_DTE <- function(sym, currency, spot_price, DTE=30){
   next_strikes <- Tbasics::get_nearest_values(next_strikes, next_forward_price, n_below = 2, n_above = 2)
 
   logger::log_debug("Retrieve option prices for {near_expiry}...", namespace="Tdata")
-  near_option_prices <- getOptionPrices(sym, near_strikes, near_expiry)
+  near_option_prices <- getOptionPrices(sym, near_strikes, near_expiry, force_refresh = force_refresh)
   logger::log_debug("Retrieve option prices for {next_expiry}...", namespace="Tdata")
-  next_option_prices <- getOptionPrices(sym, next_strikes, next_expiry)
+  next_option_prices <- getOptionPrices(sym, next_strikes, next_expiry, force_refresh = force_refresh)
 
   if( (nrow(near_option_prices$unmatched_calls) != 0) | (nrow(near_option_prices$unmatched_puts) != 0)) {
     Tbasics::display_message(paste0("Issue with chain ", sym,"  for ", near_expiry," with strikes: ", near_strikes))
@@ -612,7 +612,7 @@ getIV_DTE <- function(sym, currency, spot_price, DTE=30){
 #'@param strikes double vector - strikes to get value from
 #'@returns a dataframe with with columns strikes, call, put, empty if no price are found
 #'@export
-getOptionPrices <- function(sym, strikes, expiration) {
+getOptionPrices <- function(sym, strikes, expiration, force_refresh = FALSE) {
 
   test_price <- function(x) {
     ### x should be different from NA
@@ -628,13 +628,15 @@ getOptionPrices <- function(sym, strikes, expiration) {
   else if (!is.character(expiration)) stop("expiration date must be either a date, a number or a character string!")
 
   logger::log_debug("Retrieve put data for {sym} at {expiration} for", strikes, namespace="Tdata")
-  df_put = tdata_py$getOptValue(sym = sym, expiration = expiration, strikes = strikes, right="P") |>
+  df_put = tdata_py$getOptValue(sym = sym, expiration = expiration, strikes = strikes, right="P",
+                                force_refresh = force_refresh) |>
     dplyr::rename(put_value = value, put_bid = bid, put_ask = ask, put_iv = impliedvol, put_delta = delta) |>
     dplyr::mutate(put_iv = signif_na(put_iv))
   df_put <- df_put |> dplyr::mutate(put_mid = (put_bid + put_ask)/2)
 
   logger::log_debug("Retrieve call data for {sym} at {expiration} for", strikes, namespace="Tdata")
-  df_call = tdata_py$getOptValue(sym = sym, expiration = expiration, strikes = strikes, right = "C") |>
+  df_call = tdata_py$getOptValue(sym = sym, expiration = expiration, strikes = strikes, right = "C",
+                                 force_refresh = force_refresh) |>
     dplyr::rename(call_value = value, call_bid = bid, call_ask = ask, call_iv = impliedvol, call_delta = delta) |>
     dplyr::mutate(call_iv = signif_na(call_iv))
   df_call <- df_call |> dplyr::mutate(call_mid = (call_bid + call_ask)/2)
