@@ -382,20 +382,8 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None,
         
     if (secOptType is None):
         logger.error(f"Not possible to use derivative for {sym}, returning no value")
-        return None      
-      
-      # Log function call
-    logger.info("getOptValue data", {
-        "symbol": sym,
-        "secOptType": secOptType,
-        "exchangeOpt": exchange,
-        "tradingClass": tradingClass,
-        "expiration": expiration,
-        "strikes": strikes,
-        "right": right,
-        "currency": currency
-    })
-    
+        return None
+
     # Convert single strike to list if needed (done before cache lookup so the
     # cache layer always sees a list).
     if (type(strikes) != list):
@@ -411,14 +399,15 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None,
             symbol=sym, trading_class=tradingClass, expiration=expiration,
             right=right, strikes=requested_strikes, ttl_minutes=ttl,
         )
-        if cached_rows:
-            logger.debug(f"Quote cache hit: {len(cached_rows)}/{len(requested_strikes)} "
-                         f"strikes for {sym} {expiration} {right}")
 
     missing_strikes = [s for s in requested_strikes if s not in cached_rows]
 
     # Full cache hit — no TWS round-trip.
     if not missing_strikes and not force_refresh:
+        logger.info(
+            f"Quote cache full hit: {len(cached_rows)} strikes for "
+            f"{sym} {expiration} {right} (TTL {ttl} min)"
+        )
         ordered = [
             {"strike": s, **{k: cached_rows[s].get(k, float('nan'))
                              for k in ("value", "bid", "ask", "last",
@@ -430,6 +419,24 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None,
     # On force_refresh we re-fetch the full requested set so the cache reflects
     # a single coherent snapshot.
     fetch_strikes = requested_strikes if force_refresh else missing_strikes
+
+    # Log function call — only fired when a TWS round-trip is actually happening.
+    cache_status = (
+        "force_refresh" if force_refresh
+        else f"partial hit ({len(cached_rows)}/{len(requested_strikes)} cached)"
+        if cached_rows else "cache miss"
+    )
+    logger.info("getOptValue data", {
+        "symbol": sym,
+        "secOptType": secOptType,
+        "exchangeOpt": exchange,
+        "tradingClass": tradingClass,
+        "expiration": expiration,
+        "strikes": fetch_strikes,
+        "right": right,
+        "currency": currency,
+        "cache": cache_status,
+    })
 
     # Use safe_ib_connect instead of direct connection
     ib = safe_ib_connect()

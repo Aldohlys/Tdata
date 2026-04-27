@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.9] - 2026-04-27
+
+### Added
+- **parquet_storage.py** (`ParquetQuotesStorage`): new fourth parquet layer for live option-quote caching, alongside the existing chains/strikes/historical_data layers. Layout: `quotes/<sym>/<trading_class>/<expiration>_<right>_quotes.parquet` with one row per strike (`value, bid, ask, last, spread, impliedvol, delta, cached_timestamp`). Per-row TTL via `cached_timestamp`; file mtime is used only by the maintenance pass for already-expired contracts.
+  - `load_fresh(sym, trading_class, expiration, right, strikes, ttl_minutes)` returns rows that are both requested AND within the TTL window — supports strike-level partial hits
+  - `upsert(...)` overwrites by strike but preserves neighbouring strikes in the same file so adjacent callers can still hit cache
+  - `check_and_remove_expired(...)` deletes cache files whose contract expiration is in the past
+  - Helpers: `get_file_age_minutes()` and `get_quotes_ttl_minutes()` (config key `quotes_ttl_minutes`, default 30)
+- **parquet_storage.py** (`ParquetMaintenanceManager`): registered `quotes_dir` and added a quotes-cleanup branch to `cleanup_expired_options()`. Total file count reflects chains + strikes + quotes deletions
+- **contract.py** (`getOptValue`) logging: `getOptValue data {...}` info line now fires only when TWS is actually called and includes a `cache` field (`cache miss` / `partial hit (N/M cached)` / `force_refresh`). Full cache hits log `Quote cache full hit: N strikes for SYM EXPIRY RIGHT (TTL X min)` instead — visually unambiguous which calls do IO
+- **contract.py** (`getOptValue`): two new kwargs
+  - `force_refresh: bool = False` — bypass the read side of the cache and pull fresh values from TWS. Use at order-submit time (ROrder) where staleness is dangerous. Fresh quotes are still written back so the next non-forced caller benefits — ROrder warms the cache for the scanner instead of starving it
+  - `cache_ttl_minutes: int = None` — per-call freshness override; falls through to `quotes_ttl_minutes` config
+  - Cache lookup happens after `tradingClass` resolution and before `safe_ib_connect()`. Full hits skip the TWS round-trip entirely. Partial hits qualify+fetch only the missing strikes; results are merged with cached rows preserving the caller's requested strike order
+- **R/volatility.R** (`getVolMetrics`, `getIV_DTE`, `getOptionPrices`): added `force_refresh = FALSE` parameter, plumbed through to `getOptValue`
+- **R/ibkr.R** (`getOptIBKRPrice`, `getOptMarketData`): added `force_refresh = FALSE` parameter — these are the ROrder/Ligne entry points where the flag should be set `TRUE` at submit time
+- **test/test_quote_cache.py** (new): 18 pytest cases covering storage round-trip, TTL filtering, upsert semantics, expired-contract cleanup, corrupt-file handling, and `getOptValue` cache decisions (full hit / partial hit / `force_refresh` / TTL override / scalar-strike normalisation) with `safe_ib_connect` mocked. Runs in ~3.5s, no TWS required
+
+### Performance context
+- Motivation: `getVolMetrics` calls `getIV_DTE(15/90/180)` independently — each one re-fetches strikes + option prices for its bracketing expiries. Sparse chains (e.g. DBA on 2026-04-27) collapse all three DTE targets to the same expiry pair but still re-pull the chain three times. Cross-symbol redundancy is even larger during full scanner sweeps. The new cache eliminates both within-symbol and cross-process redundancy because parquet survives R sessions and processes (scanner via Task Scheduler ↔ interactive `/analyze` ↔ Python scripts all share state)
+- Same TTL/eviction pattern as the existing `ParquetChainsStorage` / `ParquetStrikesStorage`; minutes-grained TTL is the only new convention
+
+### ROrder usage
+- Pass `force_refresh = TRUE` at submit-time leg pricing (`getOptIBKRPrice(..., force_refresh = TRUE)`, `getOptMarketData(..., force_refresh = TRUE)`). Trade-design / what-if iterations can keep the default `FALSE` to stay fast — only the order-ticket call needs guaranteed freshness
+
 ## [5.10.5] - 2026-04-21
 
 ### Fixed
