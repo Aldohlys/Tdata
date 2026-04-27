@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.10] - 2026-04-27
+
+### Changed
+- **contract.py** (`getOptValue`) logging polish: `getOptValue data {...}` info line now fires only when TWS is actually called, and includes a `cache` field (`cache miss` / `partial hit (N/M cached)` / `force_refresh`). Full cache hits log `Quote cache full hit: N strikes for SYM EXPIRY RIGHT (TTL X min)` instead. Net: log now visually distinguishes IO from cache-served calls — previously every call printed `getOptValue data {...}` regardless, making it look like nothing was cached.
+
 ## [5.10.9] - 2026-04-27
 
 ### Added
@@ -14,7 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `check_and_remove_expired(...)` deletes cache files whose contract expiration is in the past
   - Helpers: `get_file_age_minutes()` and `get_quotes_ttl_minutes()` (config key `quotes_ttl_minutes`, default 30)
 - **parquet_storage.py** (`ParquetMaintenanceManager`): registered `quotes_dir` and added a quotes-cleanup branch to `cleanup_expired_options()`. Total file count reflects chains + strikes + quotes deletions
-- **contract.py** (`getOptValue`) logging: `getOptValue data {...}` info line now fires only when TWS is actually called and includes a `cache` field (`cache miss` / `partial hit (N/M cached)` / `force_refresh`). Full cache hits log `Quote cache full hit: N strikes for SYM EXPIRY RIGHT (TTL X min)` instead — visually unambiguous which calls do IO
 - **contract.py** (`getOptValue`): two new kwargs
   - `force_refresh: bool = False` — bypass the read side of the cache and pull fresh values from TWS. Use at order-submit time (ROrder) where staleness is dangerous. Fresh quotes are still written back so the next non-forced caller benefits — ROrder warms the cache for the scanner instead of starving it
   - `cache_ttl_minutes: int = None` — per-call freshness override; falls through to `quotes_ttl_minutes` config
