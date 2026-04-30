@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.12] - 2026-04-30
+
+### Added
+- **_core.py**: set `IB.RequestTimeout` from `CONFIG.ibkr.request_timeout` (default 60s) at module init. Closes the bulk of TODO #52 in one config line — every `util.run()` / `ib.run()` call ib_async issues now caps at this timeout instead of hanging forever when TWS is up but stuck.
+  - **Problem**: when TWS is up but degraded (e.g. mid-fetch 1100/1102 connectivity blip aftermath), ib_async's awaitables for `reqContractDetails` / `reqSecDefOptParams` never resolve — there's no `*End` callback for ib_async to bound on its own. R-side `tryCatch` cannot interrupt asyncio (memory `feedback_reticulate_asyncio_uninterruptible.md`). Observed twice on 2026-04-30 with PSX during /analyze: chain fetch hung 8+ minutes, requiring manual `taskkill`.
+  - **Solution**: `IB.RequestTimeout` is a class attribute exposed by ib_async (default 0 = no timeout). Setting it once at module init applies a global ceiling. Pacing (`ib.sleep(N)`) is unchanged — solves rate-limit / peer-close, complementary to this timeout.
+  - **Override**: edit `config.yml -> default -> ibkr -> request_timeout` to tune the ceiling.
+  - **Residual scope of TODO #52**: per-callsite `asyncio.wait_for` still needed for cases that genuinely have no end-of-stream signal at all (rare). Most callsites now covered by the global ceiling.
+
 ## [5.10.11] - 2026-04-30
 
 ### Fixed

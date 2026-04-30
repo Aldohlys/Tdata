@@ -128,6 +128,21 @@ def process_r_expressions(config):
 # Global config object to avoid reloading the config for each function call
 CONFIG = load_config(env=os.environ.get("R_CONFIG_ACTIVE", "default"))
 
+# ── ib_async global request timeout ──────────────────────────────────────
+# IB.RequestTimeout is a class attribute (default 0 = no timeout). Setting it
+# here puts a ceiling on every util.run()/ib.run() call ib_async issues, so a
+# stuck TWS request (e.g. reqContractDetails / reqSecDefOptParams that never
+# emits its *End callback after a 1100/1102 connectivity blip) raises
+# asyncio.TimeoutError instead of hanging forever. Override via
+# config.yml -> default -> ibkr -> request_timeout.
+_ibkr_cfg = CONFIG.get("ibkr", {}) if isinstance(CONFIG, dict) else {}
+_request_timeout = _ibkr_cfg.get("request_timeout", 60) if isinstance(_ibkr_cfg, dict) else 60
+try:
+    IB.RequestTimeout = float(_request_timeout)
+    logger.info(f"ib_async IB.RequestTimeout set to {IB.RequestTimeout}s")
+except Exception as e:
+    logger.warning(f"Failed to set IB.RequestTimeout={_request_timeout}: {e}")
+
 class TickerDatabase:
     """
     Manages ticker data retrieved from SQLite database.
