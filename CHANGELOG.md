@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.10.10] - 2026-04-27
+## [5.10.11] - 2026-04-30
+
+### Fixed
+- **contract.py** (`getOptValue`): defensive NaN guard for the `strikes` parameter. Filters out NaN entries with a WARNING log before issuing the TWS request; if no valid strikes remain after filtering, returns `None` instead of submitting a malformed request. Inserted right after `requested_strikes = [float(s) for s in strikes]` (around line 395).
+  - **Problem**: when an underlying is missing from the `Tickers` table, the upstream strike-picker can return `[nan, nan, nan, nan]` for the term-structure IV calls (15d/90d/180d). Sending NaN strikes to TWS triggers `Error 320 — Unable to parse field: 'Strike' for input string: 'nan'`, which is immediately followed by `Peer closed connection` (`asyncio ConnectionResetError WinError 10054`). The dropped socket then poisons any subsequent request in the same batch.
+  - **Observed on 2026-04-28**: `getVolatilityMetrics("IBIT")` returned `iv30`/`ivp`/`rv30`/`rvp`/`vrp` populated but `iv15`/`iv90`/`iv180` all `NA`, with three Error 320 + peer-closed cycles in the log.
+  - **Solution**: at the TWS boundary, drop NaN strikes; if everything was NaN, log an ERROR and return `None`. The upstream missing-Tickers-row issue is fixed separately by the new Tickers CRUD utility (`Tuser/ticker/app.R`); this guard ensures any future caller that produces NaN cannot tear down the connection.
+  - **Pattern**: matches `feedback_tws_drops_connection_on_malformed.md` — never let malformed values reach TWS.
 
 ### Changed
 - **contract.py** (`getOptValue`) logging polish: `getOptValue data {...}` info line now fires only when TWS is actually called, and includes a `cache` field (`cache miss` / `partial hit (N/M cached)` / `force_refresh`). Full cache hits log `Quote cache full hit: N strikes for SYM EXPIRY RIGHT (TTL X min)` instead. Net: log now visually distinguishes IO from cache-served calls — previously every call printed `getOptValue data {...}` regardless, making it look like nothing was cached.

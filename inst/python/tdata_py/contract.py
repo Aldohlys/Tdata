@@ -393,6 +393,26 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None,
     quotes_storage = ParquetQuotesStorage()
     ttl = cache_ttl_minutes if cache_ttl_minutes is not None else get_quotes_ttl_minutes()
     requested_strikes = [float(s) for s in strikes]
+
+    # Defensive NaN guard: TWS Error 320 ("Unable to parse field: 'Strike' for
+    # input string: 'nan'") corrupts the connection (peer-closed) and breaks any
+    # subsequent request in the same batch. Drop NaN strikes; if nothing valid
+    # remains, return None instead of issuing a malformed request.
+    import math
+    nan_count = sum(1 for s in requested_strikes if math.isnan(s))
+    if nan_count:
+        logger.warning(
+            f"getOptValue: dropping {nan_count}/{len(requested_strikes)} NaN strikes "
+            f"for {sym} {expiration} {right} (would have triggered TWS Error 320)"
+        )
+        requested_strikes = [s for s in requested_strikes if not math.isnan(s)]
+    if not requested_strikes:
+        logger.error(
+            f"getOptValue: no valid strikes for {sym} {expiration} {right} "
+            f"after NaN filter — skipping TWS call, returning None"
+        )
+        return None
+
     cached_rows = {}
     if not force_refresh:
         cached_rows = quotes_storage.load_fresh(
