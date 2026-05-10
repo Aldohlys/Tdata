@@ -14,6 +14,6 @@ Imports: config, DBI, dplyr, ecb, glue, hms, httr, jsonlite, logger,
         rlang, RSQLite, rvest, scales, stats, Tbasics (>= 1.5.1),
         tibble, tidyr, TTR, vctrs, utils, xts, zoo, Tlogger
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
 Suggests: rmarkdown, testthat (>= 3.0.0)
 Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0
