@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.17] - 2026-05-10
+
+### Fixed
+- **inst/python/tdata_py/chains_manager.py** (`_qualify_strikes_with_states`): individual futures-option strikes now qualify correctly. Previously, the strike-test code used `Option(symbol=sym, ...)` which:
+  1. Defaulted `secType` to `OPT` (stock option) — wrong for futures
+  2. Passed `sym="MCLN6"` (the futures local symbol) as the `symbol` field — but futures options need the underlying ROOT (`"MCL"`)
+  Result: `qualifyContracts` returned Error 200 for every strike, so the function reported "0 qualified, 0 out of scope" for all 439 MCL strikes, even though the chain itself was fetched correctly. Each `getOptionStrikes` call wasted ~25s before returning empty.
+- **Fix**: branch on `secType` in `_qualify_strikes_with_states`. For `FUT`, resolve the underlying root via `qualifyContracts(Contract(conId=underlying_conId))` once at the top, then build `Contract(secType="FOP", symbol=root, currency=..., tradingClass=trading_class, ...)` for each strike. Verified live 2026-05-10: MCL Jul'26 92 Put resolves to conId=860132805 with localSymbol=`MCON6 P9200`, exactly matching the TWS Description.
+- **Caller**: `getOptionStrikes` now passes `secType`, `underlying_conId` (from `chain[1]`), and `currency` down to `_qualify_strikes_with_states` so the FUT branch has what it needs.
+
+### Verification
+- Live test: `getOptionStrikes("MCLN6", "MCO", "20260616", 89.0, 95.0, force_refresh=True)` returned 25 qualified strikes (89.0..95.0 in 0.25 increments) in 11.3s. Pre-fix: 0 qualified after 25s timeout.
+
 ## [5.10.16] - 2026-05-10
 
 ### Fixed

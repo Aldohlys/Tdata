@@ -448,9 +448,18 @@ def getOptionStrikes(sym, trading_class, expiration, strike_min=None, strike_max
         
         try:
             option_exchange = str(chain[0])
-            test_results = _qualify_strikes_with_states(ib, sym, trading_class, expiration, 
-                                                      strikes_to_test, option_exchange)
-            
+            # For FUT, _qualify_strikes_with_states needs the underlying conId
+            # (chain[1]) and currency to build FOP contracts with the right
+            # root symbol — sym is the local future symbol (e.g. "MCLN6"),
+            # not the option's underlying root ("MCL").
+            test_results = _qualify_strikes_with_states(
+                ib, sym, trading_class, expiration,
+                strikes_to_test, option_exchange,
+                secType=secType,
+                underlying_conId=int(chain[1]),
+                currency=currency,
+            )
+
             newly_qualified = test_results['qualified']
             newly_out_of_scope = test_results['out_of_scope']
             
@@ -481,48 +490,98 @@ def getOptionStrikes(sym, trading_class, expiration, strike_min=None, strike_max
     
     return final_qualified
 
-def _qualify_strikes_with_states(ib, sym, trading_class, expiration, strikes, option_exchange):
+def _qualify_strikes_with_states(ib, sym, trading_class, expiration, strikes, option_exchange,
+                                  secType="STK", underlying_conId=None, currency="USD"):
     """
     Qualify strikes and return both qualified and out-of-scope results.
-    
+
     Args:
         ib: IB connection
-        sym: Symbol
-        trading_class: Trading class
+        sym: Symbol — for STK this IS the underlying symbol; for FUT this is
+             the local symbol (e.g. "MCLN6") and the actual underlying root
+             is resolved via underlying_conId.
+        trading_class: Trading class (e.g. "MCO" for MCL futures options)
         expiration: Expiration date
         strikes: List of strikes to test
         option_exchange: Options exchange
-        
+        secType: "STK" (default), "FUT", or "IND". Determines whether to
+                 build OPT (stock options) or FOP (futures options) contracts.
+        underlying_conId: Required when secType=="FUT". Used to resolve the
+                          underlying root symbol via qualifyContracts.
+        currency: Contract currency (needed explicitly for FOP).
+
     Returns:
         dict: {'qualified': [strikes], 'out_of_scope': [strikes]}
     """
     qualified_strikes = []
     out_of_scope_strikes = []
     batch_size = 10  # If necessary, to be reduced to 5 to avoid TWS batch truncation
-    
+
+    # For futures-options: resolve the underlying root symbol from conId so we
+    # can build FOP contracts with symbol=root (NOT sym, which is the local
+    # future symbol like "MCLN6"). qualifyContracts on the underlying populates
+    # underlying.symbol = "MCL" — that's what FOP needs.
+    if secType == "FUT":
+        if not underlying_conId:
+            logger.error(
+                f"FUT strike qualification needs underlying_conId for {sym} — "
+                f"cannot resolve root symbol; aborting strike test")
+            return {'qualified': [], 'out_of_scope': []}
+        underlying = Contract(
+            conId=int(underlying_conId),
+            exchange=str(option_exchange),
+            currency=str(currency),
+        )
+        if not ib.qualifyContracts(underlying) or not underlying.symbol:
+            logger.error(
+                f"Could not resolve FUT underlying root for {sym} "
+                f"(conId={underlying_conId}); aborting strike test")
+            return {'qualified': [], 'out_of_scope': []}
+        root_symbol = underlying.symbol  # e.g. "MCL"
+        logger.debug(f"FUT path: resolved underlying root '{root_symbol}' for sym '{sym}'")
+    else:
+        root_symbol = sym
+
     for i in range(0, len(strikes), batch_size):
         batch_strikes = strikes[i:i + batch_size]
-        
+
         # Create contracts for this batch
         batch_contracts = []
         for strike in batch_strikes:
-            call_option = Option(
-                symbol=str(sym),
-                lastTradeDateOrContractMonth=str(expiration),
-                strike=float(strike),
-                right='C',
-                exchange=str(option_exchange),
-                tradingClass=str(trading_class)
-            )
+            if secType == "FUT":
+                # Futures-option: secType=FOP, symbol=ROOT (e.g. "MCL"),
+                # tradingClass=options class (e.g. "MCO"), currency required.
+                # Verified live 2026-05-10: this resolves to e.g. conId=860132805
+                # for MCL Jul'26 92 Put (matches TWS Description screenshot).
+                call_option = Contract(
+                    secType="FOP",
+                    symbol=str(root_symbol),
+                    lastTradeDateOrContractMonth=str(expiration),
+                    strike=float(strike),
+                    right='C',
+                    exchange=str(option_exchange),
+                    currency=str(currency),
+                    tradingClass=str(trading_class),
+                )
+            else:
+                # STK / IND options — Option() defaults to secType=OPT
+                call_option = Option(
+                    symbol=str(sym),
+                    lastTradeDateOrContractMonth=str(expiration),
+                    strike=float(strike),
+                    right='C',
+                    exchange=str(option_exchange),
+                    tradingClass=str(trading_class)
+                )
             batch_contracts.append((float(strike), call_option))
-        
+
         # Test this batch and categorize results
         batch_results = _test_contract_batch_with_states(ib, batch_contracts)
         qualified_strikes.extend(batch_results['qualified'])
         out_of_scope_strikes.extend(batch_results['out_of_scope'])
-        
+
         ib.sleep(0.1)  # To be modified if necessary (e.g 0.2)
-    
+
     return {
         'qualified': qualified_strikes,
         'out_of_scope': out_of_scope_strikes
