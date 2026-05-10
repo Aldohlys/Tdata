@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.16] - 2026-05-10
+
+### Fixed
+- **inst/python/tdata_py/chains_manager.py** (`getChains`): properly resolve futures option chains. Two bugs fixed in one path:
+  1. **`Contract(symbol="MCLN6", secType="FUT", ...)` → Error 200**. IBKR rejects futures contracts when the local symbol (e.g. `MCLN6`) is passed as the `symbol` field — needs `localSymbol` instead. Now branches on `secType == "FUT"` to use `Contract(localSymbol=sym, ...)`. Mirrors the working pattern in `contract.py:129`.
+  2. **`reqSecDefOptParams` is unreliable for futures**. Returns Error 322 ("no derivatives returned") when called with `futFopExchange="NYMEX"`, hangs indefinitely with empty `futFopExchange=""` (verified live against MCLN6 on 2026-05-10). For FUT, switched to `reqContractDetails` on the FOP root with the options trading class from the Tickers DB row (`TradingClass` column — e.g. `MCO` for MCL futures, per memory `reference_tickers_fut_row_convention.md`). Aggregates the (expiration, strike) pairs into a single chain entry matching the `reqSecDefOptParams` shape so downstream code is unchanged.
+  - **Verified live**: `getChains("MCLN6", force_refresh=True)` now returns in ~5s with 1 chain (exchange=NYMEX, underlyingConId=661016559, tradingClass=MCO, 12 expirations, 439 strikes). TWS Description for `MCL Jul'26 92 Put` confirms: TradingClass=MCO, underlying conId=661016559.
+  - **STK / IND / CASH path unchanged** — `reqSecDefOptParams` still works for those.
+  - **Closes**: open item in memory `project_chains_manager_fut_bug.md`.
+
+### Workflow
+- Established rule: any change touching IBKR/TWS API behaviour is now tested live against TWS BEFORE the source edit (per memory `feedback_test_tws_first.md`). Both fixes above were validated by `scripts/test_mcln6_fix.py` and `scripts/test_chains_manager_fut.py` before this CHANGELOG entry was written.
+
 ## [5.10.15] - 2026-05-10
 
 ### Fixed

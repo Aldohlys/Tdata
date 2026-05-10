@@ -141,41 +141,108 @@ def getChains(sym, secType=None, currency=None, exchangeSec=None, exchangeOpt=No
     return None
     
   try:
-    underlying = Contract(symbol=sym, secType=secType,
-                       exchange=exchangeSec, currency=currency)
-    
+    # For futures, sym (e.g. "MCLN6") is the local symbol — Tickers FUT row
+    # convention stores the local symbol in Name. IBKR's API rejects
+    # Contract(symbol="MCLN6", secType="FUT", ...) with Error 200; the same
+    # contract resolves correctly via localSymbol. Mirrors contract.py:129.
+    # For STK and other secTypes, sym IS the underlying symbol.
+    if secType == "FUT":
+      underlying = Contract(localSymbol=sym, secType=secType,
+                           exchange=exchangeSec, currency=currency)
+    else:
+      underlying = Contract(symbol=sym, secType=secType,
+                           exchange=exchangeSec, currency=currency)
+
     logger.debug(f"Qualifying contract: {underlying}")
-    
+
     if ib.qualifyContracts(underlying):
-      chains = ib.reqSecDefOptParams(sym, '', underlying.secType, underlying.conId)
-      
-      # Filter chains for the specified options exchange
-      sub_chains = [chain for chain in chains if chain.exchange == exchangeOpt]
-      
-      ib.sleep(1)
-      logger.debug(f"Found {len(sub_chains)} chains for {exchangeOpt}")
-      
-      # Remove any chain where underlying contract Id does not match
-      sub_chains = [chain for chain in sub_chains if int(chain.underlyingConId) == underlying.conId]
-      
-      # Convert to proper data types before caching
-      formatted_chains = []
-      for chain in sub_chains:
-        formatted_chain = [
-          str(chain.exchange),                    # str
-          int(chain.underlyingConId),             # int
-          str(chain.tradingClass),                # str
-          str(chain.multiplier),                  # str
-          [str(exp) for exp in chain.expirations],  # List[str]
-          [float(strike) for strike in chain.strikes]  # List[float]
-        ]
-        formatted_chains.append(formatted_chain)
-      
+      if secType == "FUT":
+        # reqSecDefOptParams is unreliable for futures: returns Error 322
+        # ("no derivatives") with futFopExchange=NYMEX, hangs indefinitely
+        # with futFopExchange=''. Verified live 2026-05-10 against MCLN6.
+        # Workaround: reqContractDetails on the FOP root with the options
+        # tradingClass (stored as 'TradingClass' in Tickers DB — e.g. 'MCO'
+        # for MCL futures), then aggregate (expiration, strike) pairs.
+        opt_trading_class = (
+          ticker_info.get('TradingClass') if ticker_info is not None else None
+        )
+        if not opt_trading_class:
+          logger.error(
+            f"FUT chain fetch needs TradingClass in Tickers row for {sym} "
+            f"(IBKR's reqContractDetails on FOP root requires the options "
+            f"trading class to disambiguate option series)")
+          return None
+
+        fop_root = Contract(
+          symbol=underlying.symbol,    # root, e.g. "MCL"
+          secType="FOP",
+          exchange=exchangeOpt,
+          currency=currency,
+          tradingClass=opt_trading_class,
+        )
+        logger.debug(f"FUT path — reqContractDetails for {fop_root}")
+        details = ib.reqContractDetails(fop_root)
+        ib.sleep(1)
+
+        if not details:
+          logger.warning(
+            f"No FOP contract details for {sym} (root={underlying.symbol}, "
+            f"tradingClass={opt_trading_class})")
+          return float('NaN')
+
+        # Aggregate into a single chain entry matching the reqSecDefOptParams
+        # output shape (one chain per exchange/tradingClass combo).
+        today = datetime.date.today().strftime("%Y%m%d")
+        expirations = sorted({
+          d.contract.lastTradeDateOrContractMonth for d in details
+          if d.contract.lastTradeDateOrContractMonth >= today
+        })
+        strikes = sorted({float(d.contract.strike) for d in details})
+        # multiplier is per-contract but constant within a (exchange, tradingClass)
+        multiplier = details[0].contract.multiplier
+
+        formatted_chains = [[
+          str(exchangeOpt),                # exchange
+          int(underlying.conId),           # underlyingConId (the FUTURE's conId)
+          str(opt_trading_class),          # tradingClass (e.g. "MCO")
+          str(multiplier),                 # multiplier
+          expirations,                     # List[str]
+          strikes,                         # List[float]
+        ]]
+        logger.debug(
+          f"FUT path — aggregated {len(details)} details into 1 chain "
+          f"with {len(expirations)} expirations and {len(strikes)} strikes")
+      else:
+        # STK / IND / CASH path: reqSecDefOptParams works correctly here.
+        chains = ib.reqSecDefOptParams(underlying.symbol, '', underlying.secType, underlying.conId)
+
+        # Filter chains for the specified options exchange
+        sub_chains = [chain for chain in chains if chain.exchange == exchangeOpt]
+
+        ib.sleep(1)
+        logger.debug(f"Found {len(sub_chains)} chains for {exchangeOpt}")
+
+        # Remove any chain where underlying contract Id does not match
+        sub_chains = [chain for chain in sub_chains if int(chain.underlyingConId) == underlying.conId]
+
+        # Convert to proper data types before caching
+        formatted_chains = []
+        for chain in sub_chains:
+          formatted_chain = [
+            str(chain.exchange),                    # str
+            int(chain.underlyingConId),             # int
+            str(chain.tradingClass),                # str
+            str(chain.multiplier),                  # str
+            [str(exp) for exp in chain.expirations],  # List[str]
+            [float(strike) for strike in chain.strikes]  # List[float]
+          ]
+          formatted_chains.append(formatted_chain)
+
       # SYSTEMATIC CACHING: Always save immediately after fetch
       if formatted_chains:
         storage.save_chains(sym, formatted_chains)
         logger.info(f"Cached {len(formatted_chains)} chains for {sym} - available for future calls")
-      
+
       return formatted_chains
     else:
       logger.warning(f"Could not qualify underlying contract for {sym}")
