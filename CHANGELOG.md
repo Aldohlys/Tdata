@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.15] - 2026-05-10
+
+### Fixed
+- **inst/python/tdata_py/account.py** (`getIBKRData`): on `reqAccountUpdates` end-event timeout, **proceed to read the subscription's data** instead of abandoning the portfolio fetch.
+  - **Why**: TWS does not reliably emit the `AccountUpdateEnd` marker for paper / single-account sessions (e.g. `DU5221795` when it's the only managed account). The `wait_for(reqAccountUpdatesAsync, 60)` call times out **even when the subscription is active and `ib.portfolio()` / `ib.accountValues()` are already populated with real data** — confirmed against a TWS demo session showing 1 PSX option + 1 ONCC stock + 2 forex shorts + 4 cash currencies.
+  - **5.10.14 (regression)**: returned `[account_data, empty, empty]` on timeout — R correctly persisted the account row, but the entire portfolio was silently dropped despite TWS having it.
+  - **5.10.15 (fix)**: on timeout, log a warning, give late updates `ib.sleep(2)` to flush, then continue with the normal `ib.accountValues(account)` + `ib.portfolio(account)` reads. If the subscription truly delivered nothing, those return empty and the function naturally produces an account-only result (same as 5.10.14). If TWS did stream the data, we now keep it.
+  - **Connection-failure / account-not-managed paths still `return 0`** — no salvageable data in those cases.
+
 ## [5.10.14] - 2026-05-10
 
 ### Fixed
@@ -12,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Observed on 2026-05-10** with `DU5221795` (paper account, only one in TWS managed accounts at the time): account data printed fine, then `reqAccountUpdates timeout` fired, then everything was dropped.
   - **Why account_data is salvageable**: it's populated by `retrieveAccountData()` BEFORE the `reqAccountUpdates` call (which is only needed for the per-sub-account portfolio + currency balances). So on timeout, the account snapshot is independent and safe to return.
   - **Other return-0 paths unchanged**: connection failure (line 343) and account-not-managed (line 352) still return `0` — those are cases with no salvageable data.
+  - **Superseded by 5.10.15**: this fix preserved the account row but still dropped the portfolio. 5.10.15 reads the portfolio anyway since the subscription is active even when the end-event doesn't arrive.
 
 ### Test coverage
 - **test-account.R**: 23 new tests covering `getIBKR` and the CASH currency_balances block (lines 593-642 of `R/account.R`):

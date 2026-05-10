@@ -333,10 +333,13 @@ def getIBKRData(account=None):
 
     Returns:
         list: [account_data, portfolio_data, currency_balances] DataFrames.
-              On reqAccountUpdates timeout (TWS unresponsive after the account
-              data has already been retrieved), portfolio_data and
-              currency_balances are returned as empty DataFrames so the caller
-              can still persist the account snapshot.
+              On reqAccountUpdates end-event timeout, the function still
+              proceeds to read whatever the active subscription has delivered
+              into ib.portfolio() / ib.accountValues() — TWS often has the
+              data even when it doesn't emit the AccountUpdateEnd marker
+              (common for paper/single-account sessions). If the subscription
+              produced nothing, portfolio_data and currency_balances come back
+              empty and the caller can still persist the account snapshot.
         int 0: only when the connection itself fails or the account is not
               managed by the current TWS session — i.e. when there is no
               account data to salvage.
@@ -369,23 +372,24 @@ def getIBKRData(account=None):
     # and before accountValues() reports per-sub-account cash balances by currency.
     # Bounded with asyncio.wait_for so a stalled TWS socket cannot hang the R
     # caller indefinitely (reticulate/asyncio is uninterruptible from R's side).
+    #
+    # IMPORTANT: TWS does not reliably emit the AccountUpdateEnd marker for
+    # paper/single-account sessions, so the wait_for can time out *even when
+    # the subscription is active and the data has already streamed in* to
+    # ib.portfolio() / ib.accountValues(). Treat the timeout as a soft signal:
+    # log a warning, give late updates a short sleep to flush, and proceed to
+    # read whatever the subscription delivered. If nothing arrived,
+    # ib.portfolio() / ib.accountValues() return empty and the rest of the
+    # function naturally produces an account-only result.
     try:
         util.run(asyncio.wait_for(ib.reqAccountUpdatesAsync(account), timeout=60))
+        ib.sleep(2)
     except asyncio.TimeoutError:
-        # Don't discard account_data: it's already populated by retrieveAccountData()
-        # above and is independent of reqAccountUpdates. Return a partial list so
-        # R-side getIBKR can persist the account snapshot and return exit_code=1
-        # (account stored, no portfolio) instead of losing everything by seeing 0.
         logger.warning(
-            f"reqAccountUpdates timeout for {account} — TWS unresponsive; "
-            f"returning account snapshot only (portfolio + currency balances skipped)")
-        try:
-            ib.cancelAccountUpdates(account)
-        except Exception:
-            pass
-        ib.disconnect()
-        return [account_data, pd.DataFrame(), pd.DataFrame()]
-    ib.sleep(2)
+            f"reqAccountUpdates end-event timeout for {account} — TWS may not "
+            f"emit AccountUpdateEnd for paper/single-account sessions; "
+            f"reading partial state from active subscription")
+        ib.sleep(2)
 
     ### Extract per-sub-account cash balances by currency.
     ### Using ib.accountValues(account) — accountSummary only exposes TotalCashBalance
