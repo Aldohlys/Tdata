@@ -328,12 +328,18 @@ def getIBKRData(account=None):
     Retrieve account and portfolio data from Interactive Brokers for a specific account.
 
     Args:
-        account: IBKR account code (e.g., "U1804173", "U25343478").
+        account: IBKR account code (e.g., "U1804173", "U25343478", "DU5221795").
                  If None, uses the first managed account (backward compatible).
 
     Returns:
-        list: A list containing account_data, portfolio_data, and currency_balances DataFrames
-              or 0 if connection fails
+        list: [account_data, portfolio_data, currency_balances] DataFrames.
+              On reqAccountUpdates timeout (TWS unresponsive after the account
+              data has already been retrieved), portfolio_data and
+              currency_balances are returned as empty DataFrames so the caller
+              can still persist the account snapshot.
+        int 0: only when the connection itself fails or the account is not
+              managed by the current TWS session — i.e. when there is no
+              account data to salvage.
     """
     # Use safe_ib_connect instead of direct connection
     ib = safe_ib_connect()
@@ -366,13 +372,19 @@ def getIBKRData(account=None):
     try:
         util.run(asyncio.wait_for(ib.reqAccountUpdatesAsync(account), timeout=60))
     except asyncio.TimeoutError:
-        logger.warning(f"reqAccountUpdates timeout for {account} — TWS unresponsive; skipping")
+        # Don't discard account_data: it's already populated by retrieveAccountData()
+        # above and is independent of reqAccountUpdates. Return a partial list so
+        # R-side getIBKR can persist the account snapshot and return exit_code=1
+        # (account stored, no portfolio) instead of losing everything by seeing 0.
+        logger.warning(
+            f"reqAccountUpdates timeout for {account} — TWS unresponsive; "
+            f"returning account snapshot only (portfolio + currency balances skipped)")
         try:
             ib.cancelAccountUpdates(account)
         except Exception:
             pass
         ib.disconnect()
-        return 0
+        return [account_data, pd.DataFrame(), pd.DataFrame()]
     ib.sleep(2)
 
     ### Extract per-sub-account cash balances by currency.

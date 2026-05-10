@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.14] - 2026-05-10
+
+### Fixed
+- **inst/python/tdata_py/account.py** (`getIBKRData`): on `reqAccountUpdates` timeout, return `[account_data, empty_df, empty_df]` instead of `0`. The function previously discarded the account snapshot it had already retrieved successfully — R-side `getIBKR` then saw a non-list, warned "No value returned from IB!", and saved nothing. Now the account row is persisted and `getIBKR` returns exit_code=1 ("account stored, no portfolio") — graceful degradation rather than total data loss.
+  - **Observed on 2026-05-10** with `DU5221795` (paper account, only one in TWS managed accounts at the time): account data printed fine, then `reqAccountUpdates timeout` fired, then everything was dropped.
+  - **Why account_data is salvageable**: it's populated by `retrieveAccountData()` BEFORE the `reqAccountUpdates` call (which is only needed for the per-sub-account portfolio + currency balances). So on timeout, the account snapshot is independent and safe to return.
+  - **Other return-0 paths unchanged**: connection failure (line 343) and account-not-managed (line 352) still return `0` — those are cases with no salvageable data.
+
+### Test coverage
+- **test-account.R**: 23 new tests covering `getIBKR` and the CASH currency_balances block (lines 593-642 of `R/account.R`):
+  - Exit-code paths: 0 (IBKR unavailable / non-list result / empty account_data), 1 (account stored, portfolio empty), 2 (full path with stocks + options)
+  - DU demo-account symmetry: explicit pin that `getIBKR("DU5221795")` flows through the same code path and writes to a `DU...`-named portfolio table
+  - Unmatched portfolio instruments leave `TradeNr=NA` and log a warning
+  - CASH block: empty / base-currency / `BASE` total / near-zero balance all skipped; valid foreign currency creates rows; `create_cash_portfolio_row` returning `NULL` is filtered before rbind; expdate type mismatch reconciled; snapshot timestamps forwarded correctly
+  - Reusable `run_getIBKR_with_cash_balances()` helper for future CASH-edge-case tests
+- Package coverage: 49.29% (was 47.17% in 5.10.13 — `account.R` 35% → 49%).
+
 ## [5.10.13] - 2026-05-10
 
 ### Test coverage

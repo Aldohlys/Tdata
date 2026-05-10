@@ -412,3 +412,426 @@ test_that("compute_margin_data leaves exit_code unchanged when Python returns em
   result <- Tdata:::compute_margin_data(portf, exit_code = 2)
   expect_equal(result$exit_code, 2)
 })
+
+# ---------------------------------------------------------------------------
+# getIBKR — exit-code paths
+# Strategy: mock isIBAvailable, tdata_py$getIBKRData, safe_db_connect,
+# safe_db_append, getParam, getActiveTrades. Tests verify the four exit
+# codes the function documents: 0 (no access), 1 (account only), 2 (account
+# + portfolio), 3 (with margin).
+# ---------------------------------------------------------------------------
+
+# Minimal but realistic account row (one snapshot from one account).
+make_fake_account <- function(account = "TestU1804173") {
+  data.frame(
+    account = account,
+    date = "20260510",
+    heure = "12:00:00",
+    NetLiquidation = 100000, EquityWithLoanValue = 100000,
+    FullAvailableFunds = 50000, FullInitMarginReq = 10000,
+    FullMaintMarginReq = 8000, FullExcessLiquidity = 40000,
+    OptionMarketValue = 5000, StockMarketValue = 50000,
+    UnrealizedPnL = 0, RealizedPnL = 0,
+    TotalCashBalance = 45000,
+    CashBalanceCHF = 0, CashBalanceEUR = 0, CashBalanceUSD = 45000,
+    CashFlow = 0,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Minimal portfolio row matching what Python returns (pre-mutation).
+# Columns are the union of what getIBKR reads/writes in the Stock and
+# Option paths. Caller picks symbol/secType/etc. for the scenario.
+make_fake_portf <- function(secType = "STK", symbol = "AAPL",
+                            right = "", strike = 0, expdate = "",
+                            pos = 100, mktPrice = 50, conId = 12345L) {
+  data.frame(
+    date = "20260510", heure = "12:00:00",
+    symbol = symbol, secType = secType, right = right,
+    expdate = expdate, strike = strike,
+    pos = pos, multiplier = 1,
+    mktPrice = mktPrice, optPrice = 0,
+    mktValue = pos * mktPrice, avgCost = mktPrice * 0.9,
+    unPnL = 0, IV = 0.20, pvDividend = 0,
+    delta = 0.5, gamma = 0.01, vega = 0.10, theta = -0.05,
+    uPrice = mktPrice, currency = "USD",
+    conId = conId,
+    stringsAsFactors = FALSE
+  )
+}
+
+# ----- exit 0: IB not available -------------------------------------------
+test_that("getIBKR returns 0 when IBKR is not available", {
+  with_mocked_bindings(
+    isIBAvailable = function() FALSE, {
+      expect_equal(getIBKR(), 0)
+    })
+})
+
+# ----- exit 0: tdata_py returns non-list ----------------------------------
+test_that("getIBKR returns 0 with warning when tdata_py$getIBKRData returns non-list", {
+  local_mock_tdata_py(list(getIBKRData = function(account) "oops"))
+  with_mocked_bindings(
+    isIBAvailable = function() TRUE, {
+      expect_warning(result <- getIBKR(), "No value returned from IB")
+      expect_equal(result, 0)
+    })
+})
+
+# ----- exit 0: account_data has wrong row count ---------------------------
+test_that("getIBKR returns 0 when account_data has 0 rows", {
+  local_mock_tdata_py(list(
+    getIBKRData = function(account) {
+      list(make_fake_account()[0, ], data.frame(), data.frame())
+    }))
+  with_mocked_bindings(
+    isIBAvailable = function() TRUE, {
+      expect_equal(getIBKR(), 0)
+    })
+})
+
+# ----- exit 1: account stored, portfolio empty ----------------------------
+test_that("getIBKR returns 1 when account is stored but portfolio is empty", {
+  appended <- list()
+  local_mock_tdata_py(list(
+    getIBKRData = function(account) {
+      list(make_fake_account(), data.frame(), data.frame())  # empty portf
+    }))
+
+  with_mocked_bindings(
+    isIBAvailable = function() TRUE,
+    safe_db_connect = function(...) DBI::dbConnect(RSQLite::SQLite(), ":memory:"),
+    safe_db_append = function(conn, table, df, ...) {
+      appended[[table]] <<- df
+      nrow(df)
+    },
+    getParam = function(name, ...) if (name == "BaseCurrency") "USD" else NULL, {
+      expect_equal(getIBKR(), 1)
+    })
+
+  # Account row was written with Currency injected
+  expect_true("Account" %in% names(appended))
+  expect_equal(appended$Account$Currency, "USD")
+  expect_equal(appended$Account$account, "TestU1804173")
+})
+
+# ----- exit 2: full path, stocks + options, no margin ---------------------
+test_that("getIBKR returns 2 on full path (stocks + options, no margin)", {
+  appended <- list()
+
+  fake_portf <- rbind(
+    make_fake_portf(secType = "STK", symbol = "AAPL"),
+    make_fake_portf(secType = "OPT", symbol = "SPY", right = "P",
+                    strike = 500, expdate = "20260620", conId = 99999L)
+  )
+
+  fake_trades <- data.frame(
+    TradeNr = c(101L, 102L),
+    Strategy = c("WHEEL", "CS"),
+    Instrument = c("AAPL", "SPY 20JUN26 500 P"),
+    Ssjacent = c("AAPL", "SPY"),
+    Currency = c("USD", "USD"),
+    Exp.Date = c("", "20.06.2026"),
+    stringsAsFactors = FALSE
+  )
+
+  local_mock_tdata_py(list(
+    getIBKRData = function(account) {
+      list(make_fake_account(), fake_portf, data.frame())  # no currency_balances
+    }))
+
+  with_mocked_bindings(
+    isIBAvailable = function() TRUE,
+    safe_db_connect = function(...) DBI::dbConnect(RSQLite::SQLite(), ":memory:"),
+    safe_db_append = function(conn, table, df, ...) {
+      appended[[table]] <<- df
+      nrow(df)
+    },
+    getParam = function(name, ...) {
+      switch(name, BaseCurrency = "USD", ComputeMargin = "No", NULL)
+    },
+    getActiveTrades = function(account) fake_trades, {
+      expect_equal(getIBKR(), 2)
+    })
+
+  # Account + portfolio table writes both happened
+  expect_true("Account" %in% names(appended))
+  expect_true("TestU1804173" %in% names(appended))
+
+  written_portf <- appended[["TestU1804173"]]
+  expect_equal(nrow(written_portf), 2)
+  # TradeNr column moved to front
+  expect_equal(colnames(written_portf)[1], "TradeNr")
+  # Stock row matched via symbol == Ssjacent
+  expect_equal(written_portf$TradeNr[written_portf$type == "Stock"], 101L)
+  # Option row matched via Instrument
+  expect_equal(written_portf$TradeNr[written_portf$type == "Put"], 102L)
+})
+
+# ----- demo account (DU prefix) follows the same code path ----------------
+test_that("getIBKR works symmetrically for DU demo accounts", {
+  # The function has no U-vs-DU branching: both pass getAccountChoices('ibkr')
+  # regex ^[UD] and both flow through identical R code. This test pins that
+  # symmetry — if someone adds U-only logic, this fails.
+  appended <- list()
+
+  fake_portf <- make_fake_portf(secType = "STK", symbol = "AAPL")
+  fake_trades <- data.frame(
+    TradeNr = 555L, Strategy = "WHEEL", Instrument = "AAPL", Ssjacent = "AAPL",
+    Currency = "USD", Exp.Date = "", stringsAsFactors = FALSE)
+
+  local_mock_tdata_py(list(
+    getIBKRData = function(account) {
+      list(make_fake_account(account = "DU5221795"), fake_portf, data.frame())
+    }))
+
+  with_mocked_bindings(
+    isIBAvailable = function() TRUE,
+    safe_db_connect = function(...) DBI::dbConnect(RSQLite::SQLite(), ":memory:"),
+    safe_db_append = function(conn, table, df, ...) { appended[[table]] <<- df; nrow(df) },
+    getParam = function(name, ...) {
+      switch(name, BaseCurrency = "USD", ComputeMargin = "No", NULL)
+    },
+    getActiveTrades = function(account) {
+      # Caller passes the account name through unchanged
+      if (account != "DU5221795") stop("expected DU5221795, got ", account)
+      fake_trades
+    }, {
+      expect_equal(getIBKR(account = "DU5221795"), 2)
+    })
+
+  # Portfolio table written under the DU account name (line 645:
+  # safe_db_append(conn, account_data$account, portf_data))
+  expect_true("DU5221795" %in% names(appended))
+  expect_false("U1804173"  %in% names(appended))
+  expect_equal(appended[["DU5221795"]]$TradeNr, 555L)
+})
+
+# ===========================================================================
+# getIBKR — CASH currency_balances block (lines 593-642)
+# Mocks create_cash_portfolio_row with a stub returning a known row so tests
+# can verify getIBKR's filtering logic + rbind compatibility independently
+# of the FX-rate / cost-basis lookups in cash.R.
+# ===========================================================================
+
+# Stub row that mirrors the schema returned by create_cash_portfolio_row.
+make_fake_cash_row <- function(currency, balance,
+                                snapshot_date, snapshot_heure,
+                                trade_nr = NA_integer_) {
+  data.frame(
+    TradeNr = trade_nr,
+    date = snapshot_date,
+    heure = snapshot_heure,
+    symbol = currency,
+    expdate = NA_integer_,
+    strike = NA_real_,
+    pos = as.numeric(balance),
+    mktPrice = 1.0,
+    optPrice = NA_real_,
+    mktValue = balance,
+    avgCost = 1.0,
+    unPnL = 0,
+    IV = NA_real_,
+    pvDividend = NA_real_,
+    delta = 1.0, gamma = 0, vega = 0, theta = 0,
+    uPrice = NA_real_,
+    multiplier = 1L,
+    currency = "USD",
+    type = "CASH",
+    Instrument = currency,
+    margin = 0,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Common scaffolding for CASH-block tests: returns the captured `appended`
+# environment after running getIBKR with the supplied currency_balances.
+run_getIBKR_with_cash_balances <- function(currency_balances,
+                                            base_currency = "USD",
+                                            cash_factory = NULL) {
+  appended <- list()
+  cash_calls <- list()
+
+  fake_portf <- make_fake_portf(secType = "STK", symbol = "AAPL")
+  fake_trades <- data.frame(
+    TradeNr = 101L, Strategy = "WHEEL", Instrument = "AAPL", Ssjacent = "AAPL",
+    Currency = "USD", Exp.Date = "", stringsAsFactors = FALSE)
+
+  local_mock_tdata_py(list(
+    getIBKRData = function(account) {
+      list(make_fake_account(), fake_portf, currency_balances)
+    }))
+
+  default_factory <- function(currency, balance, snapshot_date, snapshot_heure,
+                              account_table = NULL) {
+    cash_calls[[length(cash_calls) + 1L]] <<- list(
+      currency = currency, balance = balance,
+      snapshot_date = snapshot_date, snapshot_heure = snapshot_heure,
+      account_table = account_table)
+    make_fake_cash_row(currency, balance, snapshot_date, snapshot_heure)
+  }
+
+  with_mocked_bindings(
+    isIBAvailable = function() TRUE,
+    safe_db_connect = function(...) DBI::dbConnect(RSQLite::SQLite(), ":memory:"),
+    safe_db_append = function(conn, table, df, ...) { appended[[table]] <<- df; nrow(df) },
+    getParam = function(name, ...) {
+      switch(name, BaseCurrency = base_currency, ComputeMargin = "No", NULL)
+    },
+    getActiveTrades = function(account) fake_trades,
+    create_cash_portfolio_row = if (!is.null(cash_factory)) cash_factory else default_factory, {
+      result <- getIBKR()
+    })
+
+  list(result = result, appended = appended, cash_calls = cash_calls)
+}
+
+# ----- empty currency_balances: block skipped, no extra rows --------------
+test_that("CASH block: empty currency_balances data.frame does not add rows", {
+  out <- run_getIBKR_with_cash_balances(data.frame())
+  expect_equal(out$result, 2)
+  written <- out$appended[["TestU1804173"]]
+  expect_equal(nrow(written), 1)            # only the original AAPL stock
+  expect_false("CASH" %in% written$type)
+})
+
+# ----- base currency rows are skipped --------------------------------------
+test_that("CASH block: rows with base currency (USD) are skipped", {
+  balances <- data.frame(
+    currency = c("USD"),
+    balance  = c(50000),
+    stringsAsFactors = FALSE)
+  out <- run_getIBKR_with_cash_balances(balances, base_currency = "USD")
+  expect_length(out$cash_calls, 0)          # factory never called
+  expect_equal(nrow(out$appended[["TestU1804173"]]), 1)
+})
+
+# ----- "BASE" pseudo-row from IBKR is skipped -----------------------------
+test_that("CASH block: row with currency=='BASE' is skipped", {
+  balances <- data.frame(
+    currency = c("BASE"),
+    balance  = c(100000),
+    stringsAsFactors = FALSE)
+  out <- run_getIBKR_with_cash_balances(balances)
+  expect_length(out$cash_calls, 0)
+})
+
+# ----- near-zero balances are skipped --------------------------------------
+test_that("CASH block: |balance| < 0.01 is skipped (rounding noise)", {
+  balances <- data.frame(
+    currency = c("CHF", "EUR"),
+    balance  = c(0.005, -0.001),
+    stringsAsFactors = FALSE)
+  out <- run_getIBKR_with_cash_balances(balances)
+  expect_length(out$cash_calls, 0)
+})
+
+# ----- valid foreign-currency row gets added to portfolio ------------------
+test_that("CASH block: valid non-base currency creates a CASH portfolio row", {
+  balances <- data.frame(
+    currency = c("CHF"),
+    balance  = c(25000),
+    stringsAsFactors = FALSE)
+  out <- run_getIBKR_with_cash_balances(balances, base_currency = "USD")
+  expect_equal(out$result, 2)
+  expect_length(out$cash_calls, 1)
+  expect_equal(out$cash_calls[[1]]$currency, "CHF")
+  expect_equal(out$cash_calls[[1]]$balance, 25000)
+  expect_equal(out$cash_calls[[1]]$account_table, "TestU1804173")
+
+  written <- out$appended[["TestU1804173"]]
+  expect_equal(nrow(written), 2)            # AAPL stock + CHF cash
+  cash_row <- written[written$type == "CASH", ]
+  expect_equal(nrow(cash_row), 1)
+  expect_equal(cash_row$symbol, "CHF")
+  expect_equal(cash_row$pos, 25000)
+})
+
+# ----- mixed: foreign currencies + base + BASE + zero — only foreign added -
+test_that("CASH block: filters base currency, BASE total, and zero balances; keeps real foreign positions", {
+  balances <- data.frame(
+    currency = c("CHF", "EUR", "USD",  "BASE",  "JPY"),
+    balance  = c(25000, 12000, 50000, 100000, 0.001),
+    stringsAsFactors = FALSE)
+  out <- run_getIBKR_with_cash_balances(balances, base_currency = "USD")
+  expect_length(out$cash_calls, 2)
+  expect_setequal(vapply(out$cash_calls, `[[`, character(1), "currency"),
+                  c("CHF", "EUR"))
+
+  written <- out$appended[["TestU1804173"]]
+  expect_equal(sum(written$type == "CASH"), 2)
+})
+
+# ----- create_cash_portfolio_row may return NULL (its own internal skip) ---
+test_that("CASH block: NULL returns from create_cash_portfolio_row are dropped before rbind", {
+  balances <- data.frame(
+    currency = c("CHF", "EUR"),
+    balance  = c(25000, 12000),
+    stringsAsFactors = FALSE)
+  null_factory <- function(currency, ...) {
+    if (currency == "EUR") NULL else make_fake_cash_row(currency, 25000, 20260510, "12:00:00")
+  }
+  out <- run_getIBKR_with_cash_balances(balances, cash_factory = null_factory)
+
+  written <- out$appended[["TestU1804173"]]
+  cash_rows <- written[written$type == "CASH", ]
+  expect_equal(nrow(cash_rows), 1)          # CHF kept, EUR dropped
+  expect_equal(cash_rows$symbol, "CHF")
+})
+
+# ----- expdate type-compatibility: portf_data character + cash NA_integer -
+test_that("CASH block: expdate type mismatch is reconciled before rbind", {
+  # portf_data after the main pipeline has expdate as character (Python returns
+  # YYYYMMDD strings); make_fake_cash_row uses NA_integer_. The block coerces
+  # cash_df$expdate to character to match. This test pins that behaviour.
+  balances <- data.frame(
+    currency = "CHF", balance = 25000,
+    stringsAsFactors = FALSE)
+  out <- run_getIBKR_with_cash_balances(balances)
+
+  written <- out$appended[["TestU1804173"]]
+  expect_type(written$expdate, "character")
+  cash_row <- written[written$type == "CASH", ]
+  expect_true(is.na(cash_row$expdate))
+})
+
+# ----- snapshot_date and snapshot_heure passed through to factory ----------
+test_that("CASH block: snapshot_date/snapshot_heure forwarded from portf_data first row", {
+  balances <- data.frame(currency = "CHF", balance = 25000,
+                         stringsAsFactors = FALSE)
+  out <- run_getIBKR_with_cash_balances(balances)
+  expect_length(out$cash_calls, 1)
+  call <- out$cash_calls[[1]]
+  # portf_data$date is coerced to integer by getIBKR; portf_data$heure is character
+  expect_equal(call$snapshot_date, 20260510L)
+  expect_equal(call$snapshot_heure, "12:00:00")
+})
+
+# ----- portfolio rows that don't match any trade leave TradeNr=NA + warn --
+test_that("getIBKR logs unmatched instruments (TradeNr=NA) and still returns 2", {
+  appended <- list()
+  fake_portf <- make_fake_portf(secType = "STK", symbol = "UNKNOWN_TICKER")
+  fake_trades <- data.frame(
+    TradeNr = 101L, Strategy = "WHEEL", Instrument = "AAPL", Ssjacent = "AAPL",
+    Currency = "USD", Exp.Date = "", stringsAsFactors = FALSE)
+
+  local_mock_tdata_py(list(
+    getIBKRData = function(account) {
+      list(make_fake_account(), fake_portf, data.frame())
+    }))
+
+  with_mocked_bindings(
+    isIBAvailable = function() TRUE,
+    safe_db_connect = function(...) DBI::dbConnect(RSQLite::SQLite(), ":memory:"),
+    safe_db_append = function(conn, table, df, ...) { appended[[table]] <<- df; nrow(df) },
+    getParam = function(name, ...) {
+      switch(name, BaseCurrency = "USD", ComputeMargin = "No", NULL)
+    },
+    getActiveTrades = function(account) fake_trades, {
+      expect_equal(getIBKR(), 2)
+    })
+
+  written_portf <- appended[["TestU1804173"]]
+  expect_equal(nrow(written_portf), 1)
+  expect_true(is.na(written_portf$TradeNr))
+})
