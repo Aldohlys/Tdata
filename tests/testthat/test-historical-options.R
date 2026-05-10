@@ -224,3 +224,226 @@ test_that("get_or_retrieve_option_historical returns tibble or NULL", {
     expect_true(ncol(result) > 0)
   }
 })
+
+# ===========================================================================
+# Mocked-Python tests — exercise success/error paths without IBKR.
+# tdata_py is an active binding backed by .tdata_state; swap state directly.
+# ===========================================================================
+
+local_mock_tdata_py <- function(fake_module, envir = parent.frame()) {
+  state <- get(".tdata_state", envir = asNamespace("Tdata"))
+  old_value <- state$value
+  old_initialized <- state$initialized
+  state$value <- fake_module
+  state$initialized <- TRUE
+  withr::defer({
+    state$value <- old_value
+    state$initialized <- old_initialized
+  }, envir = envir)
+}
+
+# ---------------------------------------------------------------------------
+# get_or_retrieve_option_historical — success / NULL-py / NULL-result paths
+# ---------------------------------------------------------------------------
+test_that("get_or_retrieve_option_historical returns tibble when Python returns data.frame", {
+  fake_df <- data.frame(date = as.Date(c("2026-04-01","2026-04-02")),
+                        close = c(1.50, 1.55))
+  fake_py <- list(get_or_retrieve_option_historical_data = function(...) fake_df)
+  local_mock_tdata_py(fake_py)
+
+  result <- get_or_retrieve_option_historical(
+    symbol = "SPY", trading_class = "SPY",
+    expiration = "20260620", strike = 500, right = "C")
+  expect_s3_class(result, "tbl_df")
+  expect_equal(nrow(result), 2)
+})
+
+test_that("get_or_retrieve_option_historical returns NULL when Python returns NULL", {
+  fake_py <- list(get_or_retrieve_option_historical_data = function(...) NULL)
+  local_mock_tdata_py(fake_py)
+
+  result <- get_or_retrieve_option_historical(
+    symbol = "SPY", trading_class = "SPY",
+    expiration = "20260620", strike = 500, right = "C")
+  expect_null(result)
+})
+
+test_that("get_or_retrieve_option_historical returns NULL when tdata_py is NULL", {
+  local_mock_tdata_py(NULL)
+  result <- get_or_retrieve_option_historical(
+    symbol = "SPY", trading_class = "SPY",
+    expiration = "20260620", strike = 500, right = "C")
+  expect_null(result)
+})
+
+test_that("get_or_retrieve_option_historical normalises 'Call'/'Put' to 'C'/'P' before Python call", {
+  captured <- list()
+  fake_py <- list(get_or_retrieve_option_historical_data = function(..., right) {
+    captured <<- list(right = right)
+    data.frame(close = 1.5)
+  })
+  local_mock_tdata_py(fake_py)
+
+  get_or_retrieve_option_historical("SPY","SPY","20260620",500, right = "Put")
+  expect_equal(captured$right, "P")
+
+  get_or_retrieve_option_historical("SPY","SPY","20260620",500, right = "Call")
+  expect_equal(captured$right, "C")
+})
+
+# ---------------------------------------------------------------------------
+# clear_on_demand_cache
+# ---------------------------------------------------------------------------
+test_that("clear_on_demand_cache returns python summary on success", {
+  fake_py <- list(clear_on_demand_cache = function(symbol, older_than_days) {
+    list(files_removed = 5L, space_freed_mb = 12.3)
+  })
+  local_mock_tdata_py(fake_py)
+
+  out <- clear_on_demand_cache(symbol = "SPY", older_than_days = 7)
+  expect_equal(out$files_removed, 5)
+  expect_equal(out$space_freed_mb, 12.3)
+})
+
+test_that("clear_on_demand_cache returns error list when tdata_py is NULL", {
+  local_mock_tdata_py(NULL)
+  out <- clear_on_demand_cache()
+  expect_true(!is.null(out[["error"]]))
+})
+
+test_that("clear_on_demand_cache catches Python errors", {
+  fake_py <- list(clear_on_demand_cache = function(...) stop("disk error"))
+  local_mock_tdata_py(fake_py)
+
+  out <- clear_on_demand_cache()
+  expect_true(!is.null(out[["error"]]))
+  expect_match(out[["error"]], "disk error")
+})
+
+# ---------------------------------------------------------------------------
+# qualify_contract
+# ---------------------------------------------------------------------------
+test_that("qualify_contract returns Python contract list on success", {
+  fake_py <- list(qualify_contract = function(...) {
+    list(conId = 12345L, tradingClass = "CHU", exchange = "CME")
+  })
+  local_mock_tdata_py(fake_py)
+
+  out <- qualify_contract("CHF", "20260605", 1.3, "C", exchange = "CME")
+  expect_equal(out$conId, 12345)
+  expect_equal(out$tradingClass, "CHU")
+})
+
+test_that("qualify_contract returns NULL when result has $error", {
+  fake_py <- list(qualify_contract = function(...) list(error = "no contract"))
+  local_mock_tdata_py(fake_py)
+  expect_null(qualify_contract("CHF", "20260605", 1.3, "C"))
+})
+
+test_that("qualify_contract returns NULL when tdata_py is NULL", {
+  local_mock_tdata_py(NULL)
+  expect_null(qualify_contract("CHF", "20260605", 1.3, "C"))
+})
+
+test_that("qualify_contract normalises right Put/Call to P/C before Python call", {
+  captured <- list()
+  fake_py <- list(qualify_contract = function(..., right) {
+    captured <<- list(right = right)
+    list(conId = 1)
+  })
+  local_mock_tdata_py(fake_py)
+
+  qualify_contract("CHF", "20260605", 1.3, "Put");  expect_equal(captured$right, "P")
+  qualify_contract("CHF", "20260605", 1.3, "Call"); expect_equal(captured$right, "C")
+})
+
+# ---------------------------------------------------------------------------
+# add_option_tracking / remove_option_tracking
+# ---------------------------------------------------------------------------
+test_that("add_option_tracking returns TRUE when Python returns TRUE", {
+  fake_py <- list(add_historical_tracking = function(config) TRUE)
+  local_mock_tdata_py(fake_py)
+  expect_true(add_option_tracking("SPY", "SPY", "20260918", 680, "C"))
+})
+
+test_that("add_option_tracking returns FALSE when Python returns FALSE", {
+  fake_py <- list(add_historical_tracking = function(config) FALSE)
+  local_mock_tdata_py(fake_py)
+  expect_false(add_option_tracking("SPY", "SPY", "20260918", 680, "C"))
+})
+
+test_that("add_option_tracking returns FALSE when tdata_py is NULL", {
+  local_mock_tdata_py(NULL)
+  expect_false(add_option_tracking("SPY", "SPY", "20260918", 680, "C"))
+})
+
+test_that("add_option_tracking forwards normalised contract config to Python", {
+  captured <- NULL
+  fake_py <- list(add_historical_tracking = function(config) {
+    captured <<- config; TRUE
+  })
+  local_mock_tdata_py(fake_py)
+
+  add_option_tracking("SPY", "SPY", "20260918", strike = "680", right = "Put")
+  expect_equal(captured$right, "P")
+  expect_equal(captured$strike, 680)  # coerced to numeric
+  expect_type(captured$strike, "double")
+})
+
+test_that("remove_option_tracking returns TRUE when Python returns TRUE", {
+  fake_py <- list(manage_contracts = function(...) TRUE)
+  local_mock_tdata_py(fake_py)
+  expect_true(remove_option_tracking("SPY", "SPY", "20260918", 680, "C"))
+})
+
+test_that("remove_option_tracking returns FALSE when tdata_py is NULL", {
+  local_mock_tdata_py(NULL)
+  expect_false(remove_option_tracking("SPY", "SPY", "20260918", 680, "C"))
+})
+
+# ---------------------------------------------------------------------------
+# update_tracked_options / list_tracked_options
+# ---------------------------------------------------------------------------
+test_that("update_tracked_options forwards python result", {
+  fake_py <- list(update_historical_data = function(data_type) {
+    list(contracts_processed = 3L, contracts_errors = 0L,
+         files_updated = 6L, errors = list())
+  })
+  local_mock_tdata_py(fake_py)
+
+  out <- update_tracked_options("historical")
+  expect_equal(out$contracts_processed, 3)
+  expect_equal(out$files_updated, 6)
+})
+
+test_that("update_tracked_options returns error list when tdata_py is NULL", {
+  local_mock_tdata_py(NULL)
+  out <- update_tracked_options()
+  expect_true(!is.null(out[["error"]]))
+})
+
+test_that("update_tracked_options catches Python errors", {
+  fake_py <- list(update_historical_data = function(...) stop("network down"))
+  local_mock_tdata_py(fake_py)
+  out <- update_tracked_options()
+  expect_match(out[["error"]], "network down")
+})
+
+test_that("list_tracked_options returns python config on success", {
+  fake_py <- list(list_historical_config = function(return_dict) {
+    list(active_contract_details = list(),
+         collection_settings = list(historical_duration = "1 Y"),
+         contract_summary = list(total_contracts = 0L))
+  })
+  local_mock_tdata_py(fake_py)
+
+  out <- list_tracked_options()
+  expect_named(out, c("active_contract_details", "collection_settings", "contract_summary"))
+  expect_equal(out$collection_settings$historical_duration, "1 Y")
+})
+
+test_that("list_tracked_options returns error list when tdata_py is NULL", {
+  local_mock_tdata_py(NULL)
+  out <- list_tracked_options()
+  expect_true(!is.null(out[["error"]]))
+})

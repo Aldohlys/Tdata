@@ -1,4 +1,12 @@
 #### Account related utilities
+
+# Indirection points so tests can swap in fixture tables (TestAccount /
+# TestAccountWithConversionRate) without touching the SQL. Production code
+# uses the live names; tests use with_mocked_bindings to point them at
+# fixture equivalents. See test-account.R.
+get_account_view_name <- function() "AccountWithConversionRate"
+get_account_table_name <- function() "Account"
+
 #'   readAccount
 #'
 #' This function reads the Account table.
@@ -54,7 +62,7 @@ readAccount = function(account_name) {
       CashBalanceEUR * ", conversion_column, " AS CashBalanceEUR,
       CashBalanceUSD * ", conversion_column, " AS CashBalanceUSD,
       CashFlow * ", conversion_column, " AS CashFlow
-  FROM AccountWithConversionRate
+  FROM ", get_account_view_name(), "
   WHERE account = ?")
 
   # Execute parameterized query
@@ -278,6 +286,12 @@ twr <- function(dates, e_nlv, cashflows) {
   else {
     #####  e_nlv: End of day net liquidation values: D1, D2, ... Dn
     ##### cash_flows: Begin of day cash flow inflows: D1, D2,... Dn
+
+    ### Short-circuit n=1: zoo::na.approx (called below) needs >=2 non-NA
+    ### points and would error otherwise. The n==1 branch later in this
+    ### function would otherwise be unreachable.
+    if (length(dates) == 1L) return(0)
+
     ### The merge takes care of missing days -ensures that all time periods are equal -i.e=1 day
 
     ###
@@ -1357,24 +1371,25 @@ getCurrencyExposure <- function(account_name, date = NULL) {
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   ### 1. Get cash positions from account table
+  account_tbl <- get_account_table_name()
   if (is.null(date)) {
     # Get most recent account data
-    account_query <- "SELECT date, heure, CashBalanceCHF, CashBalanceUSD, CashBalanceEUR,
+    account_query <- paste0("SELECT date, heure, CashBalanceCHF, CashBalanceUSD, CashBalanceEUR,
                       TotalCashBalance, NetLiquidation
-                      FROM account
+                      FROM ", account_tbl, "
                       WHERE account = ?
                       ORDER BY date DESC, heure DESC
-                      LIMIT 1"
+                      LIMIT 1")
     account_data <- DBI::dbGetQuery(conn, account_query, params = list(account_name))
   } else {
     # Get account data for specific date
     date_int <- as.integer(format(as.Date(date), "%Y%m%d"))
-    account_query <- "SELECT date, heure, CashBalanceCHF, CashBalanceUSD, CashBalanceEUR,
+    account_query <- paste0("SELECT date, heure, CashBalanceCHF, CashBalanceUSD, CashBalanceEUR,
                       TotalCashBalance, NetLiquidation
-                      FROM account
+                      FROM ", account_tbl, "
                       WHERE account = ? AND date = ?
                       ORDER BY heure DESC
-                      LIMIT 1"
+                      LIMIT 1")
     account_data <- DBI::dbGetQuery(conn, account_query, params = list(account_name, date_int))
   }
 

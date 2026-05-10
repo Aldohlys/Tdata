@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.13] - 2026-05-10
+
+### Test coverage
+- Package coverage 30.04% → 47.17% (+17.13 points). Six new test files plus extension of `test-account.R` and `test-historical-options.R`. ~120 new tests, all green.
+- Per-file gains: `alert.R` / `earnings.R` / `position_sizer.R` / `trend.R` 0% → 100%; `historical_options.R` 35% → 94%; `ibkr.R` 18% → 68%; `volatility.R` 7% → 39%; `account.R` 8% → 35%.
+- New mocking patterns:
+  - `local_mock_tdata_py(fake_module)` — swaps `.tdata_state$value` directly. Required because `tdata_py` is an active binding (zzz.R) and `with_mocked_bindings` cannot replace active bindings cleanly. Used in test-earnings, test-position_sizer, test-account, test-ibkr, test-historical-options.
+  - Test fixture tables `TestU1804173` + `TestAccount` + view `TestAccountWithConversionRate` (Apr 1 .. May 9 2026 snapshot of `U1804173`) created via `RApplication/scripts/create_test_portfolio_table.R`. Used by readPortfolio/readLastPortfolio/readPortfolioDate (passed directly as portfname) and by readAccount/getCurrencyExposure (via mocked indirection helpers — see Changed below).
+
+### Fixed
+- **R/account.R** (`twr`): short-circuit single-day input (`if (length(dates) == 1L) return(0)`) before the `xts::merge` / `zoo::na.approx` calls. The pre-existing `if (n==1) return(twr-1)` branch later in the function was unreachable because `na.approx` errors with <2 non-NA points.
+- **R/volatility.R** (`calculate_target_vol`): unify the two extrapolation arms with the interpolation formula. The previous "towards present" / "towards future" branches computed weights from only `near_time`/`next_time` and ignored `target_time` entirely — i.e. they returned constant weights for any target outside `[near, next]`. Replaced both branches with the unified formula `w2 = (target - near) / (next - near); w1 = 1 - w2`, which is correct for interpolation and both extrapolation regimes (one weight goes negative, the other above 1).
+- **R/beta.R** (`calculate_beta_vs_spx`): fix unbound `ticker` references at lines 74 (`message(...)` inside the non-USD currency branch) and 98 (the return list label). The function parameter is `sym`. Direct calls to `calculate_beta_vs_spx("AAPL")` errored at line 98 with "object 'ticker' not found"; calls via `calculate_beta_vs_spx_periods(ticker = "AAPL", ...)` accidentally worked because R's lazy promise machinery resolved `sym` from the caller's `ticker` (line 98 still failed). Smoke-tested post-fix: `calculate_beta_vs_spx("SPY")` returns ticker="SPY", beta=0.99, data_points=63.
+- **R/position_sizer.R** (`sizePosition`): `tdata_py` is an active binding returning the imported Python module reference, not a function. The line `py <- tdata_py()` would invoke the module as a function and fail (Python module objects are not callable). Changed to `py <- tdata_py` to match the pattern used in earnings.R / historical_options.R / get_tdata_py(). Bug went undetected because position_sizer.R was at 0% test coverage.
+
+### Changed
+- **R/account.R**: extracted two indirection helpers `get_account_view_name()` (returns `"AccountWithConversionRate"`) and `get_account_table_name()` (returns `"Account"`) so tests can swap to `TestAccountWithConversionRate` / `TestAccount` via `with_mocked_bindings` without rewriting the SQL strings. Production behaviour unchanged.
+
 ## [5.10.12] - 2026-04-30
 
 ### Added

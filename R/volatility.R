@@ -163,21 +163,13 @@ calculate_target_vol <- function(near_options, next_options,
   near_variance <- near_atm_vol^2
   next_variance <- next_atm_vol^2
 
-  # Linear interpolation/extrapolation of variance to get 30-day variance
-  # Formula: w1*var1 + w2*var2 where w1 + w2 = 1
-  if (near_time <= target_time && target_time <= next_time) {
-    # Interpolation case
-    w2 <- (target_time - near_time) / (next_time - near_time)
-    w1 <- 1 - w2
-  } else if (target_time < near_time) {
-    # Extrapolation case (towards present)
-    w1 <- next_time / (next_time - near_time)
-    w2 <- -near_time / (next_time - near_time)
-  } else {
-    # Extrapolation case (towards future)
-    w1 <- -next_time / (near_time - next_time)
-    w2 <- near_time / (near_time - next_time)
-  }
+  # Linear interpolation/extrapolation of variance to target_time.
+  # The formula w2 = (target - near) / (next - near); w1 = 1 - w2 is correct
+  # for all three cases (target inside, before, or after the [near, next]
+  # bracket): for target outside the bracket one weight goes negative and the
+  # other above 1, which is exactly the linear-extrapolation behaviour.
+  w2 <- (target_time - near_time) / (next_time - near_time)
+  w1 <- 1 - w2
 
   # Calculate interpolated x-days variance
   variance_day <- w1 * near_variance + w2 * next_variance

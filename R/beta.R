@@ -71,7 +71,7 @@ calculate_beta_vs_spx <- function(sym,
     security_prices <- security_prices_usd
 
     # Log exchange rate adjustment information
-    message("Adjusted ", ticker, " prices from ", currency, " to USD using ",
+    message("Adjusted ", sym, " prices from ", currency, " to USD using ",
             currency_pair, " exchange rates")
   }
 
@@ -95,7 +95,7 @@ calculate_beta_vs_spx <- function(sym,
 
   # Return results
   return(list(
-    ticker = ticker,
+    ticker = sym,
     benchmark = benchmark,
     currency = currency,
     period = c(from, to),

@@ -42,7 +42,7 @@ sizePosition <- function(legs, spot, credit, iv, hv, ivp, hvp,
     )
   })
 
-  py <- tdata_py()
+  py <- tdata_py
 
   result <- py$size_position(
     legs             = legs_list,
