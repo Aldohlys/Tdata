@@ -264,90 +264,62 @@ readLastPortfolio <- function(portfname) {
 ###############  TWR function
 #'   twr
 #'
-#' This function Time Weighted Return computes TWR for
-#' a given list of dates with corresponding end of day net liquidation values plus cashflows (inflows/outflows).
+#' Time-Weighted Return for an irregular series of observed end-of-day
+#' net-liquidation snapshots and cashflows.
 #'
-#'  It is assumed that portfolio value begin of day (n) = portfolio value end of day (n-1)
-#'  Also it is assumed that portfolio is valued every calendar day (incl. non business days)
-#'  twr will be computed for all dates and then filtered so that it fit with input dates.
+#' Each consecutive pair of OBSERVED dates is treated as one return period:
+#'   rn[i] = NLV[i] / (NLV[i-1] + CF[i])
+#' Cash flow CF[i] is assumed to occur at the start of period i (i.e.,
+#' applied to the prior observed NLV before measuring the return).
 #'
-#'@param dates list of dates when data are provided - there should be only one data point per date
-#'@param e_nlv End of day net liquidation values: D1, D2, ... Dn
-#'@param cashflows Begin of day cash flow inflows: D1, D2,... Dn
-#'@returns a numerical vector of TWR values
+#' No interpolation across missing calendar days. Previously the function
+#' linearly interpolated NLV on every absent day, which injected phantom
+#' gains/losses whenever a cashflow event followed a multi-day gap.
+#'
+#'@param dates vector of dates (one observation per date)
+#'@param e_nlv End-of-period net-liquidation values aligned with `dates`
+#'@param cashflows Start-of-period cashflows aligned with `dates`
+#'@returns numeric vector of cumulative TWRs aligned with input `dates`
 #'@export
 twr <- function(dates, e_nlv, cashflows) {
   message("twr")
-  ### dates are dates when data are provided - there should be only one data point per dates
   if (!all(!duplicated(dates))) {
     Tbasics::display_error_message("twr:All dates must be different!")
     return(NA_real_)
   }
-  else {
-    #####  e_nlv: End of day net liquidation values: D1, D2, ... Dn
-    ##### cash_flows: Begin of day cash flow inflows: D1, D2,... Dn
 
-    ### Short-circuit n=1: zoo::na.approx (called below) needs >=2 non-NA
-    ### points and would error otherwise. The n==1 branch later in this
-    ### function would otherwise be unreachable.
-    if (length(dates) == 1L) return(0)
-
-    ### The merge takes care of missing days -ensures that all time periods are equal -i.e=1 day
-
-    ###
-
-    e_nlv_regular <- merge(xts::xts(e_nlv, order.by = dates),
-                           seq(from = min(dates), to = max(dates), by = "day"))
-    cash_flows <- merge(xts::xts(cashflows, order.by = dates),
-                        seq(from = min(dates), to = max(dates), by = "day"))
-
-    # Interpolate middle gaps, keep leading/trailing NAs (na.rm = FALSE prevents vector shortening)
-    e_nlv <- as.numeric(zoo::na.approx(e_nlv_regular, na.rm = FALSE))
-    # Extend first/last non-NA values to fill leading/trailing NAs
-    e_nlv <- zoo::na.fill(e_nlv, fill = "extend")
-
-    cash_flows[is.na(cash_flows)]=0
-    cash_flows=as.numeric(cash_flows)
-
-    n <- length(e_nlv)
-    ##print(paste0("n:",n," nb elts:",length(dates)))
-
-    ### If missing cash flows then means that equals to 0
-    if (missing(cash_flows)) cash_flows=rep(0,n)
-
-    ### Error management
-    if (length(cash_flows) != n)  {
-      print(paste0("NLV:",length(e_nlv)))
-      print(paste0("Cash flows",length(cash_flows)))
-      Tbasics::display_error_message("twr:Cash flows number of elements different from Porfolio values!!!!")
-      return(NA_real_)
-    }
-    else {
-      ### Cash flows are beginning of the day, cash_flows
-      ## Special case for first day return computation
-      rn=numeric()
-      twr=numeric()
-      rn[1]= 0
-      twr[1]= 1
-
-      ### If only one portfolio value (end of day, cash flow)
-      if (n==1) return(twr-1)
-
-      for (i in 2:n) {
-        rn[i]= e_nlv[i]/(e_nlv[i-1]+cash_flows[i])
-        twr[i]=twr[i-1]*rn[i]
-      }
-
-      ### After computation, extract only twr values corresponding to dates
-      ##print(paste0("twr min:",min(dates)," max:",max(dates)))
-
-      twr=xts::xts(twr,order.by=seq(from=min(dates),to=max(dates),by="day"))[dates]
-
-      ### returns twr as a numerical vector
-      ### Substract 1 to all ratios so to get returns
-      return(as.numeric(twr)-1)
-    }
+  n <- length(dates)
+  if (length(e_nlv) != n) {
+    Tbasics::display_error_message("twr:NLV length does not match dates length")
+    return(NA_real_)
   }
+  if (missing(cashflows)) cashflows <- rep(0, n)
+  if (length(cashflows) != n) {
+    Tbasics::display_error_message("twr:Cash flows number of elements different from Portfolio values!!!!")
+    return(NA_real_)
+  }
+
+  if (n == 1L) return(0)
+
+  ### Sort by date so chaining proceeds chronologically regardless of input order
+  ord <- order(dates)
+  e_nlv_sorted <- e_nlv[ord]
+  cf_sorted <- cashflows[ord]
+
+  rn <- numeric(n)
+  twr_acc <- numeric(n)
+  twr_acc[1] <- 1   # First date is reference; cumulative TWR there is 0
+
+  for (i in 2:n) {
+    denom <- e_nlv_sorted[i - 1] + cf_sorted[i]
+    rn[i] <- if (is.na(denom) || denom == 0) NA_real_ else e_nlv_sorted[i] / denom
+    twr_acc[i] <- twr_acc[i - 1] * rn[i]
+  }
+
+  ### Restore original input ordering
+  out <- numeric(n)
+  out[ord] <- twr_acc - 1
+  return(out)
 }
 
 #'   greeksNet

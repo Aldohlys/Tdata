@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.18] - 2026-05-18
+
+### Fixed
+- **R/account.R** (`twr`): chain returns over observed dates only, no calendar-day interpolation.
+  - **Bug**: prior implementation called `zoo::na.approx` to fill NLV for every missing calendar day, then iterated the chain at daily granularity. When a cashflow event followed a multi-day gap with no NLV snapshot, the interpolated NLV on the day immediately before the cashflow lacked the cashflow adjustment, splitting the true NLV move into a phantom market loss on the interpolated day and a phantom market gain on the cashflow day. These compounded to inject several percent of fictitious return per gap.
+  - **Concrete case**: U1804173 YTD 2026 had 57 of 131 calendar days interpolated, producing +8.96% computed TWR vs IBKR's official +1.20%. Worst single artifact: ~+6.6pp injected on 2026-04-14 → 2026-04-16 (the inter-account transfer day, where 04-15 had no snapshot).
+  - **Fix**: removed the `xts`/`zoo` merge + interpolation. The function now sorts inputs by date and chain-links consecutive observed pairs directly: `rn[i] = NLV[i] / (NLV[i-1] + CF[i])`. Output is realigned to the input ordering.
+  - **Result**: U1804173 YTD TWR now -0.27% (vs IBKR's +1.20% — residual gap explained by the snapshot ending one trading day earlier than the IBKR statement and intraday cashflow-timing granularity).
+- Updated function docstring to match new semantics; the "valued every calendar day" assumption no longer applies.
+
+### Verification
+- Synthetic 2-row test (`dates = c(2026-04-14, 2026-04-16), nlv = c(81243.32, 58826.36), cf = c(0, -22598)`) now returns 0.003087, matching the closed-form `58826.36 / (81243.32 - 22598) - 1` exactly. Old function: ~+0.069 (interpolation artifact across the missing 04-15).
+
 ## [5.10.17] - 2026-05-10
 
 ### Fixed
