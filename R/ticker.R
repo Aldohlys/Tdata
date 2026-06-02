@@ -317,7 +317,9 @@ removeTicker = function(name) {
 #' Get name from Yahoo service
 #'
 #' This function is used by getStockPrice or getSymIntervalDate functions
-#' to get Yahoo symbol names before calling getYahooData function. NOT EXPORTED.
+#' to get Yahoo symbol names before calling getYahooData function. Exported so
+#' that external callers (RStudies scanner / analyze, Tuser portfolio analysis)
+#' can resolve Symbol -> YahooName via `Tdata::getYahooName()`.
 #'
 #' If no symbol name is found in Ticker DB then NA is returned.
 #' If only a given symbol is not found, then NA will be returned for this symbol.
@@ -329,6 +331,7 @@ removeTicker = function(name) {
 #'getYahooName(c("ABT", "ESTX50", "US-T", "SOFR3"))
 #'getYahooName(c("EUR.USD", "USD.CAD"))
 #'}
+#'@export
 getYahooName <- function(sym) {
 
   sym_yahoo = purrr::map_chr(sym, \(x){

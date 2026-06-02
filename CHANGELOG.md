@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.19] - 2026-06-02
+
+### Fixed
+- **R/ticker.R** (`getYahooName`): now `@export`ed. The function was documented as a cross-package helper (the roxygen even references `[Tdata::getYahooName]`) but lacked an `@export` tag, so `Tdata::getYahooName(...)` threw "not an exported object from namespace:Tdata".
+  - **Impact**: external callers wrapped the call in `tryCatch(..., error = ...)` and silently fell back to the **bare symbol** — RStudies `swing_scanner/fetch.R` (→ `NA` → bare) and `shared/indicators.R::fetch_single_ohlcv` (→ bare ticker). For US tickers the bare symbol equals the Yahoo name so it worked by accident; for European names where `YahooName` carries an exchange suffix the Yahoo import failed.
+  - **Concrete case**: 2026-06-02 scanner run — `RO` (→ `ROG.SW`), `SLHN` (→ `SLHN.SW`), `CRST` (→ `CRST.L`) all reported "Unable to import" from `getSymbols.yahoo` because the bare IBKR symbol, not the suffixed Yahoo name, was sent.
+  - **Fix**: added `#'@export` and updated the docstring. `Tdata::getYahooName()` now resolves Symbol → YahooName for all external callers. (Internal `prices.R` calls and box `Tdata[getYahooName]` imports were unaffected and remain valid.)
+
 ## [5.10.18] - 2026-05-18
 
 ### Fixed
