@@ -2,53 +2,61 @@
 
 #' Get and store interest rates for trading applications
 #'
-#' @description Retrieves interest rates for USD, EUR, CHF, and JPY for various tenors
-#' and stores them in the Currencies table of the configured database.
+#' @description Retrieves interest rates for the active currencies that have a
+#' fetcher (USD, EUR, CHF, JPY, CAD) for various tenors and stores them in the
+#' Currencies table of the configured database. Currencies are taken from
+#' \code{getActiveCurrencies()} by default, so (de)activating a currency in the
+#' Currencies table adds/removes it from the refresh (a fetcher must exist).
 #' @param update_db Logical, whether to update the database (default: TRUE). Database will be updated in percent terms.
+#' @param currencies Optional character vector of currency names to refresh.
+#' Defaults to \code{NULL}, which resolves to the DB's active currencies (full
+#' fetcher registry if the DB is unreachable). Currencies without a fetcher are skipped.
 #' @return A data frame containing the retrieved interest rates, in decimal terms and not in percent terms.
 #' @export
-getInterestRates <- function(update_db = TRUE) {
-  # Get rates for all currencies
+getInterestRates <- function(update_db = TRUE, currencies = NULL) {
+  # Per-currency fetchers. A currency absent from this registry has no data
+  # source and is skipped (e.g. GBP, HKD) -- add a get_<ccy>_rates() to enrol it.
+  # Each fetcher returns one row: Name, last_ir_update, ir1week..ir2years (%).
+  fetchers <- list(
+    USD = get_usd_rates,
+    EUR = get_eur_rates,
+    # CHF carries an extra status column -- drop it to a uniform shape.
+    CHF = function() dplyr::select(get_chf_rates(), Name, last_ir_update,
+                                   ir1month, ir3months, ir6months, ir1year,
+                                   ir2years, ir1week),
+    JPY = get_jpy_rates,
+    CAD = get_cad_rates
+  )
+
+  # Drive off the DB's active currencies so (de)activating a currency in the
+  # Currencies table is enough to add/drop it from the refresh -- provided a
+  # fetcher exists. Falls back to the full registry if the DB is unreachable.
+  if (is.null(currencies)) {
+    currencies <- tryCatch(getActiveCurrencies(), error = function(e) character(0))
+    if (length(currencies) == 0) currencies <- names(fetchers)
+  }
+
   rates <- data.frame()
+  for (ccy in currencies) {
+    fn <- fetchers[[ccy]]
+    if (is.null(fn)) {
+      message("No interest-rate fetcher for ", ccy, " - skipping.")
+      next
+    }
+    tryCatch({
+      rates <- rbind(rates, fn())
+    }, error = function(e) {
+      message("Error retrieving ", ccy, " rates: ", e$message)
+    })
+  }
 
-  # Try getting USD rates
-  tryCatch({
-    usd_rates <- get_usd_rates()
-    rates <- rbind(rates, usd_rates)
-  }, error = function(e) {
-    message("Error retrieving USD rates: ", e$message)
-  })
-
-  # Try getting EUR rates
-  tryCatch({
-    eur_rates <- get_eur_rates()
-    rates <- rbind(rates, eur_rates)
-  }, error = function(e) {
-    message("Error retrieving EUR rates: ", e$message)
-  })
-
-  # Try getting CHF rates
-  tryCatch({
-    ### Remove status column
-    chf_rates <- get_chf_rates()
-    rates <- rbind(rates,
-                   dplyr::select(chf_rates, Name, last_ir_update, ir1month, ir3months, ir6months, ir1year, ir2years, ir1week))
-  }, error = function(e) {
-    message("Error retrieving CHF rates: ", e$message)
-  })
-
-  # Try getting JPY rates
-  tryCatch({
-    jpy_rates <- get_jpy_rates()
-    rates <- rbind(rates, jpy_rates)
-  }, error = function(e) {
-    message("Error retrieving JPY rates: ", e$message)
-  })
-
-  # If no rates were retrieved, create empty dataframe with currency names
+  # If nothing was retrieved, emit an empty frame for the requested-and-known
+  # currencies so callers still get a well-formed result.
   if (nrow(rates) == 0) {
+    known <- intersect(currencies, names(fetchers))
+    if (length(known) == 0) known <- names(fetchers)
     rates <- data.frame(
-      Name = c("USD", "EUR", "CHF", "JPY"),
+      Name = known,
       ir1week = NA_real_,
       ir1month = NA_real_,
       ir3months = NA_real_,
@@ -471,6 +479,86 @@ get_jpy_rates <- function() {
     }
   }, error = function(e) {
     warning("Error retrieving JPY TIBOR from FRED: ", e$message)
+  })
+
+  return(rates)
+}
+
+####################################  CAD
+#' Get CAD interest rates from the Bank of Canada Valet API
+#'
+#' Retrieves current CAD interest rates from the Bank of Canada's Valet JSON
+#' API: the short end from CORRA (overnight), 1m/3m/6m/1y from Government of
+#' Canada Treasury bill secondary-market yields, and 2y from the GoC benchmark
+#' bond. No API key required.
+#'
+#' @return A data frame with columns: Name, last_ir_update, ir1week, ir1month,
+#'   ir3months, ir6months, ir1year, ir2years (percent terms)
+#' @noRd
+#' @keywords internal
+get_cad_rates <- function() {
+  today_date <- format(Sys.Date(), "%Y%m%d")
+
+  # Fallback rates based on Bank of Canada levels as of 2026-06-03.
+  rates <- data.frame(
+    Name = "CAD",
+    last_ir_update = today_date,
+    ir1week  = 2.28,
+    ir1month = 2.25,
+    ir3months = 2.29,
+    ir6months = 2.36,
+    ir1year  = 2.59,
+    ir2years = 2.81,
+    stringsAsFactors = FALSE
+  )
+
+  # Valet series id -> target column. CORRA (AVG.INTWO) is the overnight risk-
+  # free proxy for the 1-week tenor; the GoC T-bill V-series and the 2y
+  # benchmark bond cover the rest.
+  series_map <- list(
+    "AVG.INTWO"         = "ir1week",   # CORRA overnight
+    "V80691342"         = "ir1month",  # GoC 1-month T-bill
+    "V80691344"         = "ir3months", # GoC 3-month T-bill
+    "V80691345"         = "ir6months", # GoC 6-month T-bill
+    "V80691346"         = "ir1year",   # GoC 1-year T-bill
+    "BD.CDN.2YR.DQ.YLD" = "ir2years"   # GoC 2-year benchmark bond
+  )
+
+  tryCatch({
+    url <- paste0("https://www.bankofcanada.ca/valet/observations/",
+                  paste(names(series_map), collapse = ","),
+                  "/json?recent=10")
+    resp <- jsonlite::fromJSON(url, simplifyVector = FALSE)
+    obs <- resp$observations
+    if (is.null(obs) || length(obs) == 0) stop("no observations returned")
+
+    latest_date <- NA_character_
+    for (sid in names(series_map)) {
+      col <- series_map[[sid]]
+      val <- NA_real_; vdate <- NA_character_
+      # Valet ordering isn't guaranteed -- keep the non-NA value with the
+      # latest date (ISO date strings sort correctly), so we always take the
+      # most recent observation per series.
+      for (o in obs) {
+        cell <- o[[sid]]
+        if (!is.null(cell) && !is.null(cell$v) && nzchar(cell$v)) {
+          v <- suppressWarnings(as.numeric(cell$v))
+          if (!is.na(v) && (is.na(vdate) || o$d > vdate)) { val <- v; vdate <- o$d }
+        }
+      }
+      if (!is.na(val)) {
+        rates[[col]] <- round(val, 3)
+        if (is.na(latest_date) || (!is.na(vdate) && vdate > latest_date))
+          latest_date <- vdate
+      }
+    }
+
+    if (!is.na(latest_date)) {
+      pd <- as.Date(latest_date)
+      if (!is.na(pd)) rates$last_ir_update <- format(pd, "%Y%m%d")
+    }
+  }, error = function(e) {
+    warning("Error retrieving CAD rates from Bank of Canada Valet: ", e$message)
   })
 
   return(rates)
