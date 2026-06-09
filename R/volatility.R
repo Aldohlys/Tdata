@@ -459,6 +459,26 @@ getVolMetrics <- function(sym_list, force_refresh = FALSE) {
   })
 }
 
+# Adaptive ATM strike selection. Widen the range only until enough strikes
+# qualify: dense $1-strike chains stop at 1%, sparse/low-priced names widen to
+# 3%+ to find 2 on each side. Uses getStrikesInRange (qualifies only near-money
+# strikes, per-expiry, cached) instead of listing/qualifying the whole chain.
+#'@noRd
+.atm_strikes_in_range <- function(sym, expiry, center, n_below = 2, n_above = 2,
+                                  ranges = c(0.01, 0.03, 0.06, 0.12)) {
+  need <- n_below + n_above
+  strikes <- NULL
+  for (rng in ranges) {
+    strikes <- tryCatch(
+      tdata_py$getStrikesInRange(sym, expiration = expiry,
+                                 center_strike = center, range_pct = rng),
+      error = function(e) NULL)
+    if (!is.null(strikes) && length(strikes) >= need) break
+  }
+  if (is.null(strikes) || length(strikes) == 0) return(numeric(0))
+  Tbasics::get_nearest_values(strikes, center, n_below = n_below, n_above = n_above)
+}
+
 #' getIV_DTE
 #' Get IV for a symbol
 #'
@@ -536,13 +556,12 @@ getIV_DTE <- function(sym, currency, spot_price, DTE=30, force_refresh=FALSE){
   near_forward_price <- getForwardPrice(spot_price, near_interest_rate, dividend_yield, near_DTE)
   next_forward_price <- getForwardPrice(spot_price, next_interest_rate, dividend_yield, next_DTE)
 
-  #### This will take 4 strikes above/below theoretical forward price - IBKR takes only 2 for this computation
-  #### Refinement: finding from forward price the strike where put is nearest to call - this is done in calculate_target_vol
-  near_strikes <- tdata_py$getStrikesfromExpDate(sym=sym, expdate=near_expiry)
-  near_strikes <- Tbasics::get_nearest_values(near_strikes, near_forward_price, n_below = 2, n_above = 2)
-
-  next_strikes <- tdata_py$getStrikesfromExpDate(sym=sym, expdate=next_expiry)
-  next_strikes <- Tbasics::get_nearest_values(next_strikes, next_forward_price, n_below = 2, n_above = 2)
+  #### Take 2 strikes above/below the forward. Source them via getStrikesInRange
+  #### (qualifies only strikes near the money, per-expiry) instead of listing/
+  #### qualifying the whole chain — see .atm_strikes_in_range. Refinement:
+  #### the strike where put is nearest to call is found in calculate_target_vol.
+  near_strikes <- .atm_strikes_in_range(sym, near_expiry, near_forward_price)
+  next_strikes <- .atm_strikes_in_range(sym, next_expiry, next_forward_price)
 
   logger::log_debug("Retrieve option prices for {near_expiry}...", namespace="Tdata")
   near_option_prices <- getOptionPrices(sym, near_strikes, near_expiry, force_refresh = force_refresh)
