@@ -1,7 +1,7 @@
 # Tests for volatility.R — pure-math / pure-logic functions only.
 # IBKR / Yahoo / DB-touching paths (get30dIV, get180dIV, getVolMetrics,
-# getIV_DTE, getOptionPrices, fitHAR via Yahoo, getIVPercentileLevels) live
-# in test-har-volatility.R or are skipped because they need network/DB.
+# getIV_DTE, getOptionPrices, getIVPercentileLevels) are skipped because
+# they need network/DB.
 
 # Most helpers are not exported (@noRd); access via Tdata::: in tests.
 walk_apply              <- Tdata:::walk_apply
@@ -11,8 +11,6 @@ calculate_forward_index <- Tdata:::calculate_forward_index
 fit_volatility_parabola <- Tdata:::fit_volatility_parabola
 predict_from_parabola   <- Tdata:::predict_from_parabola
 calculate_target_vol    <- Tdata:::calculate_target_vol
-calculate_period_rv     <- Tdata:::calculate_period_rv
-prepare_har_data        <- Tdata:::prepare_har_data
 
 # ---------------------------------------------------------------------------
 # walk_apply / signif_na — element-wise apply with NA passthrough
@@ -209,100 +207,4 @@ test_that("getForwardPrice with zero rates returns spot rounded to 2 decimals", 
 test_that("getForwardPrice with r < q (negative cost of carry) gives F < S", {
   F <- getForwardPrice(100, 0.01, 0.05, 365)  # 1y forward
   expect_lt(F, 100)
-})
-
-# ---------------------------------------------------------------------------
-# calculate_period_rv — rolling mean of daily realized variance
-# ---------------------------------------------------------------------------
-test_that("calculate_period_rv computes right-aligned rolling mean", {
-  rv <- 1:10
-  out <- calculate_period_rv(rv, period_length = 3)
-  # First 2 elements NA (right align), then rolling means
-  expect_true(all(is.na(out[1:2])))
-  expect_equal(as.numeric(out[3]),  mean(c(1, 2, 3)))
-  expect_equal(as.numeric(out[10]), mean(c(8, 9, 10)))
-})
-
-test_that("calculate_period_rv length matches input", {
-  rv <- runif(50, 0, 0.05)
-  out <- calculate_period_rv(rv, period_length = 5)
-  expect_length(out, length(rv))
-})
-
-# ---------------------------------------------------------------------------
-# prepare_har_data — HAR-RV data preparation
-# ---------------------------------------------------------------------------
-make_synthetic_xts <- function(n = 60, sym = "SPY") {
-  set.seed(42)
-  dates  <- Sys.Date() - seq(n - 1, 0)
-  closes <- 100 * cumprod(1 + rnorm(n, 0.001, 0.012))
-  m <- cbind(closes, closes * 1.005, closes * 0.995, closes, rep(1e6, n))
-  colnames(m) <- paste0(sym, c(".Open", ".High", ".Low", ".Close", ".Volume"))
-  xts::xts(m, order.by = dates)
-}
-
-test_that("prepare_har_data returns NULL on NULL or empty input", {
-  expect_null(prepare_har_data(NULL))
-  empty <- xts::xts(matrix(numeric(0), ncol = 5,
-                           dimnames = list(NULL, c("Open","High","Low","Close","Volume"))),
-                    order.by = as.Date(character(0)))
-  expect_null(prepare_har_data(empty))
-})
-
-test_that("prepare_har_data returns NULL when fewer than n+22+1 rows", {
-  small <- make_synthetic_xts(n = 20)  # need at least 5+22+1 = 28
-  expect_null(prepare_har_data(small, n = 5, forecast_horizon = 1))
-})
-
-test_that("prepare_har_data returns data frame with rv_* columns when sufficient data", {
-  prices <- make_synthetic_xts(n = 60)
-  out <- prepare_har_data(prices, calc = "close", n = 5, forecast_horizon = 1)
-  expect_s3_class(out, "data.frame")
-  expect_true(all(c("rv_next", "rv_daily", "rv_weekly", "rv_monthly") %in% colnames(out)))
-  expect_gt(nrow(out), 0)
-})
-
-# ---------------------------------------------------------------------------
-# evaluateHAR + print.har_evaluation
-# ---------------------------------------------------------------------------
-test_that("evaluateHAR returns NULL for NULL har_result", {
-  expect_null(evaluateHAR(NULL))
-})
-
-test_that("evaluateHAR computes accuracy / direction / spike metrics on synthetic input", {
-  set.seed(1)
-  n <- 50
-  actual <- runif(n, 0.0001, 0.0010)
-  predicted <- actual + rnorm(n, 0, 0.00005)
-  har_result <- list(
-    symbol = "SPY",
-    forecast_horizon = 1L,
-    test_actual = actual,
-    test_predicted = predicted,
-    test_dates = Sys.Date() - seq(n - 1, 0),
-    rmse = sqrt(mean((actual - predicted)^2)),
-    mae = mean(abs(actual - predicted))
-  )
-
-  ev <- evaluateHAR(har_result, spike_threshold = 0.9)
-  expect_s3_class(ev, "har_evaluation")
-  expect_equal(ev$symbol, "SPY")
-  expect_equal(ev$n_test, n)
-  # Tightly correlated synthetic series — direction accuracy should be high
-  expect_gt(ev$direction_accuracy, 50)
-  expect_true(ev$regime_indicator %in% c("low_vov", "normal", "high_vov"))
-})
-
-test_that("print.har_evaluation prints to stdout and returns x invisibly", {
-  set.seed(1)
-  actual <- runif(20, 0.0001, 0.001)
-  predicted <- actual + rnorm(20, 0, 0.00005)
-  ev <- evaluateHAR(list(
-    symbol = "SPY", forecast_horizon = 1L,
-    test_actual = actual, test_predicted = predicted,
-    test_dates = Sys.Date() - 19:0,
-    rmse = 0.0001, mae = 0.0001
-  ))
-  expect_output(out <- print(ev), "HAR Model Evaluation")
-  expect_identical(out, ev)
 })
