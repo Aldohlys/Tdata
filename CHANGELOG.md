@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.23] - 2026-06-10
+
+### Added
+- **R/volatility.R** — IV-surface skew collection (TODO #50, Phase 2a). Closes Phase 2a after Phase 1 (VRP/IVR/IVP_2y) shipped in 5.10.3.
+  - `captureOptionSurface(sym, currency, spot, iv30, target_dte=30, force_refresh, force)`: captures the ~30 DTE IV surface slice — per-strike `impliedvol` + `delta` for calls and puts spanning ±1.5σ around spot — into the new `OptionSurface` table. Picks the expiry nearest the 30 DTE target, sizes the strike band from `iv30`, fetches via the cache-backed `getOptValue`, and writes `{sym, datetime, expiry, dte, right, strike, iv, delta, spot}`. **Once-per-day guarded** (the percentile model assumes one capture/symbol/day); `force=TRUE` bypasses. Best-effort — never throws, returns rows written (0 on skip/failure).
+  - `getSkewPercentiles(sym, lookback_days=365)`: reads `OptionSurface` and returns current 30-day skew with trailing percentile rank — `skew_put = iv(25Δ put) − iv(50Δ put)`, `skew_call = iv(25Δ call) − iv(50Δ call)`, each ranked vs its own history (put/call tracked **independently** — their comparison is the signal). Returns NA metrics (not error) when the table is missing/empty or history < 5 captures.
+  - Internal helpers `.iv_at_delta` (nearest-delta IV pick) and `.compute_capture_skews` (per-capture skew); 6 new unit tests in `tests/testthat/test-volatility.R`.
+  - `getVolMetrics()` gains **`capture_surface = FALSE`** (backward-compatible — scanner hot path unchanged). When TRUE it calls `captureOptionSurface` reusing the spot + iv30 already computed, so one pass refreshes Prices vol metrics **and** the surface.
+  - Live-verified against TWS on AAPL: 27 strikes @ 20260710 (31 DTE), clean smile (iv 0.306 wings → 0.236 ATM), correctly signed deltas; `skew_put`/`skew_call` hand-checked against the nearest-delta selection.
+  - **Note**: producer requires live TWS; collection is driven by `scripts/collect_option_surface.R` (daily Task Scheduler). New `OptionSurface` table created by `scripts/migrate_option_surface.R` (idempotent).
+
 ## [5.10.19] - 2026-06-02
 
 ### Fixed

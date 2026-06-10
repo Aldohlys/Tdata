@@ -296,6 +296,10 @@ get180dIV <- function(tickers, LastIBKRPrice) {
 #'
 #' If sym is not present in Ticker DB, it will make assumptions like currency=USD, exchange=SMART, etc...
 #' @param sym_list IBKR symbol or vector of symbols
+#' @param force_refresh logical - bypass quote caches and pull fresh from TWS (default FALSE)
+#' @param capture_surface logical - if TRUE, also capture the ~30 DTE IV surface to
+#'   OptionSurface via \code{captureOptionSurface} (once-per-day guarded). Default FALSE
+#'   keeps the scanner hot path unchanged; the daily collector sets it TRUE (TODO #50).
 #' @return a data frame with for each row the following fields :
 #' \itemize{
 #' \item{\code{symbol} element of sym_list argument}
@@ -326,7 +330,7 @@ get180dIV <- function(tickers, LastIBKRPrice) {
 #' getVolMetrics("SBSW")
 #' }
 #' @export
-getVolMetrics <- function(sym_list, force_refresh = FALSE) {
+getVolMetrics <- function(sym_list, force_refresh = FALSE, capture_surface = FALSE) {
 
   if (!all(is.character(sym_list))) {
     logger::log_info("getVolMetrics: argument is not all character: {sym_list}", namespace="Tdata")
@@ -455,8 +459,229 @@ getVolMetrics <- function(sym_list, force_refresh = FALSE) {
 
     ### Append to DB
     safe_db_append(conn, "Prices", metrics)
+
+    ### Forward IV-surface capture for skew percentiles (TODO #50, Phase 2a).
+    ### Opt-in (default FALSE) so the scanner's hot path is unaffected; the daily
+    ### collector passes capture_surface=TRUE. Best-effort, once-per-day guarded,
+    ### never throws — reuses the spot + iv30 already computed above.
+    if (isTRUE(capture_surface)) {
+      captureOptionSurface(sym, currency, spot = metrics$price, iv30 = metrics$iv30,
+                           force_refresh = force_refresh)
+    }
+
     metrics
   })
+}
+
+### ---- 30-day IV skew percentiles (TODO #50, Phase 2a) -------------------------
+### Read off the OptionSurface table (populated by the forward surface-capture hook).
+### Put and call skew are tracked INDEPENDENTLY -- their comparison is the signal:
+### put skew >> call skew = downside richly priced; call skew >> put skew = upside
+### richly priced. A combined metric would destroy that information.
+
+#' Implied vol at a target delta within a single capture/right, by nearest delta.
+#'
+#' Nearest-delta (vs. linear interpolation between bracketing strikes) is robust to
+#' sparse chains and matches how getVolMetrics selects ATM strikes. Revisit if the
+#' +/-1.5 sigma capture turns out dense enough to interpolate cleanly.
+#'@noRd
+.iv_at_delta <- function(df_right, target_delta) {
+  ok <- !is.na(df_right$delta) & !is.na(df_right$iv)
+  if (!any(ok)) return(NA_real_)
+  df_right <- df_right[ok, , drop = FALSE]
+  df_right$iv[which.min(abs(df_right$delta - target_delta))]
+}
+
+#' Per-capture put/call skew for one symbol's OptionSurface slice.
+#'
+#' skew_put  = iv(25d put)  - iv(50d put)   (put deltas negative: -0.25 vs -0.50)
+#' skew_call = iv(25d call) - iv(50d call)  (call deltas positive: +0.25 vs +0.50)
+#'@noRd
+.compute_capture_skews <- function(surface) {
+  if (is.null(surface) || nrow(surface) == 0) return(data.frame())
+  splits <- split(surface, surface$datetime)
+  do.call(rbind, lapply(names(splits), function(dt) {
+    cap   <- splits[[dt]]
+    puts  <- cap[cap$right == "P", , drop = FALSE]
+    calls <- cap[cap$right == "C", , drop = FALSE]
+    data.frame(
+      datetime  = dt,
+      skew_put  = .iv_at_delta(puts,  -0.25) - .iv_at_delta(puts,  -0.50),
+      skew_call = .iv_at_delta(calls,  0.25) - .iv_at_delta(calls,  0.50),
+      stringsAsFactors = FALSE
+    )
+  }))
+}
+
+#' getSkewPercentiles
+#'
+#' Current 30-day IV skew (put and call, tracked separately) and their percentile
+#' ranks over the trailing OptionSurface history. Skew = iv(25-delta) - iv(50-delta),
+#' read off the forward-collected OptionSurface table (see TODO #50, Phase 2a).
+#'
+#' One capture row-set per symbol per day; the latest capture is the "current" skew
+#' and is ranked against all captures in the lookback window (percentile = fraction of
+#' historical observations at-or-below current, same convention as ivp_2y).
+#'
+#' @param sym character symbol
+#' @param lookback_days integer calendar-day window for the percentile history (default 365)
+#' @return one-row data frame: \code{sym, datetime, skew_put, skew_call,
+#'   skew_put_pct, skew_call_pct, n_obs}. Metric columns are NA when the surface is
+#'   empty or history is too short (< 5 captures) for a meaningful percentile.
+#' @examples
+#' \dontrun{
+#'   getSkewPercentiles("AAPL")
+#' }
+#' @export
+getSkewPercentiles <- function(sym, lookback_days = 365L) {
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  na_row <- data.frame(sym = sym, datetime = NA_character_,
+                       skew_put = NA_real_, skew_call = NA_real_,
+                       skew_put_pct = NA_real_, skew_call_pct = NA_real_,
+                       n_obs = 0L, stringsAsFactors = FALSE)
+
+  if (!"OptionSurface" %in% DBI::dbListTables(conn)) {
+    logger::log_info("getSkewPercentiles: OptionSurface table missing — run scripts/migrate_option_surface.R", namespace = "Tdata")
+    return(na_row)
+  }
+
+  ### datetime is 'YYYYMMDD HH:MM'; lexicographic >= on the 'YYYYMMDD' cutoff is correct.
+  surface <- DBI::dbGetQuery(conn,
+    "SELECT datetime, right, strike, iv, delta FROM OptionSurface
+     WHERE sym = ? AND datetime >= ?",
+    params = list(sym, format(Sys.Date() - lookback_days, "%Y%m%d")))
+
+  if (nrow(surface) == 0) return(na_row)
+
+  skews <- .compute_capture_skews(surface)
+  if (nrow(skews) == 0) return(na_row)
+  skews  <- skews[order(skews$datetime), , drop = FALSE]
+  latest <- skews[nrow(skews), ]
+
+  pct <- function(series, current) {
+    series <- series[!is.na(series)]
+    if (length(series) < 5 || is.na(current)) return(NA_real_)
+    round(100 * sum(series <= current) / length(series), 2)
+  }
+
+  data.frame(
+    sym           = sym,
+    datetime      = latest$datetime,
+    skew_put      = round(latest$skew_put, 4),
+    skew_call     = round(latest$skew_call, 4),
+    skew_put_pct  = pct(skews$skew_put,  latest$skew_put),
+    skew_call_pct = pct(skews$skew_call, latest$skew_call),
+    n_obs         = nrow(skews),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' captureOptionSurface
+#'
+#' Capture the ~30 DTE implied-vol surface slice -- per-strike implied vol + delta
+#' for calls and puts spanning +/-1.5 sigma around spot -- and append it to the
+#' OptionSurface table (TODO #50, Phase 2a). One call = one capture timestamp.
+#' Storing the full sliced surface (not just derived skews) is future-proof: any
+#' delta-bucket analytic (25d/50d skew, wings, term skew) is computable post-hoc.
+#' Read back by \code{getSkewPercentiles}.
+#'
+#' Best-effort and side-effecting: it never throws and returns the number of rows
+#' written (0 on any failure), so getVolMetrics can call it without risk to the
+#' vol-metrics path. Quote fetch goes through the cache-backed getOptValue, so the
+#' marginal IBKR cost is ~one batch of strike quotes per symbol per day.
+#'
+#' @param sym character symbol
+#' @param currency character currency code (EUR/USD/...) — reserved for future
+#'   forward/rate-aware band sizing; band currently uses spot and iv30 directly
+#' @param spot numeric current underlying price (must be finite)
+#' @param iv30 numeric 30-day IV as a fraction (e.g. 0.30); sizes the +/-1.5 sigma band
+#' @param target_dte integer target days-to-expiry for the captured expiry (default 30)
+#' @param force_refresh logical pass-through to getOptValue (default FALSE)
+#' @param force logical bypass the once-per-day guard to force a re-capture (default FALSE)
+#' @return integer count of rows appended (invisibly); 0 if already captured today
+#' @examples
+#' \dontrun{
+#'   captureOptionSurface("AAPL", "USD", spot = 205.3, iv30 = 0.28)
+#' }
+#' @export
+captureOptionSurface <- function(sym, currency, spot, iv30, target_dte = 30L,
+                                 force_refresh = FALSE, force = FALSE) {
+  if (!is.finite(spot) || is.na(iv30) || iv30 <= 0) return(invisible(0L))
+
+  ### Inner worker so `return()` short-circuits cleanly inside tryCatch.
+  do_capture <- function() {
+    conn <- safe_db_connect()
+    on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+    ### Once-per-day guard: the percentile model assumes one capture row-set per
+    ### symbol per day (getSkewPercentiles splits by datetime). Repeated scanner
+    ### calls must not double-write. force=TRUE bypasses for manual re-capture.
+    if (!force && "OptionSurface" %in% DBI::dbListTables(conn)) {
+      today_str <- format(Sys.Date(), "%Y%m%d")
+      already <- DBI::dbGetQuery(conn,
+        "SELECT COUNT(*) AS n FROM OptionSurface WHERE sym = ? AND substr(datetime,1,8) = ?",
+        params = list(sym, today_str))$n
+      if (already > 0) {
+        logger::log_debug("OptionSurface: {sym} already captured today — skipping", namespace = "Tdata")
+        return(0L)
+      }
+    }
+
+    min_expiry_date <- as.integer(format(Sys.Date() + 7, "%Y%m%d"))
+    expdates <- tdata_py$getExpirationDates(sym, min_date = min_expiry_date)
+    if (is.null(expdates) || length(expdates) == 0) return(0L)
+
+    ### Nearest available expiry to the 30 DTE target.
+    target_date <- as.integer(format(Sys.Date() + target_dte, "%Y%m%d"))
+    expiry <- expdates[which.min(abs(as.integer(expdates) - target_date))]
+    dte <- as.numeric(Tbasics::getDTE(Sys.time(), as.Date(expiry, "%Y%m%d")))
+
+    ### +/-1.5 sigma price band at this horizon (lognormal).
+    band  <- 1.5 * iv30 * sqrt(dte / 365)
+    lower <- spot * exp(-band)
+    upper <- spot * exp(band)
+
+    strikes <- tdata_py$getStrikesfromExpDate(sym = sym, expdate = expiry)
+    if (is.null(strikes) || length(strikes) == 0) return(0L)
+    strikes <- strikes[strikes >= lower & strikes <= upper]
+    strikes <- subsample_strikes(strikes, spot, max_strikes = 20)
+    if (length(strikes) == 0) return(0L)
+
+    capture_dt <- format(Sys.time(), "%Y%m%d %H:%M")
+    fetch_side <- function(right) {
+      df <- tryCatch(as.data.frame(
+        tdata_py$getOptValue(sym = sym, expiration = expiry, strikes = strikes,
+                             right = right, force_refresh = force_refresh)),
+        error = function(e) NULL)
+      if (is.null(df) || nrow(df) == 0) return(NULL)
+      df <- df[!is.na(df$impliedvol) & !is.na(df$delta), , drop = FALSE]
+      if (nrow(df) == 0) return(NULL)
+      data.frame(
+        sym = sym, datetime = capture_dt, expiry = as.character(expiry),
+        dte = as.integer(round(dte)), right = right,
+        strike = as.numeric(df$strike),
+        iv = round(as.numeric(df$impliedvol), 4),
+        delta = round(as.numeric(df$delta), 4),
+        spot = round(spot, 4), stringsAsFactors = FALSE
+      )
+    }
+
+    rows <- rbind(fetch_side("C"), fetch_side("P"))
+    if (is.null(rows) || nrow(rows) == 0) return(0L)
+
+    safe_db_append(conn, "OptionSurface", rows)
+    logger::log_info("OptionSurface: captured {nrow(rows)} strikes for {sym} @ {expiry}",
+                     namespace = "Tdata")
+    nrow(rows)
+  }
+
+  res <- tryCatch(do_capture(), error = function(e) {
+    logger::log_warn("captureOptionSurface failed for {sym}: {e$message}", namespace = "Tdata")
+    0L
+  })
+  invisible(res)
 }
 
 # Adaptive ATM strike selection. Widen the range only until enough strikes

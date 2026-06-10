@@ -208,3 +208,65 @@ test_that("getForwardPrice with r < q (negative cost of carry) gives F < S", {
   F <- getForwardPrice(100, 0.01, 0.05, 365)  # 1y forward
   expect_lt(F, 100)
 })
+
+# ---------------------------------------------------------------------------
+# OptionSurface skew helpers (TODO #50, Phase 2a) — pure logic, no DB/IBKR.
+# .iv_at_delta picks IV at the nearest delta; .compute_capture_skews derives
+# per-capture 25d-vs-50d put/call skew. getSkewPercentiles itself is DB-bound
+# and exercised separately against live data.
+# ---------------------------------------------------------------------------
+.iv_at_delta          <- Tdata:::.iv_at_delta
+.compute_capture_skews <- Tdata:::.compute_capture_skews
+
+test_that(".iv_at_delta picks the IV at the strike with delta nearest the target", {
+  puts <- data.frame(delta = c(-0.219, -0.288, -0.464), iv = c(0.270, 0.260, 0.245))
+  # target -0.25 -> nearest is -0.219 -> iv 0.270
+  expect_equal(.iv_at_delta(puts, -0.25), 0.270)
+  # target -0.50 -> nearest is -0.464 -> iv 0.245
+  expect_equal(.iv_at_delta(puts, -0.50), 0.245)
+})
+
+test_that(".iv_at_delta returns NA when no valid (delta, iv) rows", {
+  expect_true(is.na(.iv_at_delta(data.frame(delta = numeric(0), iv = numeric(0)), -0.25)))
+  expect_true(is.na(.iv_at_delta(data.frame(delta = c(NA_real_), iv = c(0.2)), -0.25)))
+  expect_true(is.na(.iv_at_delta(data.frame(delta = c(-0.3), iv = c(NA_real_)), -0.25)))
+})
+
+test_that(".iv_at_delta ignores NA rows but uses the remaining valid ones", {
+  df <- data.frame(delta = c(NA_real_, -0.25, -0.50), iv = c(0.99, 0.30, 0.22))
+  expect_equal(.iv_at_delta(df, -0.25), 0.30)
+})
+
+test_that(".compute_capture_skews derives put/call skew per capture", {
+  # One capture: put smile (25d put iv 0.27 > 50d put iv 0.245 -> +skew),
+  # call side flat/slightly negative (25d call iv 0.236 < 50d call iv 0.245).
+  surface <- data.frame(
+    datetime = "20260610 14:30",
+    right    = c("P","P", "C","C"),
+    delta    = c(-0.25, -0.50,  0.25, 0.50),
+    iv       = c(0.270, 0.245,  0.236, 0.245),
+    stringsAsFactors = FALSE
+  )
+  out <- .compute_capture_skews(surface)
+  expect_equal(nrow(out), 1)
+  expect_equal(out$skew_put,  0.025, tolerance = 1e-9)
+  expect_equal(out$skew_call, -0.009, tolerance = 1e-9)
+})
+
+test_that(".compute_capture_skews returns one row per distinct capture datetime", {
+  surface <- data.frame(
+    datetime = c(rep("20260610 14:30", 4), rep("20260611 14:30", 4)),
+    right    = rep(c("P","P","C","C"), 2),
+    delta    = rep(c(-0.25,-0.50,0.25,0.50), 2),
+    iv       = c(0.270,0.245,0.236,0.245,  0.300,0.250,0.240,0.250),
+    stringsAsFactors = FALSE
+  )
+  out <- .compute_capture_skews(surface)
+  expect_equal(nrow(out), 2)
+  expect_setequal(out$datetime, c("20260610 14:30", "20260611 14:30"))
+})
+
+test_that(".compute_capture_skews returns empty frame on empty input", {
+  expect_equal(nrow(.compute_capture_skews(data.frame())), 0)
+  expect_equal(nrow(.compute_capture_skews(NULL)), 0)
+})
