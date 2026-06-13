@@ -312,7 +312,12 @@ twr <- function(dates, e_nlv, cashflows) {
 
   for (i in 2:n) {
     denom <- e_nlv_sorted[i - 1] + cf_sorted[i]
-    rn[i] <- if (is.na(denom) || denom == 0) NA_real_ else e_nlv_sorted[i] / denom
+    rn[i] <- if (is.na(denom) || denom == 0 || is.na(e_nlv_sorted[i])) NA_real_ else e_nlv_sorted[i] / denom
+    ### An undefined sub-period return (zero/NA base — e.g. the first snapshot
+    ### recorded before account funding settles, leaving NLV = 0 — or a missing
+    ### NLV) must not poison the cumulative chain via NA multiplication. Treat it
+    ### as neutral so chaining resumes once a valid base exists again.
+    if (is.na(rn[i])) rn[i] <- 1
     twr_acc[i] <- twr_acc[i - 1] * rn[i]
   }
 

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.24] - 2026-06-13
+
+### Fixed
+- **R/account.R** `twr()` — a leading zero/NA NetLiquidation no longer poisons the entire cumulative TWR series.
+  - Problem: a freshly funded account (e.g. U25343478) records its first snapshot with `NetLiquidation = 0` (deposit CashFlow present, but the NLV snapshot was taken before funding settled). The chaining base `denom = NLV[i-1] + CashFlow[i]` was then 0, giving `rn = NA`, and that NA propagated through every subsequent `twr_acc[i]` via multiplication — leaving TWR NA for all but the reference row.
+  - Effect: the "Account evolution in value" plot (default metric `TimeWeightedReturn`) had a single point and rendered empty for such accounts.
+  - Solution (line ~315): an undefined sub-period return (zero/NA base, or missing NLV) is now treated as neutral (`rn = 1`) so chaining resumes once a valid base exists. Verified on U25343478: TWR now populated for all 32 rows; the day-6 deposit (1207.36) is correctly neutralized.
+
 ## [5.10.23] - 2026-06-10
 
 ### Added
