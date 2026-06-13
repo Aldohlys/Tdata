@@ -104,10 +104,16 @@ atr_move_distribution <- function(sym, horizon_sessions, n = 14,
   # Signed forward N-session move (fraction), aligned to its start day t
   fwd <- c(close[(N + 1):m] / close[1:(m - N)] - 1, rep(NA_real_, N))
 
-  # Standardize each move by the ATR% that prevailed at its start
+  # Standardize each move by the ATR% that prevailed at its start. `raw` keeps
+  # the same sample of full N-session moves WITHOUT the ATR re-scaling — the
+  # un-normalized historical distribution a Value-at-Risk band reads off. Both
+  # share the `ok` mask so they cover identical observations: any divergence
+  # between them is purely the ATR normalization, not a different sample.
   scale_t <- atr_pct_series * sqrt(N)
-  standardized <- fwd / scale_t
-  standardized <- standardized[is.finite(standardized)]
+  standardized_all <- fwd / scale_t
+  ok <- is.finite(standardized_all)
+  standardized <- standardized_all[ok]
+  raw <- fwd[ok]
 
   cur_atr_pct <- utils::tail(atr_pct_series[is.finite(atr_pct_series)], 1)
   last_close <- utils::tail(close, 1)
@@ -117,7 +123,8 @@ atr_move_distribution <- function(sym, horizon_sessions, n = 14,
     horizon_sessions = N,
     atr_pct = round(cur_atr_pct * 100, 3),
     n_obs = length(standardized),
-    standardized = standardized
+    standardized = standardized,
+    raw = raw
   )
 }
 
@@ -130,7 +137,9 @@ atr_move_distribution <- function(sym, horizon_sessions, n = 14,
 #' @param dist list from \code{atr_move_distribution()}
 #' @param conf confidence level in (0,1), e.g. 0.80 or 0.70 (default 0.80)
 #' @return list with coefficients, signed move %s, price bounds, asymmetry,
-#'   and validity flags; or NULL if dist is NULL/empty
+#'   validity flags, and a parallel \code{raw_*} band read off the
+#'   un-normalized (VaR) distribution plus \code{regime_divergence} (raw band
+#'   width / ATR band width); or NULL if dist is NULL/empty
 #' @export
 atr_expected_move_from_dist <- function(dist, conf = 0.80) {
   if (is.null(dist) || dist$n_obs < 60) return(NULL)
@@ -144,6 +153,22 @@ atr_expected_move_from_dist <- function(dist, conf = 0.80) {
 
   scale <- (dist$atr_pct / 100) * sqrt(dist$horizon_sessions)
   spot <- dist$spot
+
+  # Raw (VaR) band: quantiles of the un-normalized full N-session moves, in %.
+  # No ATR re-inflation — these are the moves as they actually happened, so the
+  # tails are the empirical Value-at-Risk of an N-session hold. The divergence
+  # between this band's width and the ATR band's width is a vol-regime-stability
+  # signal: ~1 when today's ATR matches the historical norm (trust the ATR
+  # band), far from 1 when a regime shift makes the raw VaR the safer bound.
+  raw <- dist$raw
+  has_raw <- !is.null(raw) && length(raw) >= 60
+  raw_lo <- if (has_raw) as.numeric(stats::quantile(raw, q_lo, names = FALSE)) else NA_real_
+  raw_md <- if (has_raw) as.numeric(stats::quantile(raw, 0.5,  names = FALSE)) else NA_real_
+  raw_hi <- if (has_raw) as.numeric(stats::quantile(raw, q_hi, names = FALSE)) else NA_real_
+  atr_width <- (c_hi - c_lo) * scale
+  raw_width <- raw_hi - raw_lo
+  regime_divergence <- if (has_raw && is.finite(atr_width) && atr_width != 0)
+    round(raw_width / atr_width, 2) else NA_real_
 
   flags <- character(0)
   if (dist$horizon_sessions > 25)
@@ -172,6 +197,12 @@ atr_expected_move_from_dist <- function(dist, conf = 0.80) {
     price_median = round(spot * (1 + c_md * scale), 2),
     price_upper = round(spot * (1 + c_hi * scale), 2),
     asymmetry = if (c_lo != 0) round(c_hi / abs(c_lo), 2) else NA_real_,
+    raw_lower_pct = round(raw_lo * 100, 2),
+    raw_median_pct = round(raw_md * 100, 2),
+    raw_upper_pct = round(raw_hi * 100, 2),
+    raw_price_lower = round(spot * (1 + raw_lo), 2),
+    raw_price_upper = round(spot * (1 + raw_hi), 2),
+    regime_divergence = regime_divergence,
     flags = flags
   )
 }

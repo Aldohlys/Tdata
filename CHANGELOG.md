@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.25] - 2026-06-13
+
+### Added
+- **R/atr_move.R** — raw / Value-at-Risk band alongside the ATR-normalized expected move (TODO #73).
+  - `atr_move_distribution()` now also returns `raw`: the same sample of full N-session signed moves (fraction) WITHOUT the ATR re-scaling, sharing the existing `ok` finite mask so the raw and `standardized` vectors cover identical observations. No extra fetch — both come from the one history pull.
+  - `atr_expected_move_from_dist()` gains a parallel raw band read off `dist$raw`: `raw_lower_pct` / `raw_median_pct` / `raw_upper_pct`, `raw_price_lower` / `raw_price_upper`, and `regime_divergence` = raw band width ÷ ATR band width. The raw tails are the empirical VaR of an N-session hold (no regime re-inflation); `regime_divergence` reads as a vol-regime-stability signal (≈1 = current ATR matches the historical norm → trust the ATR band; far from 1 = regime shift → the raw VaR is the safer bound).
+  - Backward-compatible: a `dist` without `raw` (older caller) yields NA raw fields and NA `regime_divergence`. 3 new tests in `tests/testthat/test-atr-move.R` (exact divergence == 1 when raw is rebuilt at current ATR; == 1.5 when raw is 50% wider; NA when raw absent).
+  - Consumed by `Tuser/vol/view/xmoveUI.R`: the Expected-move histogram now overlays the raw distribution on the ATR-normalized one (shared % axis), each with its own quantile lines, plus a "VaR (raw)" table row — making the ATR-vs-raw divergence visually immediate.
+
 ## [5.10.24] - 2026-06-13
 
 ### Fixed

@@ -33,10 +33,11 @@ test_that(".wilder_atr tracks a constant true range to that range", {
 # ---------------------------------------------------------------------------
 # atr_expected_move_from_dist — quantile → band, asymmetry, flags
 # ---------------------------------------------------------------------------
-make_dist <- function(standardized, atr_pct = 2, N = 10, spot = 100, sym = "TEST") {
+make_dist <- function(standardized, atr_pct = 2, N = 10, spot = 100, sym = "TEST",
+                      raw = NULL) {
   list(sym = sym, spot = spot, horizon_sessions = N,
        atr_pct = atr_pct, n_obs = length(standardized),
-       standardized = standardized)
+       standardized = standardized, raw = raw)
 }
 
 test_that("symmetric distribution yields a near-symmetric band (asymmetry ~ 1)", {
@@ -89,4 +90,38 @@ test_that("validity flags fire outside the envelope", {
 test_that("returns NULL on NULL or too-thin distribution", {
   expect_null(atr_expected_move_from_dist(NULL))
   expect_null(atr_expected_move_from_dist(make_dist(rnorm(30))))  # < 60 obs
+})
+
+# ---------------------------------------------------------------------------
+# Raw / VaR band — quantiles off the un-normalized moves, regime divergence
+# ---------------------------------------------------------------------------
+test_that("no raw vector -> raw band is NA, regime_divergence NA (back-compat)", {
+  set.seed(8)
+  r <- atr_expected_move_from_dist(make_dist(rnorm(5000, 0, 1)), 0.80)  # raw = NULL
+  expect_true(is.na(r$raw_lower_pct))
+  expect_true(is.na(r$raw_upper_pct))
+  expect_true(is.na(r$regime_divergence))
+})
+
+test_that("raw == standardized*scale -> divergence is exactly 1 (vol regime matched)", {
+  set.seed(9)
+  s <- rnorm(5000, 0, 1)
+  N <- 10; atr_pct <- 2
+  scale <- (atr_pct / 100) * sqrt(N)
+  d <- make_dist(s, atr_pct = atr_pct, N = N, raw = s * scale)  # raw rebuilt at current ATR
+  r <- atr_expected_move_from_dist(d, 0.80)
+  expect_equal(r$regime_divergence, 1, tolerance = 1e-6)
+  # raw band % then matches the ATR band %
+  expect_equal(r$raw_upper_pct, r$move_upper_pct, tolerance = 1e-6)
+  expect_equal(r$raw_lower_pct, r$move_lower_pct, tolerance = 1e-6)
+})
+
+test_that("wider raw moves -> divergence > 1 (current ATR below historical norm)", {
+  set.seed(10)
+  s <- rnorm(5000, 0, 1)
+  N <- 10; atr_pct <- 2
+  scale <- (atr_pct / 100) * sqrt(N)
+  d <- make_dist(s, atr_pct = atr_pct, N = N, raw = s * scale * 1.5)  # raw 50% wider
+  r <- atr_expected_move_from_dist(d, 0.80)
+  expect_equal(r$regime_divergence, 1.5, tolerance = 0.01)
 })
