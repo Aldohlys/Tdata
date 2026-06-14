@@ -349,3 +349,39 @@ test_that("exported functions exist in tdata_py namespace", {
   expect_true(!is.null(tdata_py$get_stale_warnings))
   expect_true(!is.null(tdata_py$clear_stale_warnings))
 })
+
+# ---------------------------------------------------------------------------
+# R-side surfacing: surface_cache_warnings() drains + clears the buffer
+# ---------------------------------------------------------------------------
+test_that("surface_cache_warnings drains and clears buffered warnings", {
+  skip_if_no_python()
+  skip_if_not(has_tdata_py(), "tdata_py module not available")
+
+  tdata_py <- reticulate::import("tdata_py")
+  tdata_py$clear_stale_warnings()
+
+  # Inject two warnings the same way the Python layer would at load time.
+  reticulate::py_run_string("from tdata_py.chains_manager import _stale_warnings")
+  reticulate::py_run_string("_stale_warnings.append('stale chain XYZ deleted')")
+  reticulate::py_run_string("_stale_warnings.append('stale strikes XYZ/20270101 deleted')")
+
+  # Inject the same imported module the warnings were written into (the package
+  # active binding may not initialize in the isolated test working directory).
+  # Outside Shiny, display_message() falls back to message() — swallow it.
+  surfaced <- suppressMessages(surface_cache_warnings(tp = tdata_py))
+
+  expect_equal(length(surfaced), 2L)
+  expect_equal(surfaced[[1]], "stale chain XYZ deleted")
+  # Buffer must be cleared after surfacing.
+  expect_equal(length(tdata_py$get_stale_warnings()), 0L)
+})
+
+test_that("surface_cache_warnings is a no-op on an empty buffer", {
+  skip_if_no_python()
+  skip_if_not(has_tdata_py(), "tdata_py module not available")
+
+  tdata_py <- reticulate::import("tdata_py")
+  tdata_py$clear_stale_warnings()
+
+  expect_equal(length(surface_cache_warnings(tp = tdata_py)), 0L)
+})

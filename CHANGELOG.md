@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.26] - 2026-06-14
+
+### Added
+- **R/cache_warnings.R** (new) — `surface_cache_warnings()`, the R-side surfacing for the at-load-time stale-cache fallback (TODO #27, Part 1).
+  - When `getChains()`/`getOptionStrikes()` delete a chain/strike parquet cache older than `cache_ttl_days`, the Python layer buffers a human-readable note (`chains_manager.py::_stale_warnings`). Until now nothing read that buffer, so the deletion was silent.
+  - `surface_cache_warnings()` drains the buffer: logs each note (`logger::log_warn`, namespace "Tdata") and shows them via `Tbasics::display_message()` (modal under Shiny, console `message()` otherwise), then calls `clear_stale_warnings()`. Guarded with `tryCatch` and a no-op on empty buffer / older `tdata_py` — it never breaks the data path.
+  - Wired via `on.exit()` into the three Tdata option-fetch entry points: `get_vix_skew()` (`R/vix_skew.R`), `captureOptionSurface()` and `getIV_DTE()` (`R/volatility.R`), so stale-cache notes surface on every exit path including error handlers.
+  - 2 new tests in `tests/testthat/test-cache-staleness.R` (drains + clears an injected 2-warning buffer; no-op on empty buffer).
+
 ## [5.10.25] - 2026-06-13
 
 ### Added

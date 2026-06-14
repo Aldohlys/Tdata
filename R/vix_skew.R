@@ -21,6 +21,10 @@ get_vix_skew <- function(sym, currency, spot_price, DTE = 30, sigma_limit = 2) {
   stopifnot(is.numeric(spot_price), length(spot_price) == 1)
   stopifnot(DTE >= 10, DTE <= 730)
 
+  ### Surface any stale-cache deletions triggered by the chain/strike fetches
+  ### below, on every exit path (including the tryCatch error handler).
+  on.exit(surface_cache_warnings(), add = TRUE)
+
   tryCatch({
     # Step 1: Get expiration dates
     min_expiry_date <- as.integer(format(Sys.Date() + 7, "%Y%m%d"))

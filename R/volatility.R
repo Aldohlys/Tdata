@@ -610,6 +610,9 @@ captureOptionSurface <- function(sym, currency, spot, iv30, target_dte = 30L,
                                  force_refresh = FALSE, force = FALSE) {
   if (!is.finite(spot) || is.na(iv30) || iv30 <= 0) return(invisible(0L))
 
+  ### Surface any stale-cache deletions from the chain/strike fetches below.
+  on.exit(surface_cache_warnings(), add = TRUE)
+
   ### Inner worker so `return()` short-circuits cleanly inside tryCatch.
   do_capture <- function() {
     conn <- safe_db_connect()
@@ -734,6 +737,9 @@ getIV_DTE <- function(sym, currency, spot_price, DTE=30, force_refresh=FALSE){
     Tbasics::display_error_message(paste0("No proper format for ", sym,"\n"))
     return(NA)
   }
+
+  ### Surface any stale-cache deletions from the chain/strike fetches below.
+  on.exit(surface_cache_warnings(), add = TRUE)
 
   ### Retrieve the expiration dates for sym
   min_expiry_date <- as.integer(format(Sys.Date() + 7, "%Y%m%d"))
