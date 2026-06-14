@@ -118,9 +118,9 @@ initialize_cash_positions <- function(baseline_date = as.Date("2025-09-10"),
       TradeDate = baseline_date_int,
       Strategy = "Perso",  # Personal/administrative trade
       Instrument = currency,  # Currency code (join key with portfolio)
-      Ssjacent = "CASH",     # Asset type identifier
+      Symbol = "CASH",     # Asset type identifier
       Pos = balance,
-      Prix = baseline_rate,  # Baseline exchange rate
+      Price = baseline_rate,  # Baseline exchange rate
       Strike = NA_real_,
       Right = "",
       Commission = 0,  # No commission for initialization
@@ -143,7 +143,7 @@ initialize_cash_positions <- function(baseline_date = as.Date("2025-09-10"),
 
   # Display summary
   logger::log_info("Created {nrow(cash_trades_df)} initial CASH trades:", namespace = "Tdata")
-  print(cash_trades_df[, c("TradeNr", "Instrument", "Pos", "Prix", "Total", "Currency")])
+  print(cash_trades_df[, c("TradeNr", "Instrument", "Pos", "Price", "Total", "Currency")])
 
   if (dry_run) {
     logger::log_info("DRY RUN: No data written to database", namespace = "Tdata")
@@ -211,7 +211,7 @@ verify_cash_initialization <- function(account = NULL) {
 
   # Join trades with portfolio
   verification <- dplyr::left_join(
-    cash_trades[, c("TradeNr", "Instrument", "Pos", "Prix", "Total", "TradeDate", "UnrealizedPnL")],
+    cash_trades[, c("TradeNr", "Instrument", "Pos", "Price", "Total", "TradeDate", "UnrealizedPnL")],
     cash_portfolio[, c("symbol", "pos", "mktPrice", "mktValue", "unPnL")],
     by = c("Instrument" = "symbol")
   )

@@ -14,13 +14,13 @@ NULL
 #' @examples
 #' trades <- data.frame(
 #'   Instrument = c("SPY", "CHF", "USD"),
-#'   Ssjacent = c("", "CASH", "CASH")
+#'   Symbol = c("", "CASH", "CASH")
 #' )
 #' is_cash_trade(trades)
 is_cash_trade <- function(trades) {
-  # CASH trades identified by Ssjacent = "CASH"
+  # CASH trades identified by Symbol = "CASH"
   # Similar to Treasury Bills identification pattern
-  !is.na(trades$Ssjacent) & trades$Ssjacent == "CASH"
+  !is.na(trades$Symbol) & trades$Symbol == "CASH"
 }
 
 #' Identify CASH positions in portfolio table
@@ -194,7 +194,7 @@ get_cash_positions <- function(account) {
 #'
 #' @param account_table Account code (e.g., "U1804173")
 #' @param currency Currency code to search for (e.g., "JPY")
-#' @return Data frame with TradeNr, Prix, Instrument, Currency columns (0 rows if no match)
+#' @return Data frame with TradeNr, Price, Instrument, Currency columns (0 rows if no match)
 #' @keywords internal
 getCashTradeForCurrency <- function(account_table, currency) {
   conn <- safe_db_connect()
@@ -202,32 +202,32 @@ getCashTradeForCurrency <- function(account_table, currency) {
 
   account_db <- account_table
 
-  query <- "SELECT TradeNr, Prix, Instrument, Currency FROM Trades
-            WHERE Account = ? AND (Instrument = ? OR Currency = ?) AND Ssjacent = 'CASH' AND Status != 'Fermé'
+  query <- "SELECT TradeNr, Price, Instrument, Currency FROM Trades
+            WHERE Account = ? AND (Instrument = ? OR Currency = ?) AND Symbol = 'CASH' AND Status != 'Fermé'
             ORDER BY TradeDate DESC LIMIT 1"
   DBI::dbGetQuery(conn, query, params = list(account_db, currency, currency))
 }
 
 #' Resolve cost basis from a CASH trade query result
 #'
-#' Handles the quoting convention: when trade matches on Instrument, Prix is
-#' already in base/foreign units. When trade matches on Currency, Prix is in
+#' Handles the quoting convention: when trade matches on Instrument, Price is
+#' already in base/foreign units. When trade matches on Currency, Price is in
 #' foreign/base units and must be inverted.
 #'
-#' @param trade_result Data frame row from getCashTradeForCurrency (must have Prix, Instrument, Currency)
+#' @param trade_result Data frame row from getCashTradeForCurrency (must have Price, Instrument, Currency)
 #' @param position_currency The currency of the CASH balance being valued
 #' @return Cost basis in base_currency per position_currency
 #' @keywords internal
 resolve_cash_cost_basis <- function(trade_result, position_currency) {
-  prix <- trade_result$Prix[1]
+  prix <- trade_result$Price[1]
 
   if (trade_result$Instrument[1] == position_currency) {
-    # Trade Instrument matches — Prix is in Currency/Instrument
-    # e.g., Instrument=JPY, Currency=CHF, Prix = CHF per JPY
+    # Trade Instrument matches — Price is in Currency/Instrument
+    # e.g., Instrument=JPY, Currency=CHF, Price = CHF per JPY
     return(prix)
   } else {
-    # Trade matched on Currency — Prix is in position_currency per Instrument
-    # e.g., Instrument=CHF, Currency=JPY, Prix=201.665 JPY/CHF
+    # Trade matched on Currency — Price is in position_currency per Instrument
+    # e.g., Instrument=CHF, Currency=JPY, Price=201.665 JPY/CHF
     # Need CHF/JPY, so invert
     return(1 / prix)
   }

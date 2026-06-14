@@ -115,10 +115,10 @@ test_that("validate_db_types handles portfolio pattern DU456", {
 })
 
 test_that("validate_db_types handles Trades table", {
-  data <- data.frame(TradeDate = "20250301", Prix = "150.75")
+  data <- data.frame(TradeDate = "20250301", Price = "150.75")
   result <- validate_db_types(data, "Trades")
   expect_equal(result$TradeDate, 20250301L)
-  expect_equal(result$Prix, 150.75)
+  expect_equal(result$Price, 150.75)
 })
 
 test_that("validate_db_types handles Journal table", {

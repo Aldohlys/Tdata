@@ -3,7 +3,7 @@
 test_that("CASH trade identification works", {
   trades <- data.frame(
     Instrument = c("SPY", "CHF", "AAPL", "USD"),
-    Ssjacent = c("", "CASH", "", "CASH"),
+    Symbol = c("", "CASH", "", "CASH"),
     Right = c("C", "", "", ""),
     stringsAsFactors = FALSE
   )
@@ -27,7 +27,7 @@ test_that("CASH position identification works", {
 test_that("CASH trade identification handles NA", {
   trades <- data.frame(
     Instrument = c("SPY", "CHF"),
-    Ssjacent = c(NA_character_, "CASH"),
+    Symbol = c(NA_character_, "CASH"),
     stringsAsFactors = FALSE
   )
 
@@ -63,7 +63,7 @@ test_that("get_exchange_rate returns numeric rate", {
 test_that("CASH P&L calculation handles no CASH trades", {
   trades <- data.frame(
     Instrument = c("SPY", "AAPL"),
-    Ssjacent = c("", ""),
+    Symbol = c("", ""),
     Pos = c(100, 50),
     stringsAsFactors = FALSE
   )
@@ -84,9 +84,9 @@ test_that("CASH P&L calculation includes commission in cost basis (integration t
 
   trade <- data.frame(
     Instrument = "CHF",
-    Ssjacent = "CASH",
+    Symbol = "CASH",
     Pos = 30000,
-    Prix = 1.25,
+    Price = 1.25,
     Total = -37501.60,  # Includes commission: 30000 * 1.25 + 1.60
     Commission = 1.60,
     Currency = "USD",
@@ -169,12 +169,12 @@ test_that("create_cash_portfolio_row creates valid row for non-base currency (in
 
 # --- resolve_cash_cost_basis tests ---
 
-test_that("resolve_cash_cost_basis returns Prix directly when Instrument matches", {
-  # Trade: Instrument=EUR, Currency=CHF, Prix=0.93 (CHF per EUR)
-  # Looking up EUR balance -> Instrument matches -> use Prix as-is
+test_that("resolve_cash_cost_basis returns Price directly when Instrument matches", {
+  # Trade: Instrument=EUR, Currency=CHF, Price=0.93 (CHF per EUR)
+  # Looking up EUR balance -> Instrument matches -> use Price as-is
   trade_result <- data.frame(
     TradeNr = 659L,
-    Prix = 0.93,
+    Price = 0.93,
     Instrument = "EUR",
     Currency = "CHF",
     stringsAsFactors = FALSE
@@ -184,12 +184,12 @@ test_that("resolve_cash_cost_basis returns Prix directly when Instrument matches
   expect_equal(cost_basis, 0.93)
 })
 
-test_that("resolve_cash_cost_basis inverts Prix when Currency matches", {
-  # Trade 687: Instrument=CHF, Currency=JPY, Prix=201.665 (JPY per CHF)
-  # Looking up JPY balance -> matched on Currency -> invert Prix
+test_that("resolve_cash_cost_basis inverts Price when Currency matches", {
+  # Trade 687: Instrument=CHF, Currency=JPY, Price=201.665 (JPY per CHF)
+  # Looking up JPY balance -> matched on Currency -> invert Price
   trade_result <- data.frame(
     TradeNr = 687L,
-    Prix = 201.665,
+    Price = 201.665,
     Instrument = "CHF",
     Currency = "JPY",
     stringsAsFactors = FALSE
@@ -211,7 +211,7 @@ test_that("create_cash_portfolio_row links trade via Instrument match", {
   # Mock: EUR trade where Instrument=EUR (direct match)
   mock_result <- data.frame(
     TradeNr = 659L,
-    Prix = 0.93,
+    Price = 0.93,
     Instrument = "EUR",
     Currency = "CHF",
     stringsAsFactors = FALSE
@@ -229,7 +229,7 @@ test_that("create_cash_portfolio_row links trade via Instrument match", {
 
       expect_false(is.null(result))
       expect_equal(result$TradeNr, 659L)
-      # avgCost = Prix directly (Instrument match)
+      # avgCost = Price directly (Instrument match)
       expect_equal(result$avgCost, 0.93)
       # unPnL = (exchange_rate - 0.93) * 12154.52
       expected_pnl <- (result$mktPrice - 0.93) * 12154.52
@@ -238,18 +238,18 @@ test_that("create_cash_portfolio_row links trade via Instrument match", {
   )
 })
 
-test_that("create_cash_portfolio_row links trade via Currency match and inverts Prix", {
+test_that("create_cash_portfolio_row links trade via Currency match and inverts Price", {
   skip_if_not(DBI::dbCanConnect(RSQLite::SQLite(), Sys.getenv("R_DB_PATH")),
               "Database not available")
   skip_if(is.null(try(getParam("BaseCurrency"), silent = TRUE)),
           "BaseCurrency not configured")
   skip_if(getParam("BaseCurrency") != "CHF", "Test designed for CHF base currency")
 
-  # Mock: Trade 687 — Instrument=CHF, Currency=JPY, Prix=201.665 JPY/CHF
+  # Mock: Trade 687 — Instrument=CHF, Currency=JPY, Price=201.665 JPY/CHF
   # When looking up JPY balance, this trade matches on Currency
   mock_result <- data.frame(
     TradeNr = 687L,
-    Prix = 201.665,
+    Price = 201.665,
     Instrument = "CHF",
     Currency = "JPY",
     stringsAsFactors = FALSE
@@ -267,7 +267,7 @@ test_that("create_cash_portfolio_row links trade via Currency match and inverts 
 
       expect_false(is.null(result))
       expect_equal(result$TradeNr, 687L)
-      # avgCost = 1/Prix (Currency match -> inversion)
+      # avgCost = 1/Price (Currency match -> inversion)
       expect_equal(result$avgCost, 1 / 201.665, tolerance = 1e-8)
       # unPnL must be reasonable (NOT 101 million)
       expect_true(abs(result$unPnL) < 10000,
@@ -289,7 +289,7 @@ test_that("create_cash_portfolio_row defaults to zero PnL when no trade found", 
   # Mock: no matching trade
   empty_result <- data.frame(
     TradeNr = integer(0),
-    Prix = numeric(0),
+    Price = numeric(0),
     Instrument = character(0),
     Currency = character(0),
     stringsAsFactors = FALSE
@@ -319,7 +319,7 @@ test_that("reconcile_cash_positions works with real data (unit test with inline 
   test_reconcile <- function() {
     trades <- data.frame(
       Instrument = c("USD", "EUR"),
-      Ssjacent = c("CASH", "CASH"),
+      Symbol = c("CASH", "CASH"),
       Pos = c(45000, 12500),
       stringsAsFactors = FALSE
     )
@@ -334,7 +334,7 @@ test_that("reconcile_cash_positions works with real data (unit test with inline 
       stringsAsFactors = FALSE
     )
 
-    trades_cash <- dplyr::filter(trades, Ssjacent == "CASH")
+    trades_cash <- dplyr::filter(trades, Symbol == "CASH")
     portfolio_cash <- dplyr::filter(portfolio, type == "CASH")
 
     reconciled <- dplyr::left_join(
@@ -365,7 +365,7 @@ test_that("reconcile_cash_positions works with real data (unit test with inline 
 test_that("get_cash_positions filters correctly (unit test)", {
   all_trades <- data.frame(
     Instrument = c("SPY", "AAPL", "USD"),
-    Ssjacent = c("", "", "CASH"),
+    Symbol = c("", "", "CASH"),
     stringsAsFactors = FALSE
   )
 

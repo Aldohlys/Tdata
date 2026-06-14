@@ -472,7 +472,7 @@ getIBKR <- function(account = NULL) {
 
   ### Extract TradeNr and Instrument - some instrument may have been part of the trade but closed and still appear here
   ### currency, expdate is empty for treasury bills
-  open_trades_instrument=dplyr::distinct(dplyr::select(open_trades, TradeNr, Strategy, Instrument, Ssjacent, Currency, Exp.Date))
+  open_trades_instrument=dplyr::distinct(dplyr::select(open_trades, TradeNr, Strategy, Instrument, Symbol, Currency, Exp.Date))
 
   ### Generate type field from secType IBKR field - default case it is equal to secType
   portf_data = dplyr::mutate(portf_data, type= dplyr::case_match(secType,"STK" ~ "Stock",
@@ -509,15 +509,15 @@ getIBKR <- function(account = NULL) {
   ### links to open trades via getCashTradeForCurrency()
   portf_data <- dplyr::filter(portf_data, type != "CASH")
 
-  ### Stocks: join on symbol == Ssjacent (Instrument is IBKR company name, doesn't match ticker)
+  ### Stocks: join on symbol == Symbol (Instrument is IBKR company name, doesn't match ticker)
   ### Options/Futures/TreasuryBill: join on Instrument (buildInstrumentName matches trade Instrument)
   portf_stocks <- dplyr::filter(portf_data, type == "Stock")
   portf_other <- dplyr::filter(portf_data, type != "Stock")
 
   if (nrow(portf_stocks) > 0) {
-    trades_for_stocks <- dplyr::distinct(dplyr::select(open_trades_instrument, TradeNr, Strategy, Ssjacent, Currency, Exp.Date))
+    trades_for_stocks <- dplyr::distinct(dplyr::select(open_trades_instrument, TradeNr, Strategy, Symbol, Currency, Exp.Date))
     portf_stocks <- dplyr::left_join(portf_stocks, trades_for_stocks,
-                                     by = c("symbol" = "Ssjacent"), multiple = "first")
+                                     by = c("symbol" = "Symbol"), multiple = "first")
   }
   if (nrow(portf_other) > 0) {
     trades_for_other <- dplyr::distinct(dplyr::select(open_trades_instrument, TradeNr, Strategy, Instrument, Currency, Exp.Date))

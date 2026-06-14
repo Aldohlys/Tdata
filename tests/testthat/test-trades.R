@@ -3,9 +3,9 @@ conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
 getTestTrades = function() {
   alltrades = DBI::dbReadTable(conn, "TestTrades")
-  if (any(with(alltrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Commission, Total, Risk, Reward,PnL))))) {
+  if (any(with(alltrades, !is.numeric(c(TradeNr,TradeDate,Pos,Price, Commission, Total, Risk, Reward,PnL))))) {
     Tbasics::display_message("Trades input data had to be converted!")
-    with(alltrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Commission, Total, Risk, Reward,PnL)))
+    with(alltrades, as.numeric(c(TradeNr,TradeDate,Pos,Price, Commission, Total, Risk, Reward,PnL)))
   }
   alltrades
 }
@@ -25,7 +25,7 @@ getClosedRecentTestTradeQuery <- function(account, windowDate) {
 
 getTestInstrumentQuery <- function(conn, tradenr, instr) {
   return(DBI::dbGetQuery(conn,
-                         "SELECT Prix As startPrice,`Exp.Date` as expdate, Ssjacent as symbol, min(TradeDate) AS initial_trade_date
+                         "SELECT Price As startPrice,`Exp.Date` as expdate, Symbol as symbol, min(TradeDate) AS initial_trade_date
                          FROM TestTrades WHERE TradeNr = ? AND Instrument = ?",
                          params=list(tradenr, instr)))
 

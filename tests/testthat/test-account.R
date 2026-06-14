@@ -529,7 +529,7 @@ test_that("getIBKR returns 2 on full path (stocks + options, no margin)", {
     TradeNr = c(101L, 102L),
     Strategy = c("WHEEL", "CS"),
     Instrument = c("AAPL", "SPY 20JUN26 500 P"),
-    Ssjacent = c("AAPL", "SPY"),
+    Symbol = c("AAPL", "SPY"),
     Currency = c("USD", "USD"),
     Exp.Date = c("", "20.06.2026"),
     stringsAsFactors = FALSE
@@ -562,7 +562,7 @@ test_that("getIBKR returns 2 on full path (stocks + options, no margin)", {
   expect_equal(nrow(written_portf), 2)
   # TradeNr column moved to front
   expect_equal(colnames(written_portf)[1], "TradeNr")
-  # Stock row matched via symbol == Ssjacent
+  # Stock row matched via symbol == Symbol
   expect_equal(written_portf$TradeNr[written_portf$type == "Stock"], 101L)
   # Option row matched via Instrument
   expect_equal(written_portf$TradeNr[written_portf$type == "Put"], 102L)
@@ -577,7 +577,7 @@ test_that("getIBKR works symmetrically for DU demo accounts", {
 
   fake_portf <- make_fake_portf(secType = "STK", symbol = "AAPL")
   fake_trades <- data.frame(
-    TradeNr = 555L, Strategy = "WHEEL", Instrument = "AAPL", Ssjacent = "AAPL",
+    TradeNr = 555L, Strategy = "WHEEL", Instrument = "AAPL", Symbol = "AAPL",
     Currency = "USD", Exp.Date = "", stringsAsFactors = FALSE)
 
   local_mock_tdata_py(list(
@@ -654,7 +654,7 @@ run_getIBKR_with_cash_balances <- function(currency_balances,
 
   fake_portf <- make_fake_portf(secType = "STK", symbol = "AAPL")
   fake_trades <- data.frame(
-    TradeNr = 101L, Strategy = "WHEEL", Instrument = "AAPL", Ssjacent = "AAPL",
+    TradeNr = 101L, Strategy = "WHEEL", Instrument = "AAPL", Symbol = "AAPL",
     Currency = "USD", Exp.Date = "", stringsAsFactors = FALSE)
 
   local_mock_tdata_py(list(
@@ -812,7 +812,7 @@ test_that("getIBKR logs unmatched instruments (TradeNr=NA) and still returns 2",
   appended <- list()
   fake_portf <- make_fake_portf(secType = "STK", symbol = "UNKNOWN_TICKER")
   fake_trades <- data.frame(
-    TradeNr = 101L, Strategy = "WHEEL", Instrument = "AAPL", Ssjacent = "AAPL",
+    TradeNr = 101L, Strategy = "WHEEL", Instrument = "AAPL", Symbol = "AAPL",
     Currency = "USD", Exp.Date = "", stringsAsFactors = FALSE)
 
   local_mock_tdata_py(list(
