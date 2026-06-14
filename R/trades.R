@@ -327,7 +327,7 @@ getTradeDataQuery <- function(conn, params) {
 #'@return The following fields are returned:
 #'\itemize{
 #' \item{TradeNr}
-#' \item{Account: Simu/Live}
+#' \item{Account: IBKR account code, e.g. U1804173 or DU5221795}
 #' \item{TradeDate: YYYYMMDD}
 #' \item{DateTime: UTC timestamp (YYYY-MM-DD HH:MM:SS)}
 #' \item{TimeZoneSource: Source timezone (e.g., "America/New_York", "Manual")}
@@ -388,7 +388,7 @@ isTradeOpened = function(TradeNr) {
 #' If no instruments are retrieved then NA is returned and an error message is displayed.
 #'
 #'@param v_instrument String on IBKR format, or vector of strings. Such as "SPY 15DEC23 400 P"
-#'@param account_type one of the string values ("Live", "Simu", or NA), specifies with which account type trades are to be retrieved.
+#'@param account_type an IBKR account code (e.g. "U1804173", "DU5221795") or NA, specifies which account's trades are to be retrieved.
 #'Default value is NA, which means no filtering done on account_type
 #'@param unique Boolean - if TRUE then will return only unique trade number values otherwise will return one trade number per instrument
 #'@return Integer or a vector of integers
