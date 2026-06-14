@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.28] - 2026-06-14
+
+### Changed
+- **Trades/TestTrades column rename — `Ssjacent→Symbol`, `Prix→Price` (TODO #35 Phase 1b).** The overloaded targets: source words are distinctive so the replace is mechanical, and the pre-existing `Symbol`/`Price` identifiers were display aliases of `Ssjacent`/`Prix`, so the rename unifies them. Renamed across SQL strings, `saveTrades()` field.types, dplyr verbs, validators and tests in `R/{trades,cash,account,db_validation_functions,initialize_cash_positions,nullify}.R`; live DB columns renamed in lockstep (DB backed up). Pairs with RReporting/Tuser; `Tuser/symbol/logic/symf.R::stats_one_position` adds a `type=="Stock"` gate on the symbol-branch join so a normalized FOP root can't pick up an unrelated same-root leg absent from the snapshot. Completes the #35 five-column rename (1a + 1b). Tests: 255 pass; symf stats 8/8 on real trades.
+
 ## [5.10.27] - 2026-06-14
 
 ### Added
