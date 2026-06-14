@@ -1,6 +1,7 @@
 
 ############  Test prices ###########
 test_that("It is possible to retrieve correctly list of prices for a ticker and an interval date", {
+  skip_if_offline()
   expect_true({
     p=getSymIntervalDate("GOOG",as.Date("2023-11-01"),as.Date("2023-11-05"))
     round(as.numeric(p[3,"Close"]))== 130
@@ -8,10 +9,12 @@ test_that("It is possible to retrieve correctly list of prices for a ticker and 
 })
 
 test_that("It is possible to retrieve correctly a last price for a ticker without date", {
+  skip_if_offline()
   expect_type(getLastAdjustedPrice("ESTX50"), "double")
 })
 
 test_that("It is possible to retrieve correctly a price for a ticker and a given date", {
+  skip_if_offline()
   expect_equal(
     trunc(getSymPrice("GOOG",as.Date("2023-11-03"))), ## This makes it resistant when Yahoo does not send decimals back
     129
@@ -19,12 +22,14 @@ test_that("It is possible to retrieve correctly a price for a ticker and a given
 })
 
 test_that("If I try to retrieve a price for a date in the future then it returns NA and display error message", {
+  skip_if_offline()
   expect_true(
     is.na(getSymPrice(c("SPY","USO"),c(as.Date("2099-04-26"))))
   )
 })
 
 test_that("It is possible to retrieve correctly prices for a list of tickers for a given date", {
+  skip_if_offline()
   expect_equal(
     as.integer(getSymPrice(c("GOOG","SIE","ESTX50"),
                       as.Date("2023-11-03"), metric = "Close")),
@@ -33,6 +38,7 @@ test_that("It is possible to retrieve correctly prices for a list of tickers for
 })
 
 test_that("Trying to return one ticker for a set of dates will work",{
+  skip_if_offline()
   expect_equal(
     as.integer(getSymPrice(c("SPY"),
                            c(as.Date("2024-01-10"), as.Date("2024-02-15"), as.Date("2024-02-18")),
@@ -42,6 +48,7 @@ test_that("Trying to return one ticker for a set of dates will work",{
 })
 
 test_that("It is possible to retrieve a vector of prices corresponding to a vector of sym for a vector of dates",{
+  skip_if_offline()
   expect_equal(
     as.integer(getSymPrice(c("USO","SLV","GLD"),
                            c(as.Date("2024-01-10"), as.Date("2024-02-15"), as.Date("2024-02-18")))),
@@ -50,6 +57,7 @@ test_that("It is possible to retrieve a vector of prices corresponding to a vect
 })
 
 test_that("Retrieve a tibble with all last prices from a vector of tickers",{
+  skip_if_offline()
   df <- getLastSymPrice(c("SPY","SPX"))
   expect_true(is.data.frame(df))
   expect_true(all(df$sym == c("SPY","SPX")))
@@ -59,6 +67,7 @@ test_that("Retrieve a tibble with all last prices from a vector of tickers",{
 
 
 test_that("getYahooData is able to work with tickers that have special names: ^XSP, 1810.HK, U-UN.TO", {
+ skip_if_offline()
  data <- getYahooData(c("^XSP", "1810.HK", "U-UN.TO", "XAU.TO"), as.Date("2025-06-25"))
 
  # Test that data is returned (not NULL)

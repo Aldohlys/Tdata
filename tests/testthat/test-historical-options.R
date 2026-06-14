@@ -1,6 +1,16 @@
 # Tests for historical option data retrieval functions
 # test-historical-options.R
 
+# Guard for blocks that actually reach IBKR/TWS. Skips when Python or TWS is
+# unreachable so the suite degrades gracefully instead of waiting on the request
+# timeout. Missing-parameter validation below short-circuits before any IBKR
+# call, so it stays unguarded and always runs.
+skip_if_no_ibkr_backend <- function() {
+  skip_if_not(reticulate::py_available(), "Python not available")
+  reachable <- tryCatch(isIBAvailable(), error = function(e) FALSE)
+  skip_if_not(isTRUE(reachable), "TWS/IBKR not reachable")
+}
+
 test_that("get_or_retrieve_option_historical validates required parameters", {
   # Missing symbol should return NULL
   result <- get_or_retrieve_option_historical(
@@ -49,7 +59,7 @@ test_that("get_or_retrieve_option_historical validates required parameters", {
 })
 
 test_that("get_or_retrieve_option_historical validates right parameter", {
-  # Invalid right value should return NULL
+  # Invalid right value should return NULL (validates before any IBKR call)
   result <- get_or_retrieve_option_historical(
     symbol = "SPY",
     trading_class = "SPY",
@@ -58,6 +68,9 @@ test_that("get_or_retrieve_option_historical validates right parameter", {
     right = "INVALID"
   )
   expect_null(result)
+
+  # Remaining checks reach IBKR; skip when no backend.
+  skip_if_no_ibkr_backend()
 
   # Valid right values: C, P, Call, Put should not immediately fail validation
   # Note: May still return NULL if Python/IBKR not available, but validation passes
@@ -122,7 +135,7 @@ test_that("get_or_retrieve_option_historical validates right parameter", {
 })
 
 test_that("get_or_retrieve_option_historical validates data_type parameter", {
-  # Invalid data_type should return NULL
+  # Invalid data_type should return NULL (validates before any IBKR call)
   result <- get_or_retrieve_option_historical(
     symbol = "SPY",
     trading_class = "SPY",
@@ -132,6 +145,9 @@ test_that("get_or_retrieve_option_historical validates data_type parameter", {
     data_type = "INVALID_TYPE"
   )
   expect_null(result)
+
+  # Remaining checks reach IBKR; skip when no backend.
+  skip_if_no_ibkr_backend()
 
   # Valid data_type values: historical, intraday, combined
   valid_types <- c("historical", "intraday", "combined")
@@ -196,6 +212,7 @@ test_that("clear_on_demand_cache accepts valid parameters", {
 })
 
 test_that("get_or_retrieve_option_historical returns tibble or NULL", {
+  skip_if_no_ibkr_backend()
   # Call with valid parameters
   result <- tryCatch({
     get_or_retrieve_option_historical(
