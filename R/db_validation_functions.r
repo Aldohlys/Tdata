@@ -152,7 +152,7 @@ validate_trades_data <- function(data) {
   }
 
   # Numeric columns
-  num_cols <- c("Prix", "Comm.", "Total", "Risk", "Reward", "PnL")
+  num_cols <- c("Prix", "Commission", "Total", "Risk", "Reward", "PnL")
   for (col in num_cols) {
     if (col %in% names(data)) {
       data[[col]] <- standardize_numeric(data[[col]])

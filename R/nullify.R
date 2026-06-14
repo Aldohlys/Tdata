@@ -15,7 +15,7 @@ Global <- NULL
 path <- NULL
 
 ### for geTradeDates
-TradeNr <- Statut <- TradeDate <- Strategy <- exp_date <- Exp.Date <- Pos <- NULL
+TradeNr <- Status <- TradeDate <- Strategy <- exp_date <- Exp.Date <- Pos <- NULL
 
 ### for getTradeNr
 Account <- Reward <- Risk <- Instrument <- NULL

@@ -9,7 +9,7 @@
 #'
 #' To be sure that correct data types will be used, it converts field types to the target fields, i.e.
 #' * Integer for \code{TradeNr} and \code{Pos}
-#' * Real (double) for \code{Prix, Comm., Total, Risk, Reward, PnL}
+#' * Real (double) for \code{Prix, Commission, Total, Risk, Reward, PnL}
 #'
 #' Concurrency safety: aborts when the DB has TradeNrs that are absent from `trades`.
 #' Without this guard a stale in-memory snapshot (e.g. a second RReporting session,
@@ -18,7 +18,7 @@
 #' is genuinely intended.
 #'@param trades data frame with the following fields:
 #'\code{TradeNr, Account, TradeDate, DateTime, TimeZoneSource, Strategy, Instrument, Ssjacent, Pos, Prix,
-#'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
+#'Commission, Total, Exp.Date, Risk, Reward, PnL, Status, Currency}
 #'@param force logical, default FALSE. Bypass the freshness check and overwrite unconditionally.
 #'@return No value or Error code from dbWriteTable
 #'@export
@@ -50,7 +50,7 @@ saveTrades = function(trades, force = FALSE) {
                                   "TimeZoneSource" = "TEXT",
                                   "Pos"	= "INTEGER",
                                   "Prix" =	"REAL",
-                                  "Comm." =	"REAL",
+                                  "Commission" =	"REAL",
                                   "Total"	= "REAL",
                                   "Risk"=	"REAL",
                                   "Reward"=	"REAL",
@@ -63,11 +63,11 @@ saveTrades = function(trades, force = FALSE) {
 #' This function is used by other Tdata functions but also for RReporting directly.
 #' No argument - takes its source from config::get()
 #'
-#' It verifies that \code{TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward, PnL} are all numeric,
+#' It verifies that \code{TradeNr,TradeDate,Pos,Prix, Commission, Total, Risk, Reward, PnL} are all numeric,
 #' and if not, displays an error message and converts them
 #'@return All trades stored in Trades table from mydb DB. Format is the following:
 #'\code{TradeNr, Account, TradeDate, DateTime, TimeZoneSource, Strategy, Instrument, Ssjacent, Pos, Prix,
-#'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
+#'Commission, Total, Exp.Date, Risk, Reward, PnL, Status, Currency}
 #'@export
 getAllTrades = function() {
   ### Read all trades from DB
@@ -75,9 +75,9 @@ getAllTrades = function() {
   alltrades = DBI::dbReadTable(conn, "Trades")
   DBI::dbDisconnect(conn)
 
-  if (any(with(alltrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL))))) {
+  if (any(with(alltrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Commission, Total, Risk, Reward,PnL))))) {
     Tbasics::display_message("Trades input data had to be converted!")
-    with(alltrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
+    with(alltrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Commission, Total, Risk, Reward,PnL)))
   }
   alltrades
 }
@@ -86,7 +86,7 @@ getAllTrades = function() {
 getClosedRecentTradeQuery <- function(account, windowDate) {
   conn <- safe_db_connect()
   closedtrades = DBI::dbGetQuery(conn,
-                                 "Select * from Trades WHERE Statut == 'Ferm\U00e9' AND Account = ? AND TradeDate >= ?",
+                                 "Select * from Trades WHERE Status == 'Ferm\U00e9' AND Account = ? AND TradeDate >= ?",
                                  params=list(account, windowDate))
   DBI::dbDisconnect(conn)
   closedtrades
@@ -97,7 +97,7 @@ getClosedRecentTradeQuery <- function(account, windowDate) {
 getActiveTradeQuery <- function(account) {
   conn <- safe_db_connect()
   activetrades = DBI::dbGetQuery(conn,
-                                 "Select * from Trades WHERE Statut != 'Ferm\U00e9' AND Account = ?",
+                                 "Select * from Trades WHERE Status != 'Ferm\U00e9' AND Account = ?",
                                  params=list(account))
   DBI::dbDisconnect(conn)
   activetrades
@@ -108,12 +108,12 @@ getActiveTradeQuery <- function(account) {
 #' This function works only for IBKR accounts not for Gonet account.
 #' It reads active trades from given selected account and returns all corresponding records from table Trades in DB.
 #'
-#' It retrieves all trades whose \code{Statut} is different from closed. It also verifies that \code{TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward, PnL} are all numeric,
+#' It retrieves all trades whose \code{Status} is different from closed. It also verifies that \code{TradeNr,TradeDate,Pos,Prix, Commission, Total, Risk, Reward, PnL} are all numeric,
 #' and if not, displays an error message and converts them
 #'@param account string, account name
 #'@return All trades related to active position stored in Trades table from mydb DB. Format is the following:
 #'\code{TradeNr, Account, TradeDate, DateTime, TimeZoneSource, Strategy, Instrument, Ssjacent, Pos, Prix,
-#'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
+#'Commission, Total, Exp.Date, Risk, Reward, PnL, Status, Currency}
 #'@examples
 #'\dontrun{
 #'getActiveTrades("DUxxx")
@@ -125,9 +125,9 @@ getActiveTrades = function(account) {
 
   activetrades = getActiveTradeQuery(account)
 
-  if (any(with(activetrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL))))) {
+  if (any(with(activetrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Commission, Total, Risk, Reward,PnL))))) {
       Tbasics::display_message("Trades input data had to be converted!")
-      with(activetrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
+      with(activetrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Commission, Total, Risk, Reward,PnL)))
   }
   activetrades
 }
@@ -137,14 +137,14 @@ getActiveTrades = function(account) {
 #' This function works only for IBKR accounts not for Gonet account.
 #' It retrieves closed trades from given selected account, after a given window date, and returns all corresponding records from table Trades in DB.
 #'
-#' It retrieves all trades whose \code{Statut} is equal to closed.
-#' It also verifies that \code{TradeNr, TradeDate, Pos, Prix, Comm., Total, Risk, Reward, PnL} are all numeric,
+#' It retrieves all trades whose \code{Status} is equal to closed.
+#' It also verifies that \code{TradeNr, TradeDate, Pos, Prix, Commission, Total, Risk, Reward, PnL} are all numeric,
 #' and if not, displays an error message and converts them
 #'@param account string, account name
 #'@param windowDate date, only records whose original date is greater than window date will be returned. Default value is today minus 200 days.
 #'@return All trades related to closed position stored in Trades table from mydb DB. Format is the following:
 #'\code{TradeNr, Account, TradeDate, DateTime, TimeZoneSource, Strategy, Instrument, Ssjacent, Pos, Prix,
-#'Comm., Total, Exp.Date, Risk, Reward, PnL, Statut, Currency}
+#'Commission, Total, Exp.Date, Risk, Reward, PnL, Status, Currency}
 #'@export
 #'@examples
 #'\dontrun{
@@ -166,9 +166,9 @@ getClosedTrades = function(account, windowDate = Sys.Date()-200) {
   }
 
   ### If necessary display a warning message and convert data
-  if (any(with(closed_trades, !is.numeric(c(TradeNr, TradeDate, Pos, Prix, Comm., Total, Risk, Reward, PnL))))) {
+  if (any(with(closed_trades, !is.numeric(c(TradeNr, TradeDate, Pos, Prix, Commission, Total, Risk, Reward, PnL))))) {
       Tbasics::display_message("Trades input data had to be converted!")
-      with(closed_trades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
+      with(closed_trades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Commission, Total, Risk, Reward,PnL)))
   }
 
   window_date_info <- getTradeDates(unique(closed_trades$TradeNr))
@@ -303,7 +303,7 @@ getInstrument <- function(tradenr, instrument) {
 ### This function is useful for test purposes
 getTradeQuery <- function(conn) {
   return(DBI::dbGetQuery(conn,
-                         "SELECT DISTINCT TradeNr from Trades WHERE Statut = 'Ouvert' OR Statut = 'Ajust\u00e9'"
+                         "SELECT DISTINCT TradeNr from Trades WHERE Status = 'Ouvert' OR Status = 'Ajust\u00e9'"
                          ))
 }
 
@@ -336,14 +336,14 @@ getTradeDataQuery <- function(conn, params) {
 #' \item{Ssjacent: a.k.a symbol}
 #' \item{Pos: Integer}
 #' \item{Prix: numeric}
-#' \item{Comm.: idem}
+#' \item{Commission: idem}
 #' \item{Total: ditto}
 #' \item{Risk}
 #' \item{Reward}
 #' \item{PnL}
-#' \item{Statut: Fermé, Ouvert or Ajusté}
+#' \item{Status: Fermé, Ouvert or Ajusté}
 #' \item{Currency: USD, EUR, CHF,...}
-#' \item{Remarques: Text}
+#' \item{Notes: Text}
 #'}
 #'
 #'@export
@@ -405,7 +405,7 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
   ### Read Trades.csv file and extract open/adjusted trades, to select all instruments present in dt argument
   ### Only opened trades can be retrieved
   trades = getAllTrades()
-  trades = dplyr::filter(trades, Statut=="Ouvert" | Statut=="Ajust\u00e9")
+  trades = dplyr::filter(trades, Status=="Ouvert" | Status=="Ajust\u00e9")
   if (!is.na(account_type)) trades = dplyr::filter(trades, Account == account_type)
   trades = dplyr::select(trades, Instrument,TradeNr)
 

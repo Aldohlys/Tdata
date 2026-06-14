@@ -123,15 +123,15 @@ initialize_cash_positions <- function(baseline_date = as.Date("2025-09-10"),
       Prix = baseline_rate,  # Baseline exchange rate
       Strike = NA_real_,
       Right = "",
-      Comm. = 0,  # No commission for initialization
+      Commission = 0,  # No commission for initialization
       Total = total_base,  # Cost in base currency (negative = outflow)
       Exp.Date = NA_integer_,
       Risk = 0,
       Reward = 0,
       PnL = 0,
-      Statut = "Ouvert",
+      Status = "Ouvert",
       Currency = getParam("BaseCurrency"),  # Transaction currency
-      Remarques = paste0(currency, " CASH position initialization as of ", baseline_date),
+      Notes = paste0(currency, " CASH position initialization as of ", baseline_date),
       stringsAsFactors = FALSE
     )
 

@@ -3,23 +3,23 @@ conn <- DBI::dbConnect(RSQLite::SQLite(), config::get("DB"))
 
 getTestTrades = function() {
   alltrades = DBI::dbReadTable(conn, "TestTrades")
-  if (any(with(alltrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL))))) {
+  if (any(with(alltrades, !is.numeric(c(TradeNr,TradeDate,Pos,Prix, Commission, Total, Risk, Reward,PnL))))) {
     Tbasics::display_message("Trades input data had to be converted!")
-    with(alltrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Comm., Total, Risk, Reward,PnL)))
+    with(alltrades, as.numeric(c(TradeNr,TradeDate,Pos,Prix, Commission, Total, Risk, Reward,PnL)))
   }
   alltrades
 }
 
 getActiveTestTradeQuery <- function(account) {
   DBI::dbGetQuery(conn,
-                                 "Select * from TestTrades WHERE Statut != 'Ferm\U00e9' AND Account = ?",
+                                 "Select * from TestTrades WHERE Status != 'Ferm\U00e9' AND Account = ?",
                                  params=list(account))
 }
 
 
 getClosedRecentTestTradeQuery <- function(account, windowDate) {
   DBI::dbGetQuery(conn,
-                  "Select * from TestTrades WHERE Statut == 'Ferm\U00e9' AND Account = ? AND TradeDate >= ?",
+                  "Select * from TestTrades WHERE Status == 'Ferm\U00e9' AND Account = ? AND TradeDate >= ?",
                   params=list(account, windowDate))
 }
 
@@ -33,7 +33,7 @@ getTestInstrumentQuery <- function(conn, tradenr, instr) {
 
 getTestTradeQuery <- function(conn) {
   return(DBI::dbGetQuery(conn,
-                         "SELECT DISTINCT TradeNr from TestTrades WHERE Statut = 'Ouvert' OR Statut = 'Ajust\u00e9'"
+                         "SELECT DISTINCT TradeNr from TestTrades WHERE Status = 'Ouvert' OR Status = 'Ajust\u00e9'"
                          ))
 }
 

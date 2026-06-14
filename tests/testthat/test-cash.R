@@ -88,7 +88,7 @@ test_that("CASH P&L calculation includes commission in cost basis (integration t
     Pos = 30000,
     Prix = 1.25,
     Total = -37501.60,  # Includes commission: 30000 * 1.25 + 1.60
-    Comm. = 1.60,
+    Commission = 1.60,
     Currency = "USD",
     Right = "",
     stringsAsFactors = FALSE

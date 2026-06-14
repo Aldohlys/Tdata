@@ -203,7 +203,7 @@ getCashTradeForCurrency <- function(account_table, currency) {
   account_db <- account_table
 
   query <- "SELECT TradeNr, Prix, Instrument, Currency FROM Trades
-            WHERE Account = ? AND (Instrument = ? OR Currency = ?) AND Ssjacent = 'CASH' AND Statut != 'Fermé'
+            WHERE Account = ? AND (Instrument = ? OR Currency = ?) AND Ssjacent = 'CASH' AND Status != 'Fermé'
             ORDER BY TradeDate DESC LIMIT 1"
   DBI::dbGetQuery(conn, query, params = list(account_db, currency, currency))
 }
