@@ -175,8 +175,9 @@ def retrieveAccountData(ib, account):
     FullMaintMarginReq = _get_tag_value(acct_df, 'FullMaintMarginReq')
     FullExcessLiquidity = _get_tag_value(acct_df, 'FullExcessLiquidity')
 
-    #### Market value / PnL / cash fields are only under 'All' in sub-account setups.
-    #### Compute per-account values from portfolio positions instead.
+    #### Market value / PnL are derived from portfolio positions (accountSummary only
+    #### exposes them under 'All' for sub-accounts). Cash balances per currency ARE
+    #### available per sub-account via ib.accountValues(account) — see getIBKRData() below.
     #### These will be overwritten below in getIBKRData() after portfolio filtering.
     StockMarketValue = 0
     OptionMarketValue = 0

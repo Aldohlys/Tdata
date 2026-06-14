@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Wired via `on.exit()` into the three Tdata option-fetch entry points: `get_vix_skew()` (`R/vix_skew.R`), `captureOptionSurface()` and `getIV_DTE()` (`R/volatility.R`), so stale-cache notes surface on every exit path including error handlers.
   - 2 new tests in `tests/testthat/test-cache-staleness.R` (drains + clears an injected 2-warning buffer; no-op on empty buffer).
 
+### Changed
+- **Trades/TestTrades column rename — `Statut→Status`, `Comm.→Commission`, `Remarques→Notes` (TODO #35 Phase 1a).** Renamed across SQL query strings, `saveTrades()` `field.types`, dplyr verbs, validators, and tests in `R/{trades,cash,db_validation_functions,initialize_cash_positions,nullify}.R`; live `Trades`/`TestTrades` DB columns renamed in lockstep (DB backed up). Status VALUES (Fermé/Ouvert/Ajusté) unchanged. Pairs with the RReporting/Tuser renames (RReporting flex-import `summarize()` reorders `Commission` after `Total` so it reads the raw flex input). The overloaded `Ssjacent→Symbol` / `Prix→Price` are deferred to Phase 1b. Tests: 255 pass / 0 fail.
+
 ## [5.10.25] - 2026-06-13
 
 ### Added
