@@ -7,20 +7,25 @@ NULL
 
 #' Identify CASH trades in trades table
 #'
+#' CASH (currency/FX) trades are identified by their Instrument being a bare
+#' currency code present in the Currencies table. Their Symbol holds the foreign
+#' (non-base) currency of the pair, not the literal "CASH".
+#'
 #' @param trades Data frame with trade records from Trades table
 #' @return Logical vector indicating CASH trades
 #' @export
 #'
 #' @examples
+#' \dontrun{
 #' trades <- data.frame(
 #'   Instrument = c("SPY", "CHF", "USD"),
-#'   Symbol = c("", "CASH", "CASH")
+#'   Symbol = c("SPY", "JPY", "USD")
 #' )
 #' is_cash_trade(trades)
+#' }
 is_cash_trade <- function(trades) {
-  # CASH trades identified by Symbol = "CASH"
-  # Similar to Treasury Bills identification pattern
-  !is.na(trades$Symbol) & trades$Symbol == "CASH"
+  currencies <- getActiveCurrencies()
+  !is.na(trades$Instrument) & trades$Instrument %in% currencies
 }
 
 #' Identify CASH positions in portfolio table
@@ -202,10 +207,12 @@ getCashTradeForCurrency <- function(account_table, currency) {
 
   account_db <- account_table
 
+  # CASH trades store the foreign (non-base) currency in Symbol, so the balance
+  # currency matches Symbol regardless of which leg sits in Instrument/Currency.
   query <- "SELECT TradeNr, Price, Instrument, Currency FROM Trades
-            WHERE Account = ? AND (Instrument = ? OR Currency = ?) AND Symbol = 'CASH' AND Status != 'Fermé'
+            WHERE Account = ? AND Symbol = ? AND Status != 'Fermé'
             ORDER BY TradeDate DESC LIMIT 1"
-  DBI::dbGetQuery(conn, query, params = list(account_db, currency, currency))
+  DBI::dbGetQuery(conn, query, params = list(account_db, currency))
 }
 
 #' Resolve cost basis from a CASH trade query result
@@ -331,9 +338,10 @@ create_cash_portfolio_row <- function(currency, balance, snapshot_date, snapshot
 #' @export
 #'
 #' @details
-#' Joins CASH trades with portfolio positions using Instrument (trades) = symbol (portfolio).
-#' Flags position mismatches which may indicate currency movements from dividends,
-#' interest, fees, or other non-trade transactions.
+#' Joins CASH trades with portfolio positions on the foreign currency
+#' (trades.Symbol = portfolio.symbol). Flags position mismatches which may
+#' indicate currency movements from dividends, interest, fees, or other
+#' non-trade transactions.
 #'
 #' @examples
 #' \dontrun{
@@ -350,11 +358,11 @@ reconcile_cash_positions <- function(account) {
   all_portfolio <- readLastPortfolio(account)
   portfolio <- dplyr::filter(all_portfolio, is_cash_position(all_portfolio))
 
-  # Join on currency code: Instrument (trades) = symbol (portfolio)
+  # Join on the foreign currency: Symbol (trades) = symbol (portfolio)
   reconciled <- dplyr::left_join(
     trades,
     portfolio |> dplyr::select(symbol, pos, mktPrice, mktValue, unPnL),
-    by = c("Instrument" = "symbol")
+    by = c("Symbol" = "symbol")
   )
 
   # Flag discrepancies (position mismatch)

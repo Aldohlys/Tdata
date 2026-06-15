@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.29] - 2026-06-15
+
+### Changed
+- **CASH-trade identification overhaul (TODO #35 Phases 2 + 3).** CASH/FX trades no longer carry the literal `Symbol = "CASH"`. The marker is now `Instrument %in% getActiveCurrencies()`, and `Symbol` holds the foreign (non-base) currency of the pair (`Symbol = if (Instrument == BaseCurrency) Currency else Instrument`), so RReporting can tell EUR/USD/JPY/GBP cash legs apart and the portfolio join keys on it.
+  - `R/cash.R`: `is_cash_trade()` switched from `Symbol == "CASH"` to the Instrument-in-currencies test; `getCashTradeForCurrency()` now matches `Symbol = ?` (the foreign currency) instead of `(Instrument = ? OR Currency = ?) AND Symbol = 'CASH'`; `reconcile_cash_positions()` joins on `Symbol = symbol` (survives the direction flip where the transacted leg is the base currency). `resolve_cash_cost_basis()` unchanged (it re-derives the quote direction from Instrument vs position currency).
+  - Live `Trades`/`TestTrades` migrated in lockstep via `scripts/migrate_cash_symbol.R` (DB backed up): 13 CASH rows, e.g. 687/720→JPY, 719→GBP, 659→EUR, 660/704→USD.
+  - **Phase 3 (FX Instrument mismatch, trade 687):** the join lived in `Tuser/symbol/logic/symf.R::stats_one_position`, whose symbol-branch was gated to `type=="Stock"`; now `type %in% c("Stock","CASH")`. A cash trade (Symbol = foreign ccy, e.g. JPY) links to its portfolio CASH row (`symbol` = JPY) even though its `Instrument` is the sold base leg (CHF). Currency-code Symbols only match CASH portfolio rows, so this can't alias a future-rooted leg. `displaytradeUI.R` now passes `Currency` into `stats_one`/`stats_one_position` so `convert_fx_trade_amounts()` actually converts JPY amounts to the display currency (687 Risk 78 649 JPY → 389.71 CHF).
+  - Pairs with RReporting (`trade_operations.R` create/flex-import/forex-detect, `reactives.R`, `server.R`) — all CASH detection moved to Instrument; `compute_pnl_for_group()` takes an `is_cash` flag (Symbol can't be used: a currency-rooted future, e.g. CHF, would alias). Tests: test-cash 49, test-trades/account green; RReporting read_trade 3/3.
+
 ## [5.10.28] - 2026-06-14
 
 ### Changed

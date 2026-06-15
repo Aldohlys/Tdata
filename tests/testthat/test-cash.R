@@ -3,13 +3,15 @@
 test_that("CASH trade identification works", {
   trades <- data.frame(
     Instrument = c("SPY", "CHF", "AAPL", "USD"),
-    Symbol = c("", "CASH", "", "CASH"),
+    Symbol = c("SPY", "JPY", "AAPL", "USD"),
     Right = c("C", "", "", ""),
     stringsAsFactors = FALSE
   )
 
-  result <- is_cash_trade(trades)
-  expect_equal(result, c(FALSE, TRUE, FALSE, TRUE))
+  with_mocked_bindings(
+    getActiveCurrencies = function(...) c("CHF", "EUR", "USD", "CAD", "JPY", "GBP"),
+    expect_equal(is_cash_trade(trades), c(FALSE, TRUE, FALSE, TRUE))
+  )
 })
 
 test_that("CASH position identification works", {
@@ -26,13 +28,15 @@ test_that("CASH position identification works", {
 
 test_that("CASH trade identification handles NA", {
   trades <- data.frame(
-    Instrument = c("SPY", "CHF"),
-    Symbol = c(NA_character_, "CASH"),
+    Instrument = c(NA_character_, "CHF"),
+    Symbol = c("SPY", "JPY"),
     stringsAsFactors = FALSE
   )
 
-  result <- is_cash_trade(trades)
-  expect_equal(result, c(FALSE, TRUE))
+  with_mocked_bindings(
+    getActiveCurrencies = function(...) c("CHF", "EUR", "USD", "CAD", "JPY", "GBP"),
+    expect_equal(is_cash_trade(trades), c(FALSE, TRUE))
+  )
 })
 
 test_that("CASH position identification handles NA", {
@@ -63,16 +67,21 @@ test_that("get_exchange_rate returns numeric rate", {
 test_that("CASH P&L calculation handles no CASH trades", {
   trades <- data.frame(
     Instrument = c("SPY", "AAPL"),
-    Symbol = c("", ""),
+    Symbol = c("SPY", "AAPL"),
     Pos = c(100, 50),
     stringsAsFactors = FALSE
   )
 
-  result <- calculate_cash_unrealized_pnl(trades)
+  with_mocked_bindings(
+    getActiveCurrencies = function(...) c("CHF", "EUR", "USD", "CAD", "JPY", "GBP"),
+    {
+      result <- calculate_cash_unrealized_pnl(trades)
 
-  # Should return original data frame unchanged
-  expect_equal(nrow(result), 2)
-  expect_false("UnrealizedPnL" %in% colnames(result))
+      # Should return original data frame unchanged
+      expect_equal(nrow(result), 2)
+      expect_false("UnrealizedPnL" %in% colnames(result))
+    }
+  )
 })
 
 test_that("CASH P&L calculation includes commission in cost basis (integration test)", {
@@ -84,7 +93,7 @@ test_that("CASH P&L calculation includes commission in cost basis (integration t
 
   trade <- data.frame(
     Instrument = "CHF",
-    Symbol = "CASH",
+    Symbol = "USD",
     Pos = 30000,
     Price = 1.25,
     Total = -37501.60,  # Includes commission: 30000 * 1.25 + 1.60
@@ -319,7 +328,7 @@ test_that("reconcile_cash_positions works with real data (unit test with inline 
   test_reconcile <- function() {
     trades <- data.frame(
       Instrument = c("USD", "EUR"),
-      Symbol = c("CASH", "CASH"),
+      Symbol = c("USD", "EUR"),
       Pos = c(45000, 12500),
       stringsAsFactors = FALSE
     )
@@ -334,13 +343,12 @@ test_that("reconcile_cash_positions works with real data (unit test with inline 
       stringsAsFactors = FALSE
     )
 
-    trades_cash <- dplyr::filter(trades, Symbol == "CASH")
     portfolio_cash <- dplyr::filter(portfolio, type == "CASH")
 
     reconciled <- dplyr::left_join(
-      trades_cash,
+      trades,
       portfolio_cash |> dplyr::select(symbol, pos, mktPrice, mktValue, unPnL),
-      by = c("Instrument" = "symbol")
+      by = c("Symbol" = "symbol")
     )
 
     reconciled <- reconciled |>
@@ -365,12 +373,17 @@ test_that("reconcile_cash_positions works with real data (unit test with inline 
 test_that("get_cash_positions filters correctly (unit test)", {
   all_trades <- data.frame(
     Instrument = c("SPY", "AAPL", "USD"),
-    Symbol = c("", "", "CASH"),
+    Symbol = c("SPY", "AAPL", "USD"),
     stringsAsFactors = FALSE
   )
 
-  cash_only <- all_trades[is_cash_trade(all_trades), ]
+  with_mocked_bindings(
+    getActiveCurrencies = function(...) c("CHF", "EUR", "USD", "CAD", "JPY", "GBP"),
+    {
+      cash_only <- all_trades[is_cash_trade(all_trades), ]
 
-  expect_equal(nrow(cash_only), 1)
-  expect_equal(cash_only$Instrument[1], "USD")
+      expect_equal(nrow(cash_only), 1)
+      expect_equal(cash_only$Instrument[1], "USD")
+    }
+  )
 })
