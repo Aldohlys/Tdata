@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.30] - 2026-06-17
+
+### Fixed
+- **`safe_db_connect()` now waits out momentary DB locks (FX-freshness exit 5 root cause).** Added `PRAGMA busy_timeout = 5000` immediately after `DBI::dbConnect()` in `R/db_validation_functions.r`, before the `SELECT 1` lock probe. Without it, a sub-second write held by another process — e.g. `DailyPortfolioUpdate`'s currency refresh right before its Step 0b FX-freshness check — made the probe fail instantly with `SQLITE_BUSY`, exiting the child Rscript with status 5. `check_fx_freshness.R` crashed during its early `getParam()`/`getActiveCurrencies()` calls (both routed through `safe_db_connect()`), before reaching the busy_timeout added to its own connection in 15049ff. The fix hardens every Tdata read against transient locks, not just that script; the existing retry loop still backstops genuinely long locks.
+
 ## [5.10.29] - 2026-06-15
 
 ### Changed

@@ -321,6 +321,14 @@ safe_db_connect <- function(check_lock = TRUE, max_retries = 2) {
     conn <- tryCatch({
       conn_obj <- DBI::dbConnect(RSQLite::SQLite(), db_path)
 
+      # Wait out momentary locks instead of erroring instantly. Without this, a
+      # sub-second write held by another process (e.g. DailyPortfolioUpdate's
+      # currency refresh right before its FX-freshness check) makes the SELECT 1
+      # probe below fail with SQLITE_BUSY (exit 5), crashing the caller before it
+      # does any real work. 5s is a hard ceiling; the retry loop below still
+      # backstops genuinely long locks.
+      DBI::dbExecute(conn_obj, "PRAGMA busy_timeout = 5000")
+
       # Optional: Test if DB is actually accessible (not just connected)
       if (check_lock) {
         # Quick test query to detect lock early
