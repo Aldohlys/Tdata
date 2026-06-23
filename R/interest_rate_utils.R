@@ -3,7 +3,7 @@
 #' Get and store interest rates for trading applications
 #'
 #' @description Retrieves interest rates for the active currencies that have a
-#' fetcher (USD, EUR, CHF, JPY, CAD) for various tenors and stores them in the
+#' fetcher (USD, EUR, CHF, JPY, CAD, GBP, KRW) for various tenors and stores them in the
 #' Currencies table of the configured database. Currencies are taken from
 #' \code{getActiveCurrencies()} by default, so (de)activating a currency in the
 #' Currencies table adds/removes it from the refresh (a fetcher must exist).
@@ -15,7 +15,7 @@
 #' @export
 getInterestRates <- function(update_db = TRUE, currencies = NULL) {
   # Per-currency fetchers. A currency absent from this registry has no data
-  # source and is skipped (e.g. GBP, HKD) -- add a get_<ccy>_rates() to enrol it.
+  # source and is skipped (e.g. inactive HKD) -- add a get_<ccy>_rates() to enrol it.
   # Each fetcher returns one row: Name, last_ir_update, ir1week..ir2years (%).
   fetchers <- list(
     USD = get_usd_rates,
@@ -25,7 +25,9 @@ getInterestRates <- function(update_db = TRUE, currencies = NULL) {
                                    ir1month, ir3months, ir6months, ir1year,
                                    ir2years, ir1week),
     JPY = get_jpy_rates,
-    CAD = get_cad_rates
+    CAD = get_cad_rates,
+    GBP = get_gbp_rates,
+    KRW = get_krw_rates
   )
 
   # Drive off the DB's active currencies so (de)activating a currency in the
@@ -559,6 +561,102 @@ get_cad_rates <- function() {
     }
   }, error = function(e) {
     warning("Error retrieving CAD rates from Bank of Canada Valet: ", e$message)
+  })
+
+  return(rates)
+}
+
+####################################  GBP
+#' Get GBP interest rates from FRED
+#'
+#' Retrieves current GBP interest rates: the short end from SONIA (Sterling
+#' Overnight Index Average, daily, FRED series IUDSOIA), used for the 1-week,
+#' 1-month and 3-month tenors (SONIA tracks Bank Rate closely). The 6-month to
+#' 2-year tenors are anchored to the gilt curve via fallback constants, since
+#' FRED carries no reliable free short-gilt series (post-LIBOR the 3-month
+#' interbank series was discontinued).
+#'
+#' @return A data frame with columns: Name, last_ir_update, ir1week, ir1month,
+#'   ir3months, ir6months, ir1year, ir2years (percent terms)
+#' @noRd
+#' @keywords internal
+get_gbp_rates <- function() {
+  today_date <- format(Sys.Date(), "%Y%m%d")
+
+  # Fallback levels reflecting the UK curve as of June 2026 (BoE Bank Rate ~4.00%).
+  rates <- data.frame(
+    Name = "GBP",
+    last_ir_update = today_date,
+    ir1week  = 4.00,
+    ir1month = 4.00,
+    ir3months = 4.05,
+    ir6months = 4.00,
+    ir1year  = 3.95,
+    ir2years = 3.90,
+    stringsAsFactors = FALSE
+  )
+
+  # Short end: SONIA overnight (daily) from FRED drives 1w/1m/3m.
+  tryCatch({
+    quantmod::getSymbols("IUDSOIA", src = "FRED",
+                         from = Sys.Date() - 30, auto.assign = TRUE)
+    sonia <- as.numeric(xts::last(IUDSOIA[!is.na(IUDSOIA)]))
+    if (length(sonia) == 1 && !is.na(sonia)) {
+      rates$ir1week   <- round(sonia, 3)
+      rates$ir1month  <- round(sonia, 3)
+      rates$ir3months <- round(sonia, 3)
+    }
+  }, error = function(e) {
+    warning("Error retrieving GBP SONIA from FRED: ", e$message)
+  })
+
+  return(rates)
+}
+
+####################################  KRW
+#' Get KRW interest rates from FRED
+#'
+#' Retrieves current KRW interest rates: the 3-month interbank/CD rate from FRED
+#' (series IR3TIB01KRM156N, monthly) anchors the short end, with 1-week and
+#' 1-month approximated from it and 6-month interpolated towards the 1-year
+#' tenor. Medium/long tenors use fallback constants reflecting the Korean
+#' Treasury Bond curve, as no reliable free short-KTB series is available on FRED
+#' without a Bank of Korea ECOS API key.
+#'
+#' @return A data frame with columns: Name, last_ir_update, ir1week, ir1month,
+#'   ir3months, ir6months, ir1year, ir2years (percent terms)
+#' @noRd
+#' @keywords internal
+get_krw_rates <- function() {
+  today_date <- format(Sys.Date(), "%Y%m%d")
+
+  # Fallback levels reflecting Korea as of June 2026 (BoK Base Rate ~2.75%).
+  rates <- data.frame(
+    Name = "KRW",
+    last_ir_update = today_date,
+    ir1week  = 2.75,
+    ir1month = 2.80,
+    ir3months = 2.82,
+    ir6months = 2.75,
+    ir1year  = 2.65,
+    ir2years = 2.60,
+    stringsAsFactors = FALSE
+  )
+
+  # 3-month interbank/CD rate from FRED anchors the short end.
+  tryCatch({
+    quantmod::getSymbols("IR3TIB01KRM156N", src = "FRED",
+                         from = Sys.Date() - 180, auto.assign = TRUE)
+    m3 <- as.numeric(xts::last(IR3TIB01KRM156N[!is.na(IR3TIB01KRM156N)]))
+    if (length(m3) == 1 && !is.na(m3)) {
+      rates$ir3months <- round(m3, 3)
+      rates$ir1month  <- round(m3 * 0.98, 3)
+      rates$ir1week   <- round(m3 * 0.97, 3)
+      # 6-month sits between the 3-month rate and the 1-year fallback.
+      rates$ir6months <- round((m3 + rates$ir1year) / 2, 3)
+    }
+  }, error = function(e) {
+    warning("Error retrieving KRW 3-month interbank rate from FRED: ", e$message)
   })
 
   return(rates)

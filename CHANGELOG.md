@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.11.0] - 2026-06-23
+
+### Added
+- **Interest-rate fetchers for GBP and KRW** (`R/interest_rate_utils.R`), so `getInterestRates()` now covers every *active* currency (CHF, EUR, CAD, USD, JPY, GBP, KRW); only inactive HKD lacks a fetcher.
+  - `get_gbp_rates()`: short end (1w/1m/3m) from SONIA (FRED `IUDSOIA`, daily); 6m–2y anchored to the gilt curve via fallback constants (post-LIBOR FRED carries no reliable free short-gilt series).
+  - `get_krw_rates()`: 3-month interbank/CD rate from FRED (`IR3TIB01KRM156N`, monthly) anchors the short end (1w/1m approximated, 6m interpolated to 1y); medium/long tenors use KTB-curve fallback constants (no free short-KTB FRED series without a BoK ECOS key).
+  - Both registered in the `getInterestRates()` fetcher registry. Previously GBP/KRW were active but skipped, leaving their `ir*` columns NA in the `Currencies` table.
+
+### Fixed
+- **KRW `ConvertToCHF`/`ConvertToUSD` rows backfilled.** KRW was activated in the `Currencies` table but its FX rows were never populated, so `tdata_py.account._get_chf_rates()` warned `No ConvertToCHF rate for KRW; defaulting to 1.0 (sum will be inaccurate)` during `getIBKR()`. The generic Yahoo cross-rate path (`getLastCHFValue`/`getLastUSDValue`, `KRW=X` × `CHFUSD=X`, DirectConversion="No") already handles KRW — it just needed to run; it now self-maintains daily via `getIBKRActiveCurrencyValues()` since KRW is active. No code change to the FX path was required.
+
 ## [5.10.30] - 2026-06-17
 
 ### Fixed
