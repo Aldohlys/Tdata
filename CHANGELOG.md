@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.12.0] - 2026-06-26
+
+### Changed
+- **`greeksNet()` now returns `deltanotional` in each group's own (trade) currency, and carries a `currency` column** (`R/account.R`). Previously it converted notional to base currency internally (and inconsistently — Gonet stocks and options/futures were converted, IBKR stocks were left native). The function is a per-group primitive (one symbol / trade / position per group); callers that aggregate across currencies now convert each group with `convert_to_base_date()` before summing. Doc string (`@returns`) updated.
+  - **Futures notional fixed at the root.** A future's notional now uses its own `mktPrice` (`multiplier*pos*mktPrice`), not `uPrice`. IBKR's `undPrice`→`uPrice` is an option-only field (from `modelGreeks`) and is `0` for futures/stocks (`account.py` `greeks_zero`), so the old `multiplier*pos*uPrice` zeroed every future's notional. The choice of price is now purely instrument-type based (stock/future → `mktPrice`, option → `uPrice`), not a value-based `uPrice==0` fallback.
+  - **TreasuryBill now gets a notional.** Bond-like instruments (`type == "TreasuryBill"`) get `deltanotional = mktValue` (their market/dollar value) instead of 0. `CFD` is intentionally still excluded. Gonet bond mutual funds (`type == "Bond"`) already flow through the non-greek branch (`pos*mktPrice == mktValue`) and were unaffected.
+
+### Notes
+- Tuser consumers updated in lock-step (separate repo): `portfolio/view/displayportfUI.R` (convert per symbol before summing), `portfolio/getportf.R` (group-by-position test harness), `symbol/logic/plotf.R` (dropped its base→trade back-conversion). `portfolio/logic/portf.R`'s own (non-greeksNet) notional pipeline was made type-based too, removing `effective_uPrice` and fixing futures showing zero delta-notional.
+
 ## [5.11.0] - 2026-06-23
 
 ### Added

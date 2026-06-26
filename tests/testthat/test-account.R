@@ -220,6 +220,9 @@ test_that("greeksNet on Gonet-style portfolio computes only delta + notional", {
   expect_equal(result$gamma, 0)
   expect_true(is.na(result$theta))
   expect_true(is.na(result$vega))
+  # deltanotional in trade currency (no FX conversion): 100*50 + 50*200 = 15000
+  expect_equal(result$deltanotional, 15000)
+  expect_equal(result$currency, "USD")
 })
 
 test_that("greeksNet on full IBKR-style portfolio computes all Greeks", {
@@ -246,6 +249,54 @@ test_that("greeksNet on full IBKR-style portfolio computes all Greeks", {
   expect_equal(result$theta, -6)
   # vega:   call: 100 * 0.20 * (-1) = -20  +  put: 100 * 0.15 * 2 = 30  → 10
   expect_equal(result$vega, 10)
+  # deltanotional in trade currency: stock 100*50=5000, call 100*0.40*(-1)*50=-2000,
+  #   put 100*(-0.30)*2*50=-3000  → 0
+  expect_equal(result$deltanotional, 0)
+  expect_equal(result$currency, "USD")
+})
+
+test_that("greeksNet uses mktPrice for a future's notional (uPrice is option-only)", {
+  # IBKR's undPrice (-> uPrice) comes from option modelGreeks and is 0 for futures.
+  # A future is its own underlying, so its notional must use its own mktPrice.
+  portf <- data.frame(
+    type       = "Future",
+    pos        = 2,
+    mktPrice   = 97.64,
+    multiplier = 100L,
+    delta      = NA_real_,
+    gamma      = NA_real_,
+    vega       = NA_real_,
+    theta      = NA_real_,
+    uPrice     = 0,
+    mktValue   = NA_real_,
+    currency   = "USD",
+    stringsAsFactors = FALSE
+  )
+  result <- greeksNet(portf)
+  # multiplier * pos * mktPrice = 100 * 2 * 97.64 = 19528 (USD, native)
+  expect_equal(result$deltanotional, 19528)
+  expect_equal(result$currency, "USD")
+})
+
+test_that("greeksNet treats a TreasuryBill as bond-like: notional = its market value", {
+  portf <- data.frame(
+    type       = "TreasuryBill",
+    pos        = 30,
+    mktPrice   = 99.99,
+    multiplier = 10L,
+    delta      = NA_real_,
+    gamma      = NA_real_,
+    vega       = NA_real_,
+    theta      = NA_real_,
+    uPrice     = 0,
+    mktValue   = 29997,
+    currency   = "USD",
+    stringsAsFactors = FALSE
+  )
+  result <- greeksNet(portf)
+  # notional = market (dollar) value, not delta-weighted
+  expect_equal(result$deltanotional, 29997)
+  expect_equal(result$currency, "USD")
 })
 
 test_that("greeksNet runs on the TestU1804173 last-snapshot fixture", {

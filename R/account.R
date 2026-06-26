@@ -339,40 +339,48 @@ twr <- function(dates, e_nlv, cashflows) {
 #'or it contains \code{type; pos; multiplier; delta; gamma; vega; theta; uPrice;
 #' theta; uPrice} - these are named after portfolio tables in DB, see also readPortfolio function.
 #' and then all Greeks are computed. Type is necessary to have a distinction between stocks and options.
-#'@returns a data frame of double numbers with \code{delta, deltanotional, gamma, theta, vega} for each group.
-#'It is worth noticing that delta notional is an amount in base currency, converted from other currencies using last available currency rate.
+#'@returns a data frame with \code{delta, deltanotional, gamma, theta, vega} and \code{currency}
+#' for each group.
+#'\code{deltanotional} is expressed in the group's own (trade) currency, carried back in the
+#' \code{currency} column. Each group is therefore expected to hold a single currency (e.g. one
+#' symbol, one trade, or one position). Callers that aggregate across currencies must first
+#' convert each group's \code{deltanotional} to a common currency (see \code{convert_to_base_date})
+#' before summing.
 #'@export
 greeksNet = function(portf) {
   ## Manage case of Gonet portfolio - without options
   if (!all(c("type","pos", "multiplier", "delta", "uPrice", "gamma", "theta", "vega")
       %in% colnames(portf))) {
-    portf=dplyr::mutate(portf, mktPrice=c_to_base(mktPrice, currency))
     dplyr::summarize(dplyr::mutate(portf, dnet = pos, ddnet = pos*mktPrice, gnet = 0, tnet = NA_real_, vnet = NA_real_),
                      delta=sum(dnet,na.rm=FALSE),
                      deltanotional=sum(ddnet,na.rm=FALSE),
                      gamma=0,
                      theta= NA_real_,
-                     vega= NA_real_)
+                     vega= NA_real_,
+                     currency=dplyr::first(currency))
   }
 
   else {
-    ## First convert to base currency value
-    portf=dplyr::mutate(portf, uPrice=c_to_base(uPrice, currency))
-
-    #### portf is grouped by datetime
-    #### Therefore summarize will do the computation per datetime
+    #### portf is grouped by datetime (or symbol / position)
+    #### Therefore summarize will do the computation per group.
+    #### deltanotional stays in the group's trade currency (no FX conversion here);
+    #### the currency is carried back so aggregating callers can convert before summing.
     portf_extended <- dplyr::mutate(portf,
                                    dnet=dplyr::case_when(
                                      (type=="Stock"| type=="Future") ~ 1*pos,
                                      (type=="Call" | type=="Put") ~ multiplier*delta*pos,
                                      type=="CASH" ~ 1*pos,  # CASH: linear exposure to FX rate
                                      TRUE ~ 0),
+                                   ## uPrice is the OPTION underlying price (IBKR undPrice from
+                                   ## modelGreeks) and is 0 for non-options. A stock/future is its
+                                   ## own underlying, so its notional uses mktPrice; options use uPrice.
                                    ddnet=dplyr::case_when(
                                      type=="Stock" ~ 1*pos*mktPrice,
-                                     type=="Future" ~ multiplier*pos*uPrice,
+                                     type=="Future" ~ multiplier*pos*mktPrice,
                                      (type=="Call" | type=="Put") ~ multiplier*delta*pos*uPrice,
-                                     type=="CASH" ~ mktValue,  # CASH: use market value in base currency
-                                     TRUE ~ 0),
+                                     type=="CASH" ~ mktValue,  # CASH: mktValue already in the row's currency (base)
+                                     type=="TreasuryBill" ~ mktValue,  # bond-like: notional = its market (dollar) value
+                                     TRUE ~ 0),  # CFD (and other types) intentionally left out
                                    gnet=dplyr::if_else((type=="Call" | type=="Put"),
                                                        multiplier*gamma*pos,
                                                        0),  # CASH: no gamma
@@ -392,7 +400,8 @@ greeksNet = function(portf) {
               deltanotional=sum(ddnet,na.rm=FALSE),
               gamma=sum(gnet,na.rm=FALSE),
               theta=sum(tnet,na.rm=FALSE),
-              vega=sum(vnet,na.rm=FALSE)
+              vega=sum(vnet,na.rm=FALSE),
+              currency=dplyr::first(currency)
               )
   }
 }
