@@ -215,6 +215,53 @@ getCashTradeForCurrency <- function(account_table, currency) {
   DBI::dbGetQuery(conn, query, params = list(account_db, currency))
 }
 
+#' Get all open trades denominated in a currency (for FX cost basis)
+#'
+#' Returns the TradeDate and local-currency Total of every open trade whose
+#' Currency is the given code — both explicit FX conversions and foreign-currency
+#' stock purchases. Extracted so tests can mock it.
+#'
+#' @param account_table Account code (e.g., "U25343478")
+#' @param currency Currency code (e.g., "JPY")
+#' @return Data frame with TradeDate, Total columns (0 rows if none)
+#' @keywords internal
+getCurrencyTradesForBasis <- function(account_table, currency) {
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  query <- "SELECT TradeDate, Total FROM Trades
+            WHERE Account = ? AND Currency = ? AND Status != 'Fermé'"
+  DBI::dbGetQuery(conn, query, params = list(account_table, currency))
+}
+
+#' Weighted-average FX cost basis for a foreign-cash balance
+#'
+#' Cost basis = amount-weighted FX rate across all open trades in the currency
+#' (Convention A). Each trade's local-currency Total (absolute) weights the base
+#' rate on its TradeDate, so the result is the rate at which the currency book
+#' was actually acquired. This captures the full FX exposure of a borrowed/short
+#' foreign-cash balance — not just the single explicit FX trade — which is what
+#' the single-trade cost basis missed (it applied one trade's rate to the whole
+#' balance even when stock purchases had borrowed the rest at other rates).
+#'
+#' @param account_table Account code
+#' @param currency Currency code
+#' @param convert_date Unused placeholder kept for signature symmetry
+#' @return Base-currency-per-unit rate, or NA_real_ when no open trades exist
+#' @keywords internal
+weighted_cash_cost_basis <- function(account_table, currency, convert_date = Sys.Date()) {
+  trades <- getCurrencyTradesForBasis(account_table, currency)
+  if (nrow(trades) == 0) return(NA_real_)
+
+  trades <- trades[!is.na(trades$Total) & trades$Total != 0, , drop = FALSE]
+  if (nrow(trades) == 0) return(NA_real_)
+
+  dates <- as.Date(as.character(trades$TradeDate), "%Y%m%d")
+  rates <- convert_to_base_date(1, currency, dates)
+  weights <- abs(trades$Total)
+  sum(weights * rates) / sum(weights)
+}
+
 #' Resolve cost basis from a CASH trade query result
 #'
 #' Handles the quoting convention: when trade matches on Instrument, Price is
@@ -275,18 +322,27 @@ create_cash_portfolio_row <- function(currency, balance, snapshot_date, snapshot
   # Calculate market value in base currency
   mkt_value <- balance * exchange_rate
 
-  # Try to link to existing CASH trade and get cost basis
+  # Cost basis: amount-weighted FX rate across ALL open trades in this currency
+  # (Convention A). Defaults to the current spot rate — i.e. zero FX P&L — only
+  # when no trade history exists to anchor the acquired rate.
   trade_nr <- NA_integer_
-  trade_cost_basis <- exchange_rate  # Default to current rate if no trade found
+  trade_cost_basis <- exchange_rate
 
   if (!is.null(account_table)) {
+    wbasis <- tryCatch(
+      weighted_cash_cost_basis(account_table, currency, rate_date),
+      error = function(e) {
+        logger::log_warn("Weighted cash cost basis failed for {currency}: {e$message}", namespace = "Tdata")
+        NA_real_
+      })
+    if (!is.na(wbasis)) trade_cost_basis <- wbasis
+
+    # Link to the most recent explicit FX/CASH trade for display continuity
+    # (leaves TradeNr = NA for cash borrowed purely via stock purchases).
     tryCatch({
       result <- getCashTradeForCurrency(account_table, currency)
-
       if (nrow(result) > 0) {
         trade_nr <- result$TradeNr[1]
-        trade_cost_basis <- resolve_cash_cost_basis(result, currency)
-
         logger::log_debug("Linked CASH position {currency} to TradeNr {trade_nr}, cost basis: {trade_cost_basis}",
                          namespace = "Tdata")
       }

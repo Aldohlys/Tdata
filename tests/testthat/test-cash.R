@@ -208,115 +208,115 @@ test_that("resolve_cash_cost_basis inverts Price when Currency matches", {
   expect_equal(cost_basis, 1 / 201.665, tolerance = 1e-8)
 })
 
-# --- create_cash_portfolio_row with mocked trade lookup ---
+# --- weighted_cash_cost_basis (Convention A) ---
 
-test_that("create_cash_portfolio_row links trade via Instrument match", {
-  skip_if_not(DBI::dbCanConnect(RSQLite::SQLite(), Sys.getenv("R_DB_PATH")),
-              "Database not available")
-  skip_if(is.null(try(getParam("BaseCurrency"), silent = TRUE)),
-          "BaseCurrency not configured")
-  skip_if(getParam("BaseCurrency") != "CHF", "Test designed for CHF base currency")
-
-  # Mock: EUR trade where Instrument=EUR (direct match)
-  mock_result <- data.frame(
-    TradeNr = 659L,
-    Price = 0.93,
-    Instrument = "EUR",
-    Currency = "CHF",
-    stringsAsFactors = FALSE
+test_that("weighted_cash_cost_basis returns NA when no open trades", {
+  with_mocked_bindings(
+    getCurrencyTradesForBasis = function(account_table, currency)
+      data.frame(TradeDate = integer(0), Total = numeric(0)),
+    expect_true(is.na(weighted_cash_cost_basis("U25343478", "JPY")))
   )
+})
+
+test_that("weighted_cash_cost_basis weights per-date rates by absolute Total", {
+  fake_trades <- data.frame(TradeDate = c(20260101, 20260201),
+                            Total = c(-100, 300))
 
   with_mocked_bindings(
-    getCashTradeForCurrency = function(account_table, currency) mock_result, {
-      result <- create_cash_portfolio_row(
-        currency = "EUR",
-        balance = 12154.52,
-        snapshot_date = as.integer(format(Sys.Date(), "%Y%m%d")),
-        snapshot_heure = "16:00:00",
-        account_table = "U1804173"
-      )
-
-      expect_false(is.null(result))
-      expect_equal(result$TradeNr, 659L)
-      # avgCost = Price directly (Instrument match)
-      expect_equal(result$avgCost, 0.93)
-      # unPnL = (exchange_rate - 0.93) * 12154.52
-      expected_pnl <- (result$mktPrice - 0.93) * 12154.52
-      expect_equal(result$unPnL, expected_pnl, tolerance = 0.01)
+    getCurrencyTradesForBasis = function(account_table, currency) fake_trades,
+    convert_to_base_date = function(amount, currency, convert_date = Sys.Date())
+      ifelse(as.numeric(format(convert_date, "%Y%m%d")) == 20260101, 0.010, 0.020),
+    {
+      # (100*0.010 + 300*0.020) / (100 + 300) = 7 / 400 = 0.0175
+      expect_equal(weighted_cash_cost_basis("U25343478", "JPY"), 0.0175, tolerance = 1e-9)
     }
   )
 })
 
-test_that("create_cash_portfolio_row links trade via Currency match and inverts Price", {
+# --- create_cash_portfolio_row with mocked cost basis + trade link ---
+
+test_that("create_cash_portfolio_row uses weighted cost basis and links TradeNr", {
   skip_if_not(DBI::dbCanConnect(RSQLite::SQLite(), Sys.getenv("R_DB_PATH")),
               "Database not available")
   skip_if(is.null(try(getParam("BaseCurrency"), silent = TRUE)),
           "BaseCurrency not configured")
   skip_if(getParam("BaseCurrency") != "CHF", "Test designed for CHF base currency")
 
-  # Mock: Trade 687 — Instrument=CHF, Currency=JPY, Price=201.665 JPY/CHF
-  # When looking up JPY balance, this trade matches on Currency
-  mock_result <- data.frame(
-    TradeNr = 687L,
-    Price = 201.665,
-    Instrument = "CHF",
-    Currency = "JPY",
-    stringsAsFactors = FALSE
-  )
+  # JPY cash with an explicit FX trade (720) to link for display.
+  mock_trade <- data.frame(TradeNr = 720L, Price = 201.665,
+                           Instrument = "CHF", Currency = "JPY",
+                           stringsAsFactors = FALSE)
 
   with_mocked_bindings(
-    getCashTradeForCurrency = function(account_table, currency) mock_result, {
+    weighted_cash_cost_basis = function(account_table, currency, convert_date = Sys.Date()) 0.0049,
+    getCashTradeForCurrency = function(account_table, currency) mock_trade, {
       result <- create_cash_portfolio_row(
-        currency = "JPY",
-        balance = -503061,
+        currency = "JPY", balance = -503061,
         snapshot_date = as.integer(format(Sys.Date(), "%Y%m%d")),
-        snapshot_heure = "16:00:00",
-        account_table = "U1804173"
-      )
+        snapshot_heure = "16:00:00", account_table = "U25343478")
 
       expect_false(is.null(result))
-      expect_equal(result$TradeNr, 687L)
-      # avgCost = 1/Price (Currency match -> inversion)
-      expect_equal(result$avgCost, 1 / 201.665, tolerance = 1e-8)
-      # unPnL must be reasonable (NOT 101 million)
-      expect_true(abs(result$unPnL) < 10000,
-                  label = paste("unPnL should be reasonable, got", result$unPnL))
-      # unPnL = (exchange_rate - 1/201.665) * (-503061)
-      expected_pnl <- (result$mktPrice - 1 / 201.665) * (-503061)
+      expect_equal(result$TradeNr, 720L)
+      expect_equal(result$avgCost, 0.0049)                 # weighted cost basis
+      expected_pnl <- (result$mktPrice - 0.0049) * (-503061)
       expect_equal(result$unPnL, expected_pnl, tolerance = 0.01)
+      expect_true(abs(result$unPnL) < 100000)              # sane, not 1e8
     }
   )
 })
 
-test_that("create_cash_portfolio_row defaults to zero PnL when no trade found", {
+test_that("create_cash_portfolio_row computes FX P&L for cash with no FX trade (unlinked)", {
   skip_if_not(DBI::dbCanConnect(RSQLite::SQLite(), Sys.getenv("R_DB_PATH")),
               "Database not available")
   skip_if(is.null(try(getParam("BaseCurrency"), silent = TRUE)),
           "BaseCurrency not configured")
   skip_if(getParam("BaseCurrency") != "CHF", "Test designed for CHF base currency")
 
-  # Mock: no matching trade
-  empty_result <- data.frame(
-    TradeNr = integer(0),
-    Price = numeric(0),
-    Instrument = character(0),
-    Currency = character(0),
-    stringsAsFactors = FALSE
-  )
+  # EUR cash borrowed via stock purchases: weighted basis exists, but there is
+  # no explicit FX trade to link, so TradeNr stays NA while FX P&L is captured.
+  empty_trade <- data.frame(TradeNr = integer(0), Price = numeric(0),
+                            Instrument = character(0), Currency = character(0),
+                            stringsAsFactors = FALSE)
 
   with_mocked_bindings(
-    getCashTradeForCurrency = function(account_table, currency) empty_result, {
+    weighted_cash_cost_basis = function(account_table, currency, convert_date = Sys.Date()) 0.90,
+    getCashTradeForCurrency = function(account_table, currency) empty_trade, {
       result <- create_cash_portfolio_row(
-        currency = "USD",
-        balance = 45000,
+        currency = "EUR", balance = -1561.91,
         snapshot_date = as.integer(format(Sys.Date(), "%Y%m%d")),
-        snapshot_heure = "16:00:00",
-        account_table = "U1804173"
-      )
+        snapshot_heure = "16:00:00", account_table = "U25343478")
 
       expect_false(is.null(result))
-      # No trade -> avgCost = mktPrice, unPnL = 0
-      expect_equal(result$avgCost, result$mktPrice)
+      expect_true(is.na(result$TradeNr))                   # unlinked
+      expect_equal(result$avgCost, 0.90)                   # weighted basis used
+      expected_pnl <- (result$mktPrice - 0.90) * (-1561.91)
+      expect_equal(result$unPnL, expected_pnl, tolerance = 0.01)
+      expect_false(result$unPnL == 0)                      # FX P&L now captured
+    }
+  )
+})
+
+test_that("create_cash_portfolio_row defaults to zero PnL when no trade history", {
+  skip_if_not(DBI::dbCanConnect(RSQLite::SQLite(), Sys.getenv("R_DB_PATH")),
+              "Database not available")
+  skip_if(is.null(try(getParam("BaseCurrency"), silent = TRUE)),
+          "BaseCurrency not configured")
+  skip_if(getParam("BaseCurrency") != "CHF", "Test designed for CHF base currency")
+
+  empty_trade <- data.frame(TradeNr = integer(0), Price = numeric(0),
+                            Instrument = character(0), Currency = character(0),
+                            stringsAsFactors = FALSE)
+
+  with_mocked_bindings(
+    weighted_cash_cost_basis = function(account_table, currency, convert_date = Sys.Date()) NA_real_,
+    getCashTradeForCurrency = function(account_table, currency) empty_trade, {
+      result <- create_cash_portfolio_row(
+        currency = "USD", balance = 45000,
+        snapshot_date = as.integer(format(Sys.Date(), "%Y%m%d")),
+        snapshot_heure = "16:00:00", account_table = "U1804173")
+
+      expect_false(is.null(result))
+      expect_equal(result$avgCost, result$mktPrice)        # no basis -> spot
       expect_equal(result$unPnL, 0)
     }
   )

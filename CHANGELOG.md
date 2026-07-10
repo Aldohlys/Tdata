@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.12.1] - 2026-07-10
+
+### Changed
+- **CASH portfolio rows now use a weighted-average FX cost basis across all open trades in the currency** (`R/cash.R`, Convention A). `create_cash_portfolio_row()` previously anchored the unrealized FX P&L of a foreign-cash balance to a single explicit FX trade's rate (via `getCashTradeForCurrency` / `resolve_cash_cost_basis`), applying that one rate to the entire balance and leaving cash borrowed purely via stock purchases (no FX trade) at zero P&L. It now computes the cost basis as the amount-weighted base rate over every open trade denominated in that currency — FX conversions *and* foreign-currency stock purchases — so the FX exposure of each currency book is captured in full.
+  - New helpers `getCurrencyTradesForBasis()` (DB query, mockable) and `weighted_cash_cost_basis()` (pure weighting).
+  - Example (U25343478): JPY cash P&L corrected from −206 CHF (single FX-trade rate on the whole balance) to −85 CHF (true weighted acquisition rate); EUR/CAD/KRW cash — previously 0 — now carry their FX P&L (−20 / +6 / −21 CHF).
+  - The explicit-FX-trade link (`getCashTradeForCurrency`) is still used, but only to attach a `TradeNr` for display continuity; it no longer drives the cost basis. `resolve_cash_cost_basis()` retained (still documents the quoting convention, still unit-tested).
+
 ## [5.12.0] - 2026-06-26
 
 ### Changed
