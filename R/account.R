@@ -784,22 +784,6 @@ getIBKRActiveCurrencyValues <- function() {
   }
 }
 
-#'   getGonet
-#'
-#' This function loads current Gonet positions, the list of all Gonet trades, and retrieves current price information from IBKR (or end-user).
-#' It then computes the unrealized PnL (as sum of current market value and total cost incurred), deduce then the average cost per current position.
-#' It stores result in DB "Gonet" table.
-#'
-#' Once Gonet trades are retrieved from GonetTrades.csv file, it computes total cost by summing all symbol-related cashflows, stores it in \code{cost}.
-#'
-#' It then retrieves last available prices (named \code{mktPrice}) from IBKR - or from end-user- and compute \code{mktValue = mktPrice * pos},
-#' \code{unPnL = mktValue + cost}, \code{avgCost = cost / pos}
-#' Finally it stores updated Gonet portfolio positions into DB "Gonet" table.
-#'
-#' Resulting columns in Gonet table are \code{TradeNr, date, heure, symbol,
-#' pos, mktPrice, mktValue, avgCost, unPnL, currency and type}.
-#'
-#'
 ## Realized FX gain/loss (base currency) on closed / partially-closed Gonet
 ## trades in one currency. Walks the currency's stock trades chronologically
 ## with average-cost lots; on each sell, realized FX =
@@ -843,6 +827,22 @@ gonet_realized_fx <- function(gonet_trades, ccy) {
   round(rfx, 2)
 }
 
+#'   getGonet
+#'
+#' This function loads current Gonet positions, the list of all Gonet trades, and retrieves current price information from IBKR (or end-user).
+#' It then computes the unrealized PnL (as sum of current market value and total cost incurred), deduce then the average cost per current position.
+#' It stores result in DB "Gonet" table.
+#'
+#' Once Gonet trades are retrieved from GonetTrades.csv file, it computes total cost by summing all symbol-related cashflows, stores it in \code{cost}.
+#'
+#' It then retrieves last available prices (named \code{mktPrice}) from IBKR - or from end-user- and compute \code{mktValue = mktPrice * pos},
+#' \code{unPnL = mktValue + cost}, \code{avgCost = cost / pos}
+#' Finally it stores updated Gonet portfolio positions into DB "Gonet" table.
+#'
+#' Resulting columns in Gonet table are \code{TradeNr, date, heure, symbol,
+#' pos, mktPrice, mktValue, avgCost, unPnL, currency and type}.
+#'
+#'
 #'@returns No value
 #'@export
 #'@examples
