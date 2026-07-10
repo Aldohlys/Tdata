@@ -800,6 +800,49 @@ getIBKRActiveCurrencyValues <- function() {
 #' pos, mktPrice, mktValue, avgCost, unPnL, currency and type}.
 #'
 #'
+## Realized FX gain/loss (base currency) on closed / partially-closed Gonet
+## trades in one currency. Walks the currency's stock trades chronologically
+## with average-cost lots; on each sell, realized FX =
+##   closed_native_cost * (sell_rate - avg_entry_rate).
+## CASH ledger rows (sym_ibkr == the currency code) are excluded, and base-
+## currency trades net zero (rate == 1 throughout). Returns 0 when there are
+## no closing legs. This is the FX that has actually been banked into cash via
+## trading; open positions keep their unrealized FX inside their own valuation.
+gonet_realized_fx <- function(gonet_trades, ccy) {
+  tr <- gonet_trades[gonet_trades$currency == ccy & gonet_trades$sym_ibkr != ccy, , drop = FALSE]
+  if (nrow(tr) == 0) return(0)
+
+  dates <- as.Date(as.character(tr$orig_date), format = "%d.%m.%Y")
+  ord <- order(dates)
+  tr <- tr[ord, , drop = FALSE]; dates <- dates[ord]
+
+  rfx <- 0
+  for (sym in unique(tr$sym_ibkr)) {
+    idx <- which(tr$sym_ibkr == sym)
+    shares <- 0; nat_cost <- 0; chf_cost <- 0
+    for (i in idx) {
+      n <- tr$init_position[i]
+      if (is.na(n) || n == 0) next
+      if (n > 0) {                                    # buy: add to the lot
+        bcost <- -tr$init_cost[i]                     # native cost of the buy (>= 0)
+        shares   <- shares + n
+        nat_cost <- nat_cost + bcost
+        chf_cost <- chf_cost + bcost * convert_to_base_date(1, ccy, dates[i])
+      } else if (shares > 0) {                        # sell: realize FX on the closed portion
+        frac <- min(1, (-n) / shares)
+        closed_nat <- nat_cost * frac
+        closed_chf <- chf_cost * frac
+        entry_rate <- if (closed_nat != 0) closed_chf / closed_nat else 1
+        rfx <- rfx + closed_nat * (convert_to_base_date(1, ccy, dates[i]) - entry_rate)
+        shares   <- shares + n
+        nat_cost <- nat_cost - closed_nat
+        chf_cost <- chf_cost - closed_chf
+      }
+    }
+  }
+  round(rfx, 2)
+}
+
 #'@returns No value
 #'@export
 #'@examples
@@ -842,6 +885,14 @@ getGonet <- function(use_defaults = FALSE) {
   portf$date <- format(Sys.Date(),"%Y%m%d")
   portf$heure <- format(Sys.time(),"%H:%M:%S")  ### Allows for several recordings in the same day
   portf = dplyr::left_join(portf, portf_cashflow, by = c("sym_yahoo" = "sym_yahoo"))
+
+  ### Split CASH positions out of the price-fetch pipeline. Cash is not a
+  ### tradeable IBKR symbol, so it is priced by the FX rate to base and its
+  ### unPnL is the realized FX banked through closed trades (see below); it is
+  ### recombined with the stock rows just before the DB append.
+  cash_mask <- !is.na(portf$type) & portf$type == "CASH"
+  portf_cash <- portf[cash_mask, , drop = FALSE]
+  portf <- portf[!cash_mask, , drop = FALSE]
 
   ### Handle precious metals positions (gold coins, etc.) with web-based pricing
   ### Identify positions with type == "Precious Metals" and URL in exchange field
@@ -1009,6 +1060,38 @@ getGonet <- function(use_defaults = FALSE) {
   portf <- dplyr::select(portf, TradeNr, date, heure, symbol, pos, mktPrice, mktValue,
                          avgCost, unPnL, currency, type)
 
+  ### Build CASH position rows and recombine with the stock rows. Each cash row
+  ### is valued at the FX spot rate to base; its unPnL is the realized FX banked
+  ### through closed/partial trades in that currency (gonet_realized_fx). Stored
+  ### currency is base, so downstream conversion is identity. avgCost is the
+  ### implied cost rate (mktValue - unPnL)/pos, kept for internal consistency but
+  ### not shown for cash (the Trade tab blanks it — realized FX dwarfs the small
+  ### residual balance, so a per-unit cost would be meaningless).
+  if (nrow(portf_cash) > 0) {
+    base_ccy <- getParam("BaseCurrency")
+    cash_rows <- lapply(seq_len(nrow(portf_cash)), function(i) {
+      ccy     <- portf_cash$sym_ibkr[i]
+      balance <- portf_cash$position[i]
+      spot    <- convert_to_base_date(1, ccy, Sys.Date())
+      mkt     <- round(balance * spot, 2)
+      rfx     <- gonet_realized_fx(gonet_trades, ccy)
+      data.frame(
+        TradeNr  = portf_cash$TradeNr[i],
+        date     = portf_cash$date[i],
+        heure    = portf_cash$heure[i],
+        symbol   = ccy,
+        pos      = balance,
+        mktPrice = round(spot, 6),
+        mktValue = mkt,
+        avgCost  = if (balance != 0) round((mkt - rfx) / balance, 6) else NA_real_,
+        unPnL    = rfx,
+        currency = base_ccy,
+        type     = "CASH",
+        stringsAsFactors = FALSE)
+    })
+    portf <- rbind(portf, do.call(rbind, cash_rows))
+  }
+
   ### store prices in .CSV / DB
   ## Make them available for other functions
   ### Open connection to user DB
@@ -1019,68 +1102,15 @@ getGonet <- function(use_defaults = FALSE) {
     safe_db_append(conn,"Prices", new_price_entries)
   }
 
-  ### Retrieve stored cash positions from database to use as defaults
-  ### IMPORTANT: Query BEFORE disconnecting
-  stored_cash_query <- "SELECT CashBalanceCHF, CashBalanceUSD, CashBalanceEUR
-                          FROM account
-                          WHERE account = 'Gonet'
-                          ORDER BY date DESC, heure DESC
-                          LIMIT 1"
-  stored_cash <- tryCatch({
-    result <- DBI::dbGetQuery(conn, stored_cash_query)
-
-    ### Log successful retrieval
-    if (nrow(result) > 0) {
-      logger::log_info("Retrieved stored cash: CHF={result$CashBalanceCHF[1]}, USD={result$CashBalanceUSD[1]}, EUR={result$CashBalanceEUR[1]}",
-                       namespace = "Tdata")
-    } else {
-      logger::log_warn("No previous Gonet account records found in database", namespace = "Tdata")
-    }
-
-    result
-  }, error = function(e) {
-    logger::log_error("Failed to retrieve stored cash positions: {e$message}", namespace = "Tdata")
-    warning("Could not retrieve previous cash positions: ", e$message)
-    data.frame(CashBalanceCHF = 0, CashBalanceUSD = 0, CashBalanceEUR = 0)
-  })
-
-  ### Now disconnect after all queries are complete
   DBI::dbDisconnect(conn)
 
-  ### Cash positions: use stored defaults silently or prompt user
-  if (use_defaults) {
-    cash_chf <- ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceCHF[1], 0)
-    cash_usd <- ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceUSD[1], 0)
-    cash_eur <- ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceEUR[1], 0)
-    logger::log_info("Using stored cash defaults: CHF={cash_chf}, USD={cash_usd}, EUR={cash_eur}",
-                     namespace = "Tdata")
-  } else {
-    cash_chf <- Tbasics::enter_numerical_data(
-      "Gonet Cash CHF",
-      ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceCHF[1], 0)
-    )
-    cash_usd <- Tbasics::enter_numerical_data(
-      "Gonet Cash USD",
-      ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceUSD[1], 0)
-    )
-    cash_eur <- Tbasics::enter_numerical_data(
-      "Gonet Cash EUR",
-      ifelse(nrow(stored_cash) > 0, stored_cash$CashBalanceEUR[1], 0)
-    )
-  }
+  ### Write account data. Cash is now part of the Gonet snapshot as CASH
+  ### positions, so getAccountGonet() derives the cash balances from the rows
+  ### just written — no interactive cash prompt (use_defaults is now unused but
+  ### kept for call-site compatibility, e.g. daily_portfolio_update.R).
+  getAccountGonet()
 
-  ### Automatically call getAccountGonet() to write account data
-  cash_values <- list(
-    cash_chf = cash_chf,
-    cash_usd = cash_usd,
-    cash_eur = cash_eur
-  )
-
-  ### Write account data including cash balances
-  getAccountGonet(gonet_cash = cash_values)
-
-  ### Return cash values for backward compatibility (if needed)
-  invisible(cash_values)
+  invisible(portf)
 }
 #'   getAccountGonet
 #'
@@ -1103,35 +1133,30 @@ getAccountGonet <- function(gonet_cash = NULL) {
   #### Some may be empty (NA lines) -> in this case the whole is considered as NA and therefore not stored
   #### ### DO not take into account days where one of the exchanges (NYSE, Euronext, SMI) is closed
 
-  acc = dplyr::summarize(portf, StockMarketValue = round(sum(convert_to_base_date(mktValue, currency, Sys.Date()), na.rm = FALSE),2),
-                UnrealizedPnL = round(sum(convert_to_base_date(unPnL, currency, Sys.Date()), na.rm = FALSE),2))
+  ### Split CASH positions from stock positions. Cash rows carry currency = base
+  ### with mktValue already in base; stocks are in native currency. Cash is
+  ### excluded from StockMarketValue (it becomes the cash balance) but its
+  ### realized-FX unPnL IS included in the account UnrealizedPnL so the equity /
+  ### P&L curve reflects currency gains banked through trading.
+  is_cash <- !is.na(portf$type) & portf$type == "CASH"
+  stock   <- portf[!is_cash, , drop = FALSE]
+  cash    <- portf[is_cash, , drop = FALSE]
+
+  StockMarketValue <- round(sum(convert_to_base_date(stock$mktValue, stock$currency, Sys.Date()), na.rm = FALSE), 2)
+  UnrealizedPnL    <- round(sum(convert_to_base_date(portf$unPnL,  portf$currency, Sys.Date()), na.rm = FALSE), 2)
+  acc <- data.frame(StockMarketValue = StockMarketValue, UnrealizedPnL = UnrealizedPnL)
   if (any(is.na(acc))) {
     warning("Could not get a complete portfolio record - some prices are missing -> no account recorded")
     return(invisible())
   }
 
-  ### Get cash positions from getGonet() return value, or use legacy hard-coded values if not provided
-  if (!is.null(gonet_cash)) {
-    ### Use cash positions provided by getGonet()
-    cash_chf <- gonet_cash$cash_chf
-    cash_usd <- gonet_cash$cash_usd
-    cash_eur <- gonet_cash$cash_eur
-  } else {
-    ### Legacy: Create hard-coded cash positions (for backward compatibility)
-    Cash_EUR = xts::xts(c(rep(26000,287),rep(0,Sys.Date()-as.Date("2022-06-01")-286)),
-                 order.by = seq(as.Date("2022-06-01"), length=Sys.Date() - as.Date("2022-06-01") + 1,by="days"))
-    Cash_USD = xts::xts(c(rep(33000,287), rep(0,Sys.Date()-as.Date("2022-06-01")-286)),
-                 order.by = seq(as.Date("2022-06-01"), length = Sys.Date() - as.Date("2022-06-01") + 1, by="days"))
-    cash_chf <- 0
-    cash_usd <- as.numeric(Cash_USD[Sys.Date()])
-    cash_eur <- as.numeric(Cash_EUR[Sys.Date()])
-  }
-
-  #### Calculate total cash balance in base currency
-  cash_balance <- round(
-    convert_to_base_date(cash_chf, "CHF", Sys.Date()) +
-    convert_to_base_date(cash_usd, "USD", Sys.Date()) +
-    convert_to_base_date(cash_eur, "EUR", Sys.Date()), 2)
+  ### Cash balances are the native pos of each CASH position; total is the sum
+  ### of their base-currency mktValue.
+  cash_bal <- function(ccy) { v <- cash$pos[cash$symbol == ccy]; if (length(v)) sum(v) else 0 }
+  cash_chf <- cash_bal("CHF")
+  cash_usd <- cash_bal("USD")
+  cash_eur <- cash_bal("EUR")
+  cash_balance <- round(sum(cash$mktValue, na.rm = TRUE), 2)
 
   ### convert to base currency all Gonet positions
   base_currency <- getParam("BaseCurrency")

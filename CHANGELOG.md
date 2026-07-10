@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.13.0] - 2026-07-10
+
+### Added
+- **Gonet cash is now carried as CASH portfolio positions** (`R/account.R`, `getGonet`). The CHF/USD/EUR balances — previously entered via an interactive prompt and stored only in the `Account` table — are now real positions read from `GonetPos.csv`/`GonetTrades.csv` (rows with `type=CASH`), so they appear in the Positions and Trade tabs alongside stocks and feed the account equity curve (`NetLiquidation` = stocks + cash).
+  - Cash is priced by the FX spot rate to base (not an IBKR stock fetch — it is split out of the price pipeline like precious metals). Stored `currency` is base, `mktValue = balance * spot`.
+  - **`gonet_realized_fx()`** (new helper): per currency, the realized FX banked through closed / partially-closed trades, via average-cost lots — on each sell, `realized_fx += closed_native_cost * (sell_rate - avg_entry_rate)`. Base-currency trades net zero; open positions keep their unrealized FX inside their own valuation (no double counting). This becomes each cash position's `unPnL`, so the currency effect of trading is visible without needing an FX-conversion ledger.
+  - **Balance prompt removed.** `getGonet(use_defaults=)` is now unused (kept for call-site compatibility). `GonetPos.csv`/`GonetTrades.csv` are the single source of truth for cash.
+  - **`getAccountGonet`** derives `CashBalanceCHF/USD/EUR` + `TotalCashBalance` from the CASH positions, excludes them from `StockMarketValue`, and includes their realized FX in the account `UnrealizedPnL`.
+  - Tests: 5 deterministic `gonet_realized_fx` unit tests in `tests/testthat/test-cash.R` (full/partial close, base-currency zero, all-open zero, CASH-ledger-row exclusion), FX mocked.
+
+### Notes
+- Tuser consumer updated in lock-step (separate repo): `symbol/logic/symf.R` `stats_all_gonet()` blanks `StartPrice` for cash rows (the stored per-unit `avgCost` is distorted by realized FX dwarfing the small residual balance; `Price` still shows the spot FX rate).
+
 ## [5.12.1] - 2026-07-10
 
 ### Changed

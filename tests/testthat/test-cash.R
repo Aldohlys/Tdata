@@ -387,3 +387,76 @@ test_that("get_cash_positions filters correctly (unit test)", {
     }
   )
 })
+
+# --- gonet_realized_fx: realized FX on closed / partially-closed Gonet trades ---
+
+# Deterministic FX stub: rate depends only on the date (amount * rate).
+.fx_stub <- function(rates_by_date) {
+  function(amount, currency, convert_date) {
+    key <- format(convert_date, "%Y%m%d")
+    amount * rates_by_date[[key]]
+  }
+}
+
+test_that("gonet_realized_fx: base-currency trades net zero", {
+  trades <- data.frame(
+    TradeNr = c(1, 1), orig_date = c("01.01.2024", "01.06.2024"),
+    sym_yahoo = c("X", "X"), sym_ibkr = c("X", "X"),
+    init_position = c(100, -100), init_price = c(10, 12),
+    init_cost = c(-1000, 1200), currency = c("CHF", "CHF"),
+    stringsAsFactors = FALSE)
+  with_mocked_bindings(
+    convert_to_base_date = .fx_stub(list("20240101" = 1, "20240601" = 1)),
+    expect_equal(gonet_realized_fx(trades, "CHF"), 0)
+  )
+})
+
+test_that("gonet_realized_fx: full close realizes closed_cost * (sell_rate - entry_rate)", {
+  # buy 100 @ native cost 1000 (entry rate 0.90), sell 100 (exit rate 0.80)
+  trades <- data.frame(
+    TradeNr = c(1, 1), orig_date = c("01.01.2024", "01.06.2024"),
+    sym_yahoo = c("X", "X"), sym_ibkr = c("X", "X"),
+    init_position = c(100, -100), init_price = c(10, 12),
+    init_cost = c(-1000, 1200), currency = c("USD", "USD"),
+    stringsAsFactors = FALSE)
+  with_mocked_bindings(
+    convert_to_base_date = .fx_stub(list("20240101" = 0.90, "20240601" = 0.80)),
+    expect_equal(gonet_realized_fx(trades, "USD"), round(1000 * (0.80 - 0.90), 2))  # -100
+  )
+})
+
+test_that("gonet_realized_fx: partial close realizes FX on the closed portion only", {
+  # buy 100 @ native cost 1000, sell 40 -> closed native cost = 400
+  trades <- data.frame(
+    TradeNr = c(1, 1), orig_date = c("01.01.2024", "01.06.2024"),
+    sym_yahoo = c("X", "X"), sym_ibkr = c("X", "X"),
+    init_position = c(100, -40), init_price = c(10, 12),
+    init_cost = c(-1000, 480), currency = c("EUR", "EUR"),
+    stringsAsFactors = FALSE)
+  with_mocked_bindings(
+    convert_to_base_date = .fx_stub(list("20240101" = 1.10, "20240601" = 0.90)),
+    expect_equal(gonet_realized_fx(trades, "EUR"), round(400 * (0.90 - 1.10), 2))  # -80
+  )
+})
+
+test_that("gonet_realized_fx: an all-open position has no realized FX", {
+  trades <- data.frame(
+    TradeNr = 1, orig_date = "01.01.2024",
+    sym_yahoo = "X", sym_ibkr = "X",
+    init_position = 100, init_price = 10, init_cost = -1000, currency = "USD",
+    stringsAsFactors = FALSE)
+  with_mocked_bindings(
+    convert_to_base_date = .fx_stub(list("20240101" = 0.90)),
+    expect_equal(gonet_realized_fx(trades, "USD"), 0)
+  )
+})
+
+test_that("gonet_realized_fx: CASH ledger rows (sym_ibkr == currency) are excluded", {
+  trades <- data.frame(
+    TradeNr = 27, orig_date = "10.07.2026",
+    sym_yahoo = "USD", sym_ibkr = "USD",
+    init_position = 522, init_price = 1, init_cost = -522, currency = "USD",
+    stringsAsFactors = FALSE)
+  # No mock needed: the only row is a cash row, excluded -> 0 (no rate lookup).
+  expect_equal(gonet_realized_fx(trades, "USD"), 0)
+})
