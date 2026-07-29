@@ -52,7 +52,7 @@ test_that("readLastPortfolio Gonet returns some data and columns are all authori
     expect_true(identical(colnames(portf),
                           c("TradeNr","date", "heure", "symbol", "pos", "mktPrice",
                             "mktValue", "avgCost", "unPnL",
-                            "currency", "type", "margin")))
+                            "currency", "type", "margin", "realizedPnL")))
     expect_true(nrow(portf) >=1)
   })
 })
@@ -885,4 +885,126 @@ test_that("getIBKR logs unmatched instruments (TradeNr=NA) and still returns 2",
   written_portf <- appended[["TestU1804173"]]
   expect_equal(nrow(written_portf), 1)
   expect_true(is.na(written_portf$TradeNr))
+})
+
+### ---------------------------------------------------------------------------
+### gonet_lots(): average-cost basis for Gonet stock positions
+### ---------------------------------------------------------------------------
+
+## Minimal GonetTrades.csv shape. init_cost is the cash flow: negative on a buy
+## (cash out), positive on a sell (proceeds in).
+gonet_legs <- function(sym_yahoo, sym_ibkr, dates, qty, cost, currency = "CHF", TradeNr = 1L) {
+  data.frame(TradeNr = TradeNr, orig_date = dates, sym_yahoo = sym_yahoo,
+             sym_ibkr = sym_ibkr, init_position = qty, init_price = NA_real_,
+             init_cost = cost, currency = currency, stringsAsFactors = FALSE)
+}
+
+test_that("gonet_lots leaves a never-sold position at its purchase basis", {
+  legs <- gonet_legs("TTE.PA", "TTE", "03.05.2023", 250, -8533.37, "EUR")
+  res  <- gonet_lots(legs)
+
+  expect_equal(res$shares, 250)
+  expect_equal(res$basis, 8533.37)
+  expect_equal(res$realized, 0)
+})
+
+test_that("gonet_lots relieves only the sold fraction of the basis (ABBN)", {
+  ### 500 @ 32.92 then 200 sold @ 85.99. The surviving 300 shares keep the
+  ### original 32.92 average; the gain on the 200 is realized, not unrealized.
+  legs <- gonet_legs("ABBN.SW", "ABBN", c("28.09.2023", "03.07.2026"),
+                     c(500, -200), c(-16460, 17197.6))
+  res  <- gonet_lots(legs)
+
+  expect_equal(res$shares, 300)
+  expect_equal(res$basis, 9876)
+  expect_equal(res$basis / res$shares, 32.92)
+  expect_equal(res$realized, 10613.6)
+
+  ### The pre-fix model summed the cashflows, giving a negative basis and
+  ### folding the realized gain into the unrealized figure.
+  expect_true(res$basis > 0)
+  expect_false(isTRUE(all.equal(res$basis, -sum(legs$init_cost))))
+})
+
+test_that("gonet_lots carries the reduced basis across successive sales", {
+  legs <- gonet_legs("HOLN.SW", "HOLN",
+                     c("01.01.2023", "21.08.2024", "20.06.2025"),
+                     c(660, -140, -260), c(-18048, 10887.3, 12376))
+  res  <- gonet_lots(legs)
+
+  expect_equal(res$shares, 260)
+  ### 18048/660 = 27.3454.. per share, unchanged by either sale
+  expect_equal(res$basis / res$shares, 18048 / 660)
+  expect_gt(res$realized, 0)
+})
+
+test_that("gonet_lots reports a loss-making sale as negative realized", {
+  legs <- gonet_legs("OR.PA", "OR", c("01.01.2023", "19.08.2024"),
+                     c(60, -30), c(-24380.98, 11361.92), "EUR")
+  res  <- gonet_lots(legs)
+
+  expect_equal(res$shares, 30)
+  expect_equal(res$basis, 24380.98 / 2)
+  expect_lt(res$realized, 0)
+})
+
+test_that("gonet_lots zeroes the basis on a full close", {
+  legs <- gonet_legs("NESN.SW", "NESN", c("01.01.2023", "15.12.2023"),
+                     c(150, -150), c(-17803.39, 14540))
+  res  <- gonet_lots(legs)
+
+  expect_equal(res$shares, 0)
+  expect_equal(res$basis, 0)
+  expect_equal(res$realized, 14540 - 17803.39)
+})
+
+test_that("gonet_lots clamps a sale larger than the holding", {
+  legs <- gonet_legs("X.SW", "X", c("01.01.2023", "01.02.2023"),
+                     c(100, -150), c(-1000, 1800))
+  res  <- gonet_lots(legs)
+
+  expect_equal(res$basis, 0)
+  expect_equal(res$realized, 800)
+})
+
+test_that("gonet_lots as_of ignores legs after the cutoff", {
+  legs <- gonet_legs("ABBN.SW", "ABBN", c("28.09.2023", "03.07.2026"),
+                     c(500, -200), c(-16460, 17197.6))
+
+  before <- gonet_lots(legs, as_of = "2026-07-02")
+  expect_equal(before$shares, 500)
+  expect_equal(before$basis, 16460)
+  expect_equal(before$realized, 0)
+
+  after <- gonet_lots(legs, as_of = "2026-07-28")
+  expect_equal(after$shares, 300)
+})
+
+test_that("gonet_lots excludes CASH ledger rows", {
+  legs <- rbind(
+    gonet_legs("ABBN.SW", "ABBN", "28.09.2023", 500, -16460),
+    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD"))
+  res <- gonet_lots(legs)
+
+  expect_equal(nrow(res), 1)
+  expect_equal(res$sym_yahoo, "ABBN.SW")
+})
+
+test_that("gonet_lots keeps the basis of the NA-keyed precious-metal row", {
+  ### The precious metal carries a literal "NA" sym_yahoo. Matching it with
+  ### `== NA` silently drops every leg and returns a zero basis.
+  legs <- gonet_legs(NA_character_, "PM_15606539", "01.03.2021", 67, -22197.1)
+  res  <- gonet_lots(legs)
+
+  expect_equal(res$shares, 67)
+  expect_equal(res$basis, 22197.1)
+  expect_equal(res$basis / res$shares, 331.3)
+})
+
+test_that("gonet_lots returns an empty frame when there are no stock legs", {
+  legs <- gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD")
+  res  <- gonet_lots(legs)
+
+  expect_equal(nrow(res), 0)
+  expect_true(all(c("sym_yahoo", "shares", "basis", "realized") %in% names(res)))
 })

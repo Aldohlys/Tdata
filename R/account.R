@@ -827,20 +827,85 @@ gonet_realized_fx <- function(gonet_trades, ccy) {
   round(rfx, 2)
 }
 
+## Average-cost lots for Gonet stock positions. Walks each symbol's trades
+## chronologically: a buy adds shares and cost, a sell relieves the proportional
+## share of the cost and banks the difference as realized P&L. Returns one row
+## per symbol carrying the basis still held by the open shares.
+##
+## Summing init_cost across every leg instead subtracts a sale's full proceeds
+## from the surviving shares' basis. That understates avgCost -- negative once
+## proceeds exceed the original outlay, as on ABBN after selling 200 of 500 --
+## and leaves the realized gain inside unPnL, which then reads as unrealized.
+##
+## CASH ledger rows (sym_ibkr == the currency code) are excluded; they are
+## valued by gonet_realized_fx instead. as_of restricts the walk to legs on or
+## before that date, so a historical snapshot can be revalued on the basis that
+## applied when it was taken.
+gonet_lots <- function(gonet_trades, as_of = NULL) {
+  empty <- data.frame(sym_yahoo = character(), TradeNr = integer(),
+                      currency = character(), shares = numeric(),
+                      basis = numeric(), realized = numeric(),
+                      stringsAsFactors = FALSE)
+
+  tr <- gonet_trades[gonet_trades$sym_ibkr != gonet_trades$currency, , drop = FALSE]
+  if (nrow(tr) == 0) return(empty)
+
+  dates <- as.Date(as.character(tr$orig_date), format = "%d.%m.%Y")
+  if (!is.null(as_of)) {
+    keep  <- !is.na(dates) & dates <= as.Date(as_of)
+    tr    <- tr[keep, , drop = FALSE]
+    dates <- dates[keep]
+  }
+  if (nrow(tr) == 0) return(empty)
+
+  ord <- order(dates)
+  tr  <- tr[ord, , drop = FALSE]
+
+  rows <- lapply(unique(tr$sym_yahoo), function(sym) {
+    ### The precious-metal row carries a literal "NA" sym_yahoo, and `x == NA`
+    ### is NA -- which() would drop every one of its legs and hand back a zero
+    ### basis. Match the NA key explicitly; the left_join downstream pairs it
+    ### with the position row the same way.
+    idx <- if (is.na(sym)) which(is.na(tr$sym_yahoo))
+           else which(!is.na(tr$sym_yahoo) & tr$sym_yahoo == sym)
+    shares <- 0; basis <- 0; realized <- 0
+    for (i in idx) {
+      n <- tr$init_position[i]
+      if (is.na(n) || n == 0) next
+      if (n > 0) {                                  # buy: add to the lot
+        shares <- shares + n
+        basis  <- basis + (-tr$init_cost[i])        # init_cost is cash out (<= 0)
+      } else if (shares > 0) {                      # sell: relieve the closed fraction
+        frac        <- min(1, (-n) / shares)        # clamp: never relieve more than held
+        closed_cost <- basis * frac
+        realized    <- realized + (tr$init_cost[i] - closed_cost)
+        shares      <- shares + n
+        basis       <- basis - closed_cost
+      }
+    }
+    data.frame(sym_yahoo = sym, TradeNr = tr$TradeNr[idx[1]],
+               currency = tr$currency[idx[1]], shares = shares,
+               basis = basis, realized = realized, stringsAsFactors = FALSE)
+  })
+  do.call(rbind, rows)
+}
+
 #'   getGonet
 #'
 #' This function loads current Gonet positions, the list of all Gonet trades, and retrieves current price information from IBKR (or end-user).
 #' It then computes the unrealized PnL (as sum of current market value and total cost incurred), deduce then the average cost per current position.
 #' It stores result in DB "Gonet" table.
 #'
-#' Once Gonet trades are retrieved from GonetTrades.csv file, it computes total cost by summing all symbol-related cashflows, stores it in \code{cost}.
+#' Once Gonet trades are retrieved from GonetTrades.csv file, it walks each symbol's legs as
+#' average-cost lots (\code{gonet_lots}) to get the \code{basis} still carried by the open shares
+#' and the \code{realized} P&L banked by past sales.
 #'
 #' It then retrieves last available prices (named \code{mktPrice}) from IBKR - or from end-user- and compute \code{mktValue = mktPrice * pos},
-#' \code{unPnL = mktValue + cost}, \code{avgCost = cost / pos}
+#' \code{unPnL = mktValue - basis}, \code{realizedPnL = realized}, \code{avgCost = basis / pos}
 #' Finally it stores updated Gonet portfolio positions into DB "Gonet" table.
 #'
 #' Resulting columns in Gonet table are \code{TradeNr, date, heure, symbol,
-#' pos, mktPrice, mktValue, avgCost, unPnL, currency and type}.
+#' pos, mktPrice, mktValue, avgCost, unPnL, realizedPnL, currency and type}.
 #'
 #'
 #'@returns No value
@@ -876,10 +941,7 @@ getGonet <- function(use_defaults = FALSE) {
   ### Only position that exist (<>0) are taken into account for computations - incl. unrealized PnL
 
   ### This will build the portfolio current position
-  portf_cashflow <- dplyr::summarize(dplyr::group_by(gonet_trades, sym_yahoo),
-                                  TradeNr = dplyr::first(TradeNr),
-                                  cost = sum(init_cost),
-                                  currency = dplyr::first(currency))
+  portf_cashflow <- gonet_lots(gonet_trades)
 
   portf <- dplyr::filter(gonet_pos, position > 0)
   portf$date <- format(Sys.Date(),"%Y%m%d")
@@ -893,6 +955,15 @@ getGonet <- function(use_defaults = FALSE) {
   cash_mask <- !is.na(portf$type) & portf$type == "CASH"
   portf_cash <- portf[cash_mask, , drop = FALSE]
   portf <- portf[!cash_mask, , drop = FALSE]
+
+  ### GonetPos.csv is authoritative for the share count, but the basis comes from
+  ### the GonetTrades.csv legs. If they disagree a leg is missing, and avgCost
+  ### would be silently divided by a share count the basis never paid for.
+  share_gap <- !is.na(portf$shares) & abs(portf$shares - portf$position) > 1e-6
+  if (any(share_gap)) {
+    logger::log_warn("Gonet share count differs from trade legs for {paste(portf$sym_ibkr[share_gap], collapse=', ')} - avgCost/unPnL may be wrong",
+                     namespace = "Tdata")
+  }
 
   ### Handle precious metals positions (gold coins, etc.) with web-based pricing
   ### Identify positions with type == "Precious Metals" and URL in exchange field
@@ -1054,11 +1125,12 @@ getGonet <- function(use_defaults = FALSE) {
   ### Compute all necessary fields for storing in CSV/DB
   portf <- dplyr::mutate(portf, symbol=sym_ibkr, pos=position,
                     mktPrice=price, mktValue=round(pos*mktPrice,2),
-                    unPnL=price*pos+cost,
-                    avgCost=round(-cost/pos,2))
+                    unPnL=round(mktValue-basis,2),
+                    realizedPnL=round(realized,2),
+                    avgCost=round(basis/pos,2))
 
   portf <- dplyr::select(portf, TradeNr, date, heure, symbol, pos, mktPrice, mktValue,
-                         avgCost, unPnL, currency, type)
+                         avgCost, unPnL, realizedPnL, currency, type)
 
   ### Build CASH position rows and recombine with the stock rows. Each cash row
   ### is valued at the FX spot rate to base; its unPnL is the realized FX banked
@@ -1067,6 +1139,10 @@ getGonet <- function(use_defaults = FALSE) {
   ### implied cost rate (mktValue - unPnL)/pos, kept for internal consistency but
   ### not shown for cash (the Trade tab blanks it — realized FX dwarfs the small
   ### residual balance, so a per-unit cost would be meaningless).
+  ###
+  ### realizedPnL stays NA for cash: the banked FX is already reported in unPnL
+  ### under Convention A (see reference on cash-FX in totals), so repeating it
+  ### here would double-count it in any unPnL + realizedPnL total.
   if (nrow(portf_cash) > 0) {
     base_ccy <- getParam("BaseCurrency")
     cash_rows <- lapply(seq_len(nrow(portf_cash)), function(i) {
@@ -1085,6 +1161,7 @@ getGonet <- function(use_defaults = FALSE) {
         mktValue = mkt,
         avgCost  = if (balance != 0) round((mkt - rfx) / balance, 6) else NA_real_,
         unPnL    = rfx,
+        realizedPnL = NA_real_,
         currency = base_ccy,
         type     = "CASH",
         stringsAsFactors = FALSE)

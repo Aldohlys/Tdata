@@ -114,7 +114,7 @@ validate_portfolio_data <- function(data) {
 
     # Ensure numeric columns
   numeric_cols <- c("strike","mktPrice", "optPrice", "mktValue",
-                    "avgCost", "unPnL", "IV", "pvDividend", "delta", "gamma",
+                    "avgCost", "unPnL", "realizedPnL", "IV", "pvDividend", "delta", "gamma",
                     "vega", "theta", "uPrice",  "margin")
 
   for (col in numeric_cols) {

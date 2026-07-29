@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.0] - 2026-07-29
+
+### Fixed
+- **Gonet cost basis is now an average-cost lot walk, not a sum of cashflows** (`R/account.R`, new internal `gonet_lots()`, used by `getGonet`). A partial sale used to subtract its full proceeds from the surviving shares' basis, so `avgCost` collapsed — negative once proceeds passed the original outlay — and the realized gain stayed inside `unPnL`, which then read as unrealized and could exceed market value.
+  - Observed on ABBN (TradeNr 10): 500 bought @ 32.92, 200 sold @ 85.99 on 03.07.2026. Stored `avgCost` became **-2.46** and `unPnL` **24 108 CHF** against a market value of 23 370. Correct values are `avgCost` 32.92, `unPnL` 13 494 (realized 10 614 moves to its own column).
+  - Also affected HOLN, AI and OR — every open position with a prior sale. Positions never sold were already correct and are unchanged.
+  - `unPnL = mktValue - basis`, `avgCost = basis / pos`. The position file stays authoritative for the share count; a mismatch against the trade legs is now logged as a warning instead of silently skewing `avgCost`.
+  - `gonet_lots()` matches the precious-metal row's literal `NA` `sym_yahoo` explicitly — `x == NA` is `NA`, which would have dropped its legs and returned a zero basis.
+
+### Added
+- **`realizedPnL` column on the Gonet table** (`R/account.R`, `R/db_validation_functions.r`). Carries the P&L banked by past sales, which previously had nowhere to live and so hid inside `unPnL`. Cash rows leave it `NA`: their banked FX is already reported in `unPnL` under Convention A, and repeating it would double-count.
+  - Add the column with `Rscript scripts/backfill_gonet_cost_basis.R --add-column` before deploying this version — `getGonet` writes the column and the append fails without it.
+- **`scripts/backfill_gonet_cost_basis.R`** recomputes historical snapshots on the basis that applied on each snapshot date (`gonet_lots(as_of=)`), scoped with `--symbols=` / `--from=`. Dry-run by default; backs the DB up before writing. Rows whose lot walked to zero while the snapshot still held shares are skipped rather than handed their whole market value as profit.
+
 ## [5.13.0] - 2026-07-10
 
 ### Added

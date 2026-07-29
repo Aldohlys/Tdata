@@ -43,6 +43,7 @@ Currency <- conId <- marginable <- NULL
 ### for getGonet
 tdata_py <- sym_ibkr <- sym_yahoo <- orig_date <- price <- mktPrice <- orig_adjusted_price <- NULL
 unPnL <- cost <- avgCost <- orig_adjusted_price <- mktValue <- init_cost <- NULL
+basis <- realized <- realizedPnL <- NULL
 
 ## add for getAccountGonet
 mktValue <- unPnL <- TotalCashBalance <- StockMarketValue <- NetLiquidation <- heure.1 <- NULL
