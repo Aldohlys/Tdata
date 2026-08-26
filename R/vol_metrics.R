@@ -80,77 +80,194 @@ compute_spot_vol_correlation <- function(sym, lookback_days = 90, vol_window = 1
 }
 
 
+#' Core vol-of-vol numerics (no percentile lookup)
+#'
+#' Shared by [compute_vol_of_vol()] and [refresh_vov_breakpoints()] so that the
+#' basket refresh does not re-read the breakpoint table once per symbol.
+#' @noRd
+.vov_core <- function(sym, lookback_days = 504, vol_window = 10) {
+  fetch_days <- lookback_days + vol_window + 30
+  prices <- getSymIntervalDate(sym, Sys.Date() - fetch_days, Sys.Date())
+  if (is.null(prices) || nrow(prices) < (lookback_days / 2 + vol_window)) {
+    logger::log_warn("Insufficient price data for vol-of-vol on {sym}", namespace = "Tdata")
+    return(NULL)
+  }
+
+  log_returns <- diff(log(as.numeric(prices$Adjusted)))
+
+  n <- length(log_returns)
+  rolling_rv <- rep(NA_real_, n)
+  for (i in vol_window:n) {
+    rolling_rv[i] <- stats::sd(log_returns[(i - vol_window + 1):i]) * sqrt(252)
+  }
+
+  valid_rv <- rolling_rv[!is.na(rolling_rv)]
+  if (length(valid_rv) < 20) {
+    logger::log_warn("Too few valid vol observations for vol-of-vol on {sym}", namespace = "Tdata")
+    return(NULL)
+  }
+
+  ### Annualized standard deviation of the RV log-changes.
+  rv_log_changes <- diff(log(valid_rv[valid_rv > 0]))
+  vov <- stats::sd(rv_log_changes) * sqrt(252)
+
+  current_rv <- valid_rv[length(valid_rv)]
+  recent_n <- min(30, length(rv_log_changes))
+  recent_rv_changes <- rv_log_changes[(length(rv_log_changes) - recent_n + 1):length(rv_log_changes)]
+
+  list(
+    vol_of_vol        = round(vov, 3),
+    recent_vol_of_vol = round(stats::sd(recent_rv_changes) * sqrt(252), 3),
+    current_rv        = round(current_rv * 100, 1),
+    rv_percentile     = round(100 * mean(valid_rv <= current_rv), 0),
+    observations      = length(valid_rv)
+  )
+}
+
+
+#' Stored vol-of-vol percentile breakpoints
+#'
+#' Reads the cross-sectional quantiles written by [refresh_vov_breakpoints()].
+#' Returns NULL when the table is missing so callers degrade to "percentile
+#' unavailable" instead of failing.
+#'
+#' @return data.frame ordered by Quantile, or NULL
+#' @export
+get_vov_breakpoints <- function() {
+  tryCatch({
+    conn <- safe_db_connect()
+    on.exit(DBI::dbDisconnect(conn), add = TRUE)
+    if (!DBI::dbExistsTable(conn, "VolOfVolBreakpoints")) return(NULL)
+    bp <- DBI::dbReadTable(conn, "VolOfVolBreakpoints")
+    if (nrow(bp) < 2) return(NULL)
+    bp[order(bp$Quantile), ]
+  }, error = function(e) {
+    logger::log_warn("Could not read VolOfVolBreakpoints: {e$message}", namespace = "Tdata")
+    NULL
+  })
+}
+
+
+#' Place a vol-of-vol reading in the stored cross-sectional distribution
+#'
+#' The absolute level of vol-of-vol is not interpretable. A 10-day rolling
+#' estimator returns ~1.94 even when true vol-of-vol is exactly zero, because
+#' adjacent windows share 9 of their 10 returns and that sampling noise is then
+#' annualized by sqrt(252). What does carry information is the cross-sectional
+#' ranking: it holds at Spearman +0.76 across disjoint 2-year blocks (24 names)
+#' once lookback_days is 504. Hence percentile, not level.
+#'
+#' @param vov numeric vol-of-vol reading
+#' @param breakpoints data.frame from [get_vov_breakpoints()]
+#' @return integer percentile in 0-100, or NA when breakpoints are unavailable
+#' @export
+vov_to_percentile <- function(vov, breakpoints = get_vov_breakpoints()) {
+  if (is.null(breakpoints) || is.null(vov) || length(vov) != 1 || !is.finite(vov)) {
+    return(NA_integer_)
+  }
+  pct <- stats::approx(x = breakpoints$Value, y = breakpoints$Quantile,
+                       xout = vov, rule = 2, ties = "ordered")$y
+  as.integer(round(min(100, max(0, pct))))
+}
+
+
 #' Compute volatility of volatility (vol-of-vol)
 #'
-#' How much realized volatility itself fluctuates over time.
+#' How much realized volatility itself fluctuates over time, reported as a
+#' percentile of a stored reference basket rather than as an absolute level -
+#' see [vov_to_percentile()] for why the level alone says nothing.
 #'
 #' @param sym string - ticker symbol
-#' @param lookback_days numeric - trading days to analyze (default 252)
-#' @param vol_window numeric - rolling window for realized vol (default 10)
-#' @return list with vol-of-vol value, percentile, and interpretation, or NULL on error
+#' @param lookback_days numeric - trading days to analyze (default 504). Below
+#'   ~500 the cross-sectional ranking stops being reproducible (Spearman falls
+#'   from +0.76 to +0.22 between disjoint blocks), which makes the percentile
+#'   meaningless; do not lower this without re-checking that.
+#' @param vol_window numeric - rolling window for realized vol (default 10).
+#'   Widening it looks tidier against absolute thresholds but destroys the
+#'   ranking (+0.27 at 63d even with two years of data).
+#' @return list with vol-of-vol value, its percentile, and context, or NULL on error
 #' @export
-compute_vol_of_vol <- function(sym, lookback_days = 252, vol_window = 10) {
+compute_vol_of_vol <- function(sym, lookback_days = 504, vol_window = 10) {
   tryCatch({
-    fetch_days <- lookback_days + vol_window + 30
-    from_date <- Sys.Date() - fetch_days
-    to_date <- Sys.Date()
+    core <- .vov_core(sym, lookback_days, vol_window)
+    if (is.null(core)) return(NULL)
 
-    prices <- getSymIntervalDate(sym, from_date, to_date)
-    if (is.null(prices) || nrow(prices) < (lookback_days / 2 + vol_window)) {
-      logger::log_warn("Insufficient price data for vol-of-vol on {sym}", namespace = "Tdata")
-      return(NULL)
-    }
+    bp  <- get_vov_breakpoints()
+    pct <- vov_to_percentile(core$vol_of_vol, bp)
 
-    adj_prices <- as.numeric(prices$Adjusted)
-    log_returns <- diff(log(adj_prices))
-
-    n <- length(log_returns)
-    rolling_rv <- rep(NA_real_, n)
-    for (i in vol_window:n) {
-      window_returns <- log_returns[(i - vol_window + 1):i]
-      rolling_rv[i] <- stats::sd(window_returns) * sqrt(252)
-    }
-
-    valid_rv <- rolling_rv[!is.na(rolling_rv)]
-    if (length(valid_rv) < 20) {
-      logger::log_warn("Too few valid vol observations for vol-of-vol on {sym}", namespace = "Tdata")
-      return(NULL)
-    }
-
-    # Vol-of-vol: annualized standard deviation of RV log-changes
-    rv_log_changes <- diff(log(valid_rv[valid_rv > 0]))
-    vov <- stats::sd(rv_log_changes) * sqrt(252)
-
-    current_rv <- valid_rv[length(valid_rv)]
-    rv_percentile <- round(100 * mean(valid_rv <= current_rv), 0)
-
-    recent_n <- min(30, length(rv_log_changes))
-    recent_rv_changes <- rv_log_changes[(length(rv_log_changes) - recent_n + 1):length(rv_log_changes)]
-    recent_vov <- stats::sd(recent_rv_changes) * sqrt(252)
-
-    interpretation <- if (vov > 2.0) {
-      "Very high - extreme vol instability, option prices will swing significantly"
-    } else if (vov > 1.0) {
-      "High - elevated vol instability, wider option price swings expected"
-    } else if (vov > 0.5) {
-      "Moderate - normal vol fluctuation range"
+    interpretation <- if (is.na(pct)) {
+      "percentile unavailable - run refresh_vov_breakpoints()"
     } else {
-      "Low - stable vol environment, predictable option pricing"
+      med <- bp$Value[which.min(abs(bp$Quantile - 50))]
+      sprintf(paste("percentile %d of the %d-name reference basket (median %.2f)",
+                    "- the ranking is informative, the absolute level is not"),
+              pct, bp$NObs[1], med)
     }
 
-    list(
-      vol_of_vol = round(vov, 3),
-      recent_vol_of_vol = round(recent_vov, 3),
-      current_rv = round(current_rv * 100, 1),
-      rv_percentile = rv_percentile,
-      interpretation = interpretation,
-      observations = length(valid_rv)
-    )
+    c(core, list(vov_percentile = pct, interpretation = interpretation))
 
   }, error = function(e) {
     logger::log_error("Vol-of-vol calculation failed for {sym}: {e$message}", namespace = "Tdata")
     NULL
   })
+}
+
+
+#' Recompute and store the vol-of-vol cross-sectional breakpoints
+#'
+#' Computes vol-of-vol across a reference basket and stores its quantiles in the
+#' `VolOfVolBreakpoints` table, so a single-ticker report can place its reading
+#' in the distribution without re-fetching the whole basket.
+#'
+#' Between refreshes the stored cut-points stay valid because the ranking is
+#' persistent (Spearman +0.76 across disjoint 2-year blocks); a quarterly
+#' refresh is ample.
+#'
+#' @param symbols character vector; defaults to the active scanner universe
+#' @param lookback_days numeric passed through to the estimator
+#' @param vol_window numeric passed through to the estimator
+#' @return the stored breakpoint data.frame, invisibly
+#' @export
+refresh_vov_breakpoints <- function(symbols = NULL, lookback_days = 504,
+                                    vol_window = 10) {
+  if (is.null(symbols)) {
+    su <- getScannerUniverse(role = "scanner")
+    symbols <- unique(su$Symbol)
+  }
+  logger::log_info("Refreshing vol-of-vol breakpoints over {length(symbols)} symbols",
+                   namespace = "Tdata")
+
+  vals <- vapply(symbols, function(s) {
+    r <- tryCatch(.vov_core(s, lookback_days, vol_window), error = function(e) NULL)
+    if (is.null(r)) NA_real_ else r$vol_of_vol
+  }, numeric(1))
+
+  vals <- vals[is.finite(vals)]
+  if (length(vals) < 20) {
+    logger::log_error("Only {length(vals)} usable symbols - breakpoints not written",
+                      namespace = "Tdata")
+    return(invisible(NULL))
+  }
+
+  ### Tails included so that vov_to_percentile()'s rule=2 clamp bites only at
+  ### the true extremes rather than collapsing everything past 5/95.
+  probs <- c(1, 5, 10, 25, 50, 75, 90, 95, 99)
+  bp <- data.frame(
+    Quantile     = probs,
+    Value        = round(as.numeric(stats::quantile(vals, probs / 100)), 4),
+    NObs         = length(vals),
+    LookbackDays = lookback_days,
+    VolWindow    = vol_window,
+    LastUpdate   = format(Sys.time(), "%Y%m%d %H:%M"),
+    stringsAsFactors = FALSE
+  )
+
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  DBI::dbWriteTable(conn, "VolOfVolBreakpoints", bp, overwrite = TRUE)
+  logger::log_info("Stored vol-of-vol breakpoints from {length(vals)} symbols",
+                   namespace = "Tdata")
+  invisible(bp)
 }
 
 
@@ -177,13 +294,16 @@ format_vol_metrics <- function(spot_vol_result = NULL, vov_result = NULL) {
   if (!is.null(vov_result)) {
     rows <- c(rows, list(
       data.frame(
-        Metric = c("Vol-of-Vol (annualized)", "Recent Vol-of-Vol (30d)",
-                    "Current RV", "RV Percentile"),
-        Value = c(sprintf("%.3f", vov_result$vol_of_vol),
+        Metric = c("Vol-of-Vol (percentile)", "Vol-of-Vol (raw, uncalibrated)",
+                    "Recent Vol-of-Vol (30d)", "Current RV", "RV Percentile"),
+        Value = c(if (is.na(vov_result$vov_percentile)) "n/a"
+                  else sprintf("%d%%", vov_result$vov_percentile),
+                  sprintf("%.3f", vov_result$vol_of_vol),
                   sprintf("%.3f", vov_result$recent_vol_of_vol),
                   sprintf("%.1f%%", vov_result$current_rv),
                   sprintf("%d%%", vov_result$rv_percentile)),
-        Detail = c(vov_result$interpretation, "", "", ""),
+        Detail = c(vov_result$interpretation, "level is not comparable across tickers",
+                   "noise-dominated, indicative only", "", ""),
         stringsAsFactors = FALSE
       )
     ))

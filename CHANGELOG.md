@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.2] - 2026-08-26
+
+### Changed
+- **Vol-of-vol is now reported as a percentile of a reference basket, not as an absolute level** (`R/vol_metrics.R`). Every /analyze report printed *"Very high - extreme vol instability"* regardless of ticker, because the metric is dominated by estimation noise rather than by vol dynamics.
+  - Cause: `rolling_rv` is a **10-day overlapping** window, so adjacent windows share 9 of their 10 returns; `diff(log(rv))` therefore measures mostly the sampling error of a 10-point vol estimate, and that noise is then annualized by sqrt(252). Fed iid normal returns with **constant** volatility (true vol-of-vol = 0) the estimator returns **1.94** on average - i.e. the old "Very high > 2.0" cutoff sat on the noise floor, and the 0.5 / 1.0 buckets were unreachable. Measured across 208 universe names the observed range is 1.98 (1st pct) to 3.53 (99th pct); nothing ever fell below 2.0.
+  - `lookback_days` default **252 -> 504**. The absolute level stays uninformative at any lookback, but the cross-sectional *ranking* only becomes reproducible with two years of data: Spearman rank correlation between disjoint blocks is **+0.22 at 252d vs +0.76 at 504d** (24 names, SE ~0.21). `vol_window` deliberately stays at 10 - widening it to 63d makes the raw number look tidier against absolute thresholds but drops rank persistence to +0.27.
+  - The absolute `interpretation` bucket is replaced by `vov_percentile` plus a sentence naming the basket and its median. The raw figure is retained as provenance.
+
+### Added
+- **`refresh_vov_breakpoints()`, `get_vov_breakpoints()`, `vov_to_percentile()`** (`R/vol_metrics.R`). The percentile is read off cross-sectional quantiles (1/5/10/25/50/75/90/95/99) stored in a new `VolOfVolBreakpoints` table, so a single-ticker report never re-fetches the basket. Populated by `scripts/refresh_vov_breakpoints.R` from the active scanner universe (~210 names, ~1 min, Yahoo only); stable ranking means a quarterly refresh is ample. Missing table degrades to "percentile unavailable", never an error.
+- Internal `.vov_core()` shares the numerics between the per-ticker call and the basket refresh.
+- `tests/testthat/test-vol-metrics.R`: percentile interpolation, monotonicity, tail clamping, and both degradation paths - all mocked, no network.
+
 ## [5.14.1] - 2026-08-26
 
 ### Fixed
