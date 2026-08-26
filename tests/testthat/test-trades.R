@@ -81,6 +81,28 @@ test_that("getInstrument returns NA for instrument that do not belong to the tra
 
 
 
+test_that("getInstrument parses options whose symbol contains a space", {
+  ### IBKR spells Berkshire Hathaway class B "BRK B", so the Instrument string
+  ### has five tokens instead of four. Strike and right must still be read.
+  fake_query <- function(conn, tradenr, instr) {
+    data.frame(startPrice = 5.0, expdate = "15.08.2025", symbol = "BRK B",
+               initial_trade_date = 20250601, stringsAsFactors = FALSE)
+  }
+
+  with_mocked_bindings(
+    getInstrumentQuery = fake_query,
+    getInterestRate = function(...) 0.05,
+    getSymPrice = function(...) 400, {
+      spaced <- getInstrument(tradenr = 1, instrument = "BRK B 15AUG25 400 P")
+      plain  <- getInstrument(tradenr = 1, instrument = "XYZ 15AUG25 400 P")
+
+      expect_false(is.na(spaced$startIV))
+      expect_equal(spaced$startIV, plain$startIV)
+      expect_equal(spaced$DTE, plain$DTE)
+    })
+})
+
+
 test_that("Retrieve trade number status for a single trade",{
   with_mocked_bindings(
     getTradeQuery = getTestTradeQuery, {

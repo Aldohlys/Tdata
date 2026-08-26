@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.1] - 2026-08-26
+
+### Fixed
+- **`getInstrument()` mis-parsed options whose underlying symbol contains a space** (`R/trades.R`). The option right and strike were read by fixed token position (`[[4]]` and `[[3]]`) of the whitespace-split `Instrument`. IBKR spells Berkshire Hathaway class B **`BRK B`** (verified live: `conId=72063691`, `symbol='BRK B'`), so `"BRK B 15AUG25 400 P"` splits into five tokens: `[[4]]` returned `"400"` instead of `"P"`, `switch()` then yielded `NULL` and the call errored instead of returning IV/DTE.
+  - Right and strike are now taken from the **end** of the token list, and the right must be `P` or `C` for the row to be treated as an option. Stocks (`"SPY"`) and futures (`"MCL JUL26"`) still fall through to the existing "not a Call or a Put" path.
+  - Regression test added in `tests/testthat/test-trades.R`: a spaced-symbol Instrument must produce the same `startIV`/`DTE` as the equivalent single-token symbol.
+
 ## [5.14.0] - 2026-07-29
 
 ### Fixed

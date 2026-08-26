@@ -243,7 +243,14 @@ getInstrument <- function(tradenr, instrument) {
 
     na_data = data.frame(initial_trade_date=NA, startPrice=NA, DTE=NA, u_price=NA, startIV=NA)
     data = getInstrumentQuery(conn, tradenr, instr)
-    type= strsplit(instr, "\\s+")[[1]][4]
+
+    ### Option instruments read "<SYMBOL> <DDMMMYY> <STRIKE> <P|C>", but the symbol
+    ### itself may contain a space - IBKR spells Berkshire Hathaway class B "BRK B".
+    ### Read the right and the strike from the END of the token list so that a
+    ### multi-word symbol does not shift them out of position.
+    tokens = strsplit(instr, "\\s+")[[1]]
+    n_tokens = length(tokens)
+    type = if (n_tokens >= 4 && tokens[n_tokens] %in% c("P", "C")) tokens[n_tokens] else NA_character_
 
     if (is.na(data$initial_trade_date)) {
       Tbasics::display_message("getInstrument: instrument does not exist!")
@@ -260,7 +267,7 @@ getInstrument <- function(tradenr, instrument) {
       type= switch(type, "C"="Call", "P"="Put")
 
       ### Retrieve strike
-      strike = as.numeric(strsplit(instr, "\\s+")[[1]][3])
+      strike = as.numeric(tokens[n_tokens - 1])
 
       data = dplyr::mutate(data, expdate = as.Date(expdate,"%d.%m.%Y"),
                            initial_trade_date = as.Date(as.character(initial_trade_date),"%Y%m%d"))
