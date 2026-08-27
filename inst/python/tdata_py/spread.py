@@ -71,7 +71,8 @@ def compute_spread_risk_reward(
     currency=None,
     exchangeSec=None,
     exchangeOpt=None,
-    force_refresh=False
+    force_refresh=False,
+    market_data_type=2
 ):
     """
     Compute risk/reward, expected value, and probability of success for
@@ -163,6 +164,9 @@ def compute_spread_risk_reward(
     # --------------------------------------------------------------
     # Fetch option prices & greeks
     # --------------------------------------------------------------
+    # force_refresh reaches the QUOTES too, not just the chain: a bid/ask up to
+    # 30 minutes old (the parquet quote TTL) says nothing about current
+    # tradability. market_data_type=1 asks for live quotes for the same reason.
     opt_df = getOptValue(
         sym=sym,
         expiration=expiration,
@@ -171,6 +175,8 @@ def compute_spread_risk_reward(
         currency=currency,
         exchange=exchangeOpt,
         tradingClass=trading_class,
+        force_refresh=force_refresh,
+        market_data_type=market_data_type,
     )
 
     if opt_df is None or opt_df.empty:
@@ -241,6 +247,17 @@ def compute_spread_risk_reward(
             # Edge and expected value
             # --------------------------------------------------
             short_delta = short_row.get("delta", np.nan)
+            long_delta = long_row.get("delta", np.nan)
+
+            # `spread` from getOptValue is the RELATIVE bid-ask width,
+            # 2*(ask-bid)/(ask+bid) — i.e. (ask-bid)/mid. It is NaN exactly when
+            # bid or ask is missing, which is also when `value` silently fell
+            # back to last/close, so a NaN here means "no true mid" and a large
+            # value means "wide market". Both are returned unfiltered: the caller
+            # applies its own threshold and can report what it dropped.
+            short_spread = short_row.get("spread", np.nan)
+            long_spread = long_row.get("spread", np.nan)
+            mktdata_type = short_row.get("mktdata_type", np.nan)
 
             if pd.isna(short_delta):
                 prob_success_delta = np.nan
@@ -284,6 +301,11 @@ def compute_spread_risk_reward(
                     "spread_type": spread_type,
                     "short_strike": short_strike,
                     "long_strike": long_strike,
+                    "short_delta": short_delta,
+                    "long_delta": long_delta,
+                    "short_spread": short_spread,
+                    "long_spread": long_spread,
+                    "mktdata_type": mktdata_type,
                     "width": spread_width,
                     "net_premium": net_premium,
                     "max_risk": max_risk,

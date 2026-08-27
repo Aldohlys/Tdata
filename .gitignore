@@ -46,3 +46,6 @@ historical_config.json
 
 renv/
 renv.lock
+
+# Runtime parquet quote cache written by getOptValue (force_refresh)
+quotes/

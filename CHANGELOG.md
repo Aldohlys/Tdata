@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.3] - 2026-08-27
+
+### Added
+- **contract.py `getOptValue()`**: new `market_data_type` argument (default `2`).
+  Previously the function hardcoded `ib.reqMarketDataType(2)` (frozen) at line 490
+  with the comment "for consistent pricing", so every caller — including all
+  option-spread pricing — was scoring bid/ask liquidity off frozen last-close
+  quotes, which say nothing about tradability. Pass `1` for live quotes (IBKR
+  falls back to frozen by itself outside RTH). The default preserves the exact
+  previous behaviour for every existing caller (/analyze, swing scanner,
+  RPreTrade, Tuser).
+- **contract.py `getOptValue()`**: new `mktdata_type` column reporting what IBKR
+  actually served per row (`ticker.marketDataType`: 1=live, 2=frozen, 3=delayed,
+  4=delayed-frozen) — asking for live is not the same as getting it. Threaded
+  through both quote-cache read paths so cached rows carry it too.
+- **spread.py `compute_spread_risk_reward()`**: returns `short_delta`,
+  `long_delta`, `short_spread`, `long_spread` and `mktdata_type`. The leg deltas
+  were already read from `opt_df` but only `prob_success_delta` was emitted, so
+  callers could not filter on a leg's delta. `short_spread`/`long_spread` are the
+  relative bid-ask widths `2*(ask-bid)/(ask+bid)`; they are `NaN` exactly when bid
+  or ask is missing, which is also when `value` silently falls back to last/close
+  — so `NaN` means "no true mid". Returned unfiltered so the caller sets its own
+  liquidity threshold and can report what it dropped.
+
+### Fixed
+- **spread.py**: `force_refresh` now reaches `getOptValue()`, not just
+  `getOptionStrikes()`. Spread legs were priced from the parquet quote cache (TTL
+  `CONFIG['quotes_ttl_minutes']`, default 30 min) even when the caller explicitly
+  asked for a refresh — a bid/ask up to half an hour old cannot support a
+  liquidity decision.
+- **.gitignore**: ignore the runtime `quotes/` parquet cache that `force_refresh`
+  writes into the package directory, so `build_package.R`'s blanket `git add .`
+  cannot commit it.
+
+### Verified
+- Live TWS, SPY 20260916 put verticals, width 5, 2026-08-27 05:29 CEST (US market
+  closed): `market_data_type=2` returns 144 rows with deltas and worst-leg relative
+  spreads 0.49%–15.5%; `market_data_type=1` returns the same 144 rows with every
+  bid/ask `NaN`, correctly making all of them unassessable for liquidity.
+
 ## [5.14.2] - 2026-08-26
 
 ### Changed

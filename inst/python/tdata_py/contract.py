@@ -332,7 +332,8 @@ def qualify_contract(sym, expiration, strike, right, exchange=None, currency=Non
 
 
 def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None,
-                tradingClass=None, force_refresh=False, cache_ttl_minutes=None):
+                tradingClass=None, force_refresh=False, cache_ttl_minutes=None,
+                market_data_type=2):
     """
     Get option values, implied volatility and delta for one or multiple strikes.
 
@@ -350,6 +351,12 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None,
             written back so the next non-forced caller benefits.
         cache_ttl_minutes (int, optional): Override the per-row freshness
             window. None falls through to CONFIG['quotes_ttl_minutes'] (default 30).
+        market_data_type (int): IBKR market data type passed to reqMarketDataType.
+            2 (frozen, the default) keeps the historical behaviour for all
+            existing callers. Pass 1 for live quotes with automatic frozen
+            fallback outside RTH - required when the caller judges LIQUIDITY,
+            since a frozen bid/ask spread says nothing about tradability.
+            The type actually served is reported per row in `mktdata_type`.
 
     Returns:
         DataFrame or None:
@@ -431,7 +438,8 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None,
         ordered = [
             {"strike": s, **{k: cached_rows[s].get(k, float('nan'))
                              for k in ("value", "bid", "ask", "last",
-                                       "spread", "impliedvol", "delta")}}
+                                       "spread", "impliedvol", "delta",
+                                       "mktdata_type")}}
             for s in requested_strikes
         ]
         return pd.DataFrame(ordered)
@@ -486,8 +494,10 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None,
         contracts, strikes = zip(*qualified_pairs)
         contracts, strikes = list(contracts), list(strikes)
 
-        # Use frozen market data (type 2) for consistent pricing
-        ib.reqMarketDataType(2)
+        # Market data type is caller-chosen. Default 2 (frozen) gives the
+        # consistent pricing every existing caller was written against; 1 asks
+        # for live and IBKR falls back to frozen by itself outside RTH.
+        ib.reqMarketDataType(int(market_data_type))
 
         tickers = ib.reqTickers(*contracts)
         ib.sleep(0.25)
@@ -532,7 +542,10 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None,
                 "last": round(last_price, 5) if last_price is not None else float('nan'),
                 "spread": round(spread, 5) if not math.isnan(spread) else float('nan'),
                 "impliedvol": round(implied_vol, 4) if not math.isnan(implied_vol) else float('nan'),
-                "delta": round(delta, 3) if not math.isnan(delta) else float('nan')
+                "delta": round(delta, 3) if not math.isnan(delta) else float('nan'),
+                # What IBKR actually served, which is not necessarily what was
+                # asked for: 1=live, 2=frozen, 3=delayed, 4=delayed-frozen.
+                "mktdata_type": int(getattr(ticker, "marketDataType", 0) or 0)
             }
             
             result_dic.append(row)
@@ -559,7 +572,8 @@ def getOptValue(sym, expiration, strikes, right, currency=None, exchange=None,
             elif s in cached_rows:
                 merged.append({"strike": s, **{k: cached_rows[s].get(k, float('nan'))
                                                for k in ("value", "bid", "ask", "last",
-                                                         "spread", "impliedvol", "delta")}})
+                                                         "spread", "impliedvol", "delta",
+                                                         "mktdata_type")}})
             # else: dropped (couldn't qualify and no cache entry); caller sees a missing strike.
 
         result = pd.DataFrame(merged) if merged else pd.DataFrame(result_dic)
