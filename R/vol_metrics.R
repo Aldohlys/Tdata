@@ -107,6 +107,15 @@ compute_spot_vol_correlation <- function(sym, lookback_days = 90, vol_window = 1
     return(NULL)
   }
 
+  ### Close-to-close is deliberate. Yang-Zhang and Rogers-Satchell were scored
+  ### against it on the full universe: out-of-sample skill (older block -> recent
+  ### block, target = non-overlapping 21-day RV) is +0.386 C2C, +0.391 YZ,
+  ### +0.252 RS. YZ's edge is +0.005, 95% CI [-0.094, +0.101] - a coin flip - and
+  ### it re-ranks 30% of names because its var(o) term makes its noise floor rise
+  ### with overnight-gap share (0.68 -> 1.21 across terciles) where C2C's is flat.
+  ### C2C is uniformly inefficient, which compresses the ranking without tilting
+  ### it, and already sits at the +0.371 ceiling set by the target's reliability.
+
   ### Annualized standard deviation of the RV log-changes.
   rv_log_changes <- diff(log(valid_rv[valid_rv > 0]))
   vov <- stats::sd(rv_log_changes) * sqrt(252)
@@ -154,8 +163,11 @@ get_vov_breakpoints <- function() {
 #' estimator returns ~1.94 even when true vol-of-vol is exactly zero, because
 #' adjacent windows share 9 of their 10 returns and that sampling noise is then
 #' annualized by sqrt(252). What does carry information is the cross-sectional
-#' ranking: it holds at Spearman +0.76 across disjoint 2-year blocks (24 names)
-#' once lookback_days is 504. Hence percentile, not level.
+#' ranking: it holds at Spearman +0.45 across disjoint 2-year blocks (205 names)
+#' once lookback_days is 504. Hence percentile, not level. An earlier +0.76 read
+#' on 24 names does not reproduce - at that n the Spearman standard error is
+#' ~0.21, and 24-name subsamples of the full universe reach +0.76 only 1.4% of
+#' the time.
 #'
 #' @param vov numeric vol-of-vol reading
 #' @param breakpoints data.frame from [get_vov_breakpoints()]
@@ -178,13 +190,14 @@ vov_to_percentile <- function(vov, breakpoints = get_vov_breakpoints()) {
 #' see [vov_to_percentile()] for why the level alone says nothing.
 #'
 #' @param sym string - ticker symbol
-#' @param lookback_days numeric - trading days to analyze (default 504). Below
-#'   ~500 the cross-sectional ranking stops being reproducible (Spearman falls
-#'   from +0.76 to +0.22 between disjoint blocks), which makes the percentile
-#'   meaningless; do not lower this without re-checking that.
+#' @param lookback_days numeric - trading days to analyze (default 504). Halving
+#'   it to 252 drops cross-sectional rank persistence from +0.45 to +0.18 between
+#'   disjoint blocks, which makes the percentile far weaker; do not lower this
+#'   without re-checking that.
 #' @param vol_window numeric - rolling window for realized vol (default 10).
-#'   Widening it looks tidier against absolute thresholds but destroys the
-#'   ranking (+0.27 at 63d even with two years of data).
+#'   Widening is not the hazard once believed: 63d persists at +0.45, the same as
+#'   10d. It measures slower vol variation and would invalidate stored
+#'   breakpoints, so 10 stays the default for continuity, not for accuracy.
 #' @return list with vol-of-vol value, its percentile, and context, or NULL on error
 #' @export
 compute_vol_of_vol <- function(sym, lookback_days = 504, vol_window = 10) {
@@ -220,8 +233,8 @@ compute_vol_of_vol <- function(sym, lookback_days = 504, vol_window = 10) {
 #' in the distribution without re-fetching the whole basket.
 #'
 #' Between refreshes the stored cut-points stay valid because the ranking is
-#' persistent (Spearman +0.76 across disjoint 2-year blocks); a quarterly
-#' refresh is ample.
+#' persistent (Spearman +0.45 across disjoint 2-year blocks, 205 names); a
+#' quarterly refresh is ample.
 #'
 #' @param symbols character vector; defaults to the active scanner universe
 #' @param lookback_days numeric passed through to the estimator

@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.4] - 2026-08-31
+
+### Fixed
+- **`R/vol_metrics.R`**: corrected two vol-of-vol persistence figures that did
+  not reproduce. Both originated from a 24-name sample, where the Spearman
+  standard error is ~0.21.
+  - **Rank persistence is +0.45, not +0.76.** Measured over the two most recent
+    disjoint 504-day blocks across 205 scanner-universe names. 24-name
+    subsamples of that universe reach +0.76 only 1.4% of the time. The figure
+    appeared in `vov_to_percentile()` docs, `compute_vol_of_vol()` docs and
+    `scripts/refresh_vov_breakpoints.R`, and is the sole cited justification for
+    reporting a percentile at all. The design still stands - +0.45 is a real
+    signal - but the number was overstated by ~70%.
+  - **Widening `vol_window` does not "destroy the ranking".** The docs warned of
+    +0.27 at 63d; measured on 205 names it is +0.453, statistically identical to
+    10d's +0.445. The default stays at 10 for continuity with stored
+    breakpoints, which is now stated as the actual reason.
+  - `lookback_days` guidance is unchanged and confirmed: halving to 252 drops
+    persistence to +0.18 (docs said +0.22).
+
+### Changed
+- **`R/vol_metrics.R` `.vov_core()`**: recorded why the realized-vol estimator is
+  close-to-close. Yang-Zhang and Rogers-Satchell were built and scored against
+  it on the full universe using out-of-sample skill (older block predicting a
+  low-noise recent-block target built from non-overlapping 21-day RV, so the
+  target shares no sampling noise with any predictor): C2C +0.386, YZ +0.391,
+  RS +0.252, against a +0.371 ceiling set by the target's own reliability.
+  YZ's advantage is +0.005, 95% CI [-0.094, +0.101]. YZ also re-ranks 30% of the
+  universe by more than a quarter of the field, because its `var(o)` overnight
+  term is a 10-observation sample variance whose noise floor rises with gap
+  share (0.68 -> 1.21 across terciles, Spearman +0.978) while close-to-close's
+  floor stays flat - systematically lifting foreign listings and 24h commodity
+  ETFs. No behaviour change; the comment prevents the comparison being redone.
+
 ## [5.14.3] - 2026-08-27
 
 ### Added
