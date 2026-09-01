@@ -21,7 +21,7 @@ OPEN_ORDER_COLUMNS = [
     'isCombo', 'legCount', 'legIndex', 'legRatio', 'legAction',
     'secType', 'symbol', 'localSymbol', 'tradingClass',
     'expiry', 'strike', 'right', 'multiplier', 'currency', 'exchange',
-    'action', 'quantity', 'orderType',
+    'action', 'quantity', 'orderType', 'algoStrategy',
     'lmtPrice', 'auxPrice', 'trailStopPrice',
     'tif', 'status', 'filled', 'remaining',
 ]
@@ -107,6 +107,9 @@ def _order_row(order, contract, status, bag=None, leg=None,
         'action': order.action,
         'quantity': _num(order.totalQuantity),
         'orderType': order.orderType,
+        # TWS shows an algo order as "Adaptive LMT (IBKR)", but orderType is
+        # just 'LMT' - the algo lives in its own field.
+        'algoStrategy': _text(order.algoStrategy),
         'lmtPrice': _num(order.lmtPrice),
         'auxPrice': _num(order.auxPrice),
         'trailStopPrice': _num(getattr(order, 'trailStopPrice', None)),

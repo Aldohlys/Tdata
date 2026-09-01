@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.16.0] - 2026-09-01
+
+### Fixed
+- **`R/orders.R`**: order coverage is now built from the **positions actually held**, not from `Trades.Status`. Comparing the Orders tab against the TWS order window exposed three consequences of keying off the status flag:
+  - **Stale trades reported as unprotected.** Trade 511 (URA) has legs that expired 18OCT24 / 15NOV24 and is absent from the portfolio, but its `Status` is still `Ouvert`, so it was listed as `NO ORDER`. There is no position to protect; it is no longer listed.
+  - **A spurious `AMBIGUOUS` flag.** The Trades table carries an SLB leg recorded under trade 741 (a `T` trade), so the single SLB order appeared to belong to both 741 and 745. The portfolio assigns the held `SLB 18SEP26 56 C` to 745, and that attribution is authoritative — `TradeNr` now comes from the snapshot, with the Trades table used only to recover a `TradeNr` the snapshot left unset (unambiguously, or not at all).
+  - **A phantom position.** `Pos` was `sum(Trades.Pos)` per trade, which turned the mis-tagged row into a `-1` SLB short that is not held anywhere. It now comes from the snapshot.
+- **`R/orders.R` `resolveOrderMatches()`**: an exact contract match now beats a root match. Two trades on the same underlying stop reading as `AMBIGUOUS` as soon as the order names a leg only one of them holds; `AMBIGUOUS` is reserved for a genuine root-only tie.
+- **`R/orders.R` `buildTradeOrderCoverage()`**: account is applied as a filter after joining on the product root, instead of being folded into the join key. An unknown (`NA`) account previously produced a key like `"NA KO"` that silently matched nothing.
+- **`inst/python/tdata_py/orders.py`**: new `algoStrategy` column. TWS labels an adaptive order **"Adaptive LMT (IBKR)"** while `orderType` stays `"LMT"`; the table now reports `LMT (Adaptive)` and agrees with the order window.
+
+### Added
+- **`R/orders.R`**: `getLatestPositions(account)` — the newest snapshot (latest `heure` of the latest `date`) for an account.
+
+### Changed
+- **BREAKING** `buildTradeOrderCoverage(positions, orders, trades = NULL, account = NA)` replaces `buildTradeOrderCoverage(trades, orders)`. Only `Tuser/order/view/openordersUI.R` consumes it, via `getTradeOrderCoverage()`, whose signature is unchanged.
+- Cash/FX balances are excluded from coverage — an order cannot act on a currency balance — so the `CASH` flag is gone.
+
 ## [5.15.0] - 2026-09-01
 
 ### Added
