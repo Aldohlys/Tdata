@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.15.0] - 2026-09-01
+
+### Added
+- **`inst/python/tdata_py/orders.py`** (new): `get_open_orders(account, expand_combos)` retrieves every resting order from TWS via `reqAllOpenOrders()` / `openTrades()`, across all client ids. A `BAG` (combo) order is expanded to **one row per leg**, each leg's contract qualified by `conId`, and the leg's effective side is resolved (combo legs are expressed relative to *buying* the combo, so a SELL of the combo inverts every leg). Returns `None` - not an empty frame - when TWS is unreachable, so a caller can tell "no resting orders" from "could not ask".
+  - Two TWS conventions handled: `orderId` is **0** for orders placed from TWS itself or another API client (`permId` is the only stable identifier), and unset numeric fields arrive as **DBL_MAX** (`1.797e308`), notably `trailStopPrice` on a plain LMT.
+- **`R/orders.R`** (new):
+  - `getOpenOrders(account)` - wraps the Python call, normalises NaN to NA, derives `price` (the *operative* price: trailing stop for TRAIL, stop trigger for STP, limit for LMT) and `instrument` (the IBKR contract name, rebuilt with `Tbasics::buildInstrumentName` so it matches `Trades.Instrument` for options). Carries a `tws_available` attribute.
+  - `buildTradeOrderCoverage(trades, orders)` - pure join, pairing open trades with the orders working on them and **keeping the trades that have none**. Matching is on `(Account, Symbol)`, the one key valid for every instrument type (a combo's BAG carries the root while its legs carry the contracts); `Match` then reports `"leg"` or `"root"`. Flags: `""`, `NO ORDER`, `CASH` (a currency balance is not a position to protect), `AMBIGUOUS` (two open trades share a root - reported against both rather than guessed), `UNMATCHED` (an order acting on nothing held: a stale GTC, or a trade not yet recorded).
+  - `sortCoverage(coverage)` - reading order, uncovered first. Exported because a caller merging several accounts must re-apply it, or one account's uncovered trades sink into another's covered rows.
+  - `getTradeOrderCoverage(account)` - convenience wrapper over both.
+  - Trade legs are netted before matching, so a leg summing to zero is treated as closed whatever the row's `Status` says, and a multi-leg trade reports `Legs` with `Pos = NA` (summing a vertical's legs would read as a flat, harmless zero).
+
+### Changed
+- **`scripts/sync_stop_risk.R`**: the inlined `py_run_string` block that fetched STK/FUT stop orders is replaced by `getOpenOrders()`; the script no longer needs `reticulate`. Verified byte-identical dry-run output against the previous version on live TWS (12 stop orders, 1 account).
+
+### Notes
+- Consumed by the new **Orders** tab in the `routine` app (`Tuser/order/view/openordersUI.R`).
+
 ## [5.14.4] - 2026-08-31
 
 ### Fixed

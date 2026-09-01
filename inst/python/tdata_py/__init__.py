@@ -216,6 +216,21 @@ except ImportError as e:
         return None
 
 # ============================================================================
+# OPEN (RESTING) ORDER FUNCTIONS
+# ============================================================================
+
+try:
+    from .orders import (
+        get_open_orders,
+        OPEN_ORDER_COLUMNS
+    )
+except ImportError as e:
+    print(f"Error importing orders: {e}")
+    OPEN_ORDER_COLUMNS = []
+    def get_open_orders(*args, **kwargs):
+        return None
+
+# ============================================================================
 # SPECIALIZED UTILITY FUNCTIONS
 # ============================================================================
 
