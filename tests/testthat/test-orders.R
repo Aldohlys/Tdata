@@ -22,13 +22,13 @@ order_row <- function(symbol, instrument, account = "U1804173", secType = "OPT",
                       action = "SELL", legAction = NA_character_, quantity = 1,
                       orderType = "LMT", algoStrategy = NA_character_, price = 2.5,
                       ocaGroup = NA_character_, permId = 1, currency = "USD",
-                      status = "Submitted") {
+                      status = "Submitted", whyHeld = NA_character_) {
   data.frame(account = account, permId = permId, symbol = symbol,
              instrument = instrument, secType = secType, action = action,
              legAction = legAction, quantity = quantity, orderType = orderType,
              algoStrategy = algoStrategy, price = price, tif = "GTC",
-             status = status, ocaGroup = ocaGroup, currency = currency,
-             stringsAsFactors = FALSE)
+             status = status, whyHeld = whyHeld, ocaGroup = ocaGroup,
+             currency = currency, stringsAsFactors = FALSE)
 }
 
 no_orders <- function() order_row("X", "X")[0, ]
@@ -303,8 +303,8 @@ test_that("getOpenOrders derives the operative price and the IBKR contract name"
     lmtPrice = c(4, 0, 0, 0),
     auxPrice = c(0, 11.8, 12, 0),
     trailStopPrice = c(NaN, NaN, 12.5, NaN),
-    tif = "GTC", status = "Submitted", filled = 0, remaining = 2,
-    stringsAsFactors = FALSE)
+    tif = "GTC", status = "Submitted", whyHeld = NA_character_,
+    filled = 0, remaining = 2, stringsAsFactors = FALSE)
 
   with_mocked_bindings(getOpenOrderQuery = function(account) raw, {
     orders <- getOpenOrders("U1804173")
@@ -342,4 +342,41 @@ test_that("sortCoverage re-groups merged accounts so uncovered rows stay on top"
 test_that("sortCoverage leaves an empty table alone", {
   expect_equal(nrow(sortCoverage(data.frame())), 0)
   expect_null(sortCoverage(NULL))
+})
+
+
+test_that("a resting stop reads as held on its trigger, not as half-submitted", {
+  ### PreSubmitted is a stop's normal state: IBKR holds a simulated stop and
+  ### only routes it to the exchange when the trigger is touched.
+  positions <- position_row(697, "CA", "CA", 200, type = "Stock")
+  orders <- rbind(
+    order_row("CA", "CA", secType = "STK", orderType = "STP", price = 11.8,
+              status = "PreSubmitted", whyHeld = "trigger", permId = 1),
+    order_row("CA", "CA", secType = "STK", orderType = "LMT", price = 15.0,
+              status = "Submitted", permId = 2))
+
+  cv <- buildTradeOrderCoverage(positions, orders)
+
+  expect_equal(cv$State[cv$OrderType == "STP"], "Held: trigger")
+  expect_equal(cv$State[cv$OrderType == "LMT"], "Working")
+})
+
+
+test_that("an order held for no stated reason still reads as held", {
+  positions <- position_row(742, "KO", "KO 18SEP26 90 C", 1)
+  orders <- order_row("KO", "KO 18SEP26 90 C", status = "PreSubmitted")
+
+  cv <- buildTradeOrderCoverage(positions, orders)
+
+  expect_equal(cv$State, "Held")
+})
+
+
+test_that("an unrecognised status is passed through unchanged", {
+  positions <- position_row(742, "KO", "KO 18SEP26 90 C", 1)
+  orders <- order_row("KO", "KO 18SEP26 90 C", status = "PendingCancel")
+
+  cv <- buildTradeOrderCoverage(positions, orders)
+
+  expect_equal(cv$State, "PendingCancel")
 })

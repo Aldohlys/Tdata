@@ -23,7 +23,7 @@ emptyOpenOrders <- function() {
     algoStrategy = character(),
     lmtPrice = numeric(), auxPrice = numeric(), trailStopPrice = numeric(),
     price = numeric(), instrument = character(),
-    tif = character(), status = character(),
+    tif = character(), status = character(), whyHeld = character(),
     filled = numeric(), remaining = numeric(),
     stringsAsFactors = FALSE)
 }
@@ -152,7 +152,7 @@ getOpenOrders <- function(account = NULL) {
 #'@returns a data frame with one row per (trade, order) pair, plus one row per
 #' held position with no order and one row per order matching no position.
 #' Columns: \code{Flag, TradeNr, Account, Symbol, Strategy, Legs, Pos, ExpDate,
-#' Contract, Match, Action, Qty, OrderType, Price, TIF, OrderStatus, OCA,
+#' Contract, Match, Action, Qty, OrderType, Price, TIF, State, OCA,
 #' PermId, Currency}. \code{Flag} is one of \code{""} (covered),
 #' \code{"NO ORDER"}, \code{"AMBIGUOUS"}, \code{"UNMATCHED"}.
 #'@examples
@@ -331,7 +331,7 @@ coverageRows <- function(df, kind) {
     Symbol = character(), Strategy = character(), Legs = integer(), Pos = numeric(),
     ExpDate = as.Date(character()), Contract = character(), Match = character(),
     Action = character(), Qty = numeric(), OrderType = character(), Price = numeric(),
-    TIF = character(), OrderStatus = character(), OCA = character(),
+    TIF = character(), State = character(), OCA = character(),
     PermId = numeric(), Currency = character(), stringsAsFactors = FALSE)
   if (nrow(df) == 0) return(blank)
 
@@ -344,7 +344,7 @@ coverageRows <- function(df, kind) {
       Symbol = df$symbol, Strategy = na_chr, Legs = NA_integer_, Pos = na_num,
       ExpDate = as.Date(NA), Contract = df$instrument, Match = na_chr,
       Action = coverageAction(df), Qty = df$quantity, OrderType = coverageType(df),
-      Price = df$price, TIF = df$tif, OrderStatus = df$status, OCA = df$ocaGroup,
+      Price = df$price, TIF = df$tif, State = coverageState(df), OCA = df$ocaGroup,
       PermId = df$permId, Currency = df$currency, stringsAsFactors = FALSE))
   }
 
@@ -354,7 +354,7 @@ coverageRows <- function(df, kind) {
       Account = df$Account, Symbol = df$Symbol, Strategy = df$Strategy,
       Legs = df$Legs, Pos = df$Pos, ExpDate = df$ExpDate,
       Contract = na_chr, Match = na_chr, Action = na_chr, Qty = na_num,
-      OrderType = na_chr, Price = na_num, TIF = na_chr, OrderStatus = na_chr,
+      OrderType = na_chr, Price = na_num, TIF = na_chr, State = na_chr,
       OCA = na_chr, PermId = na_num, Currency = df$Currency,
       stringsAsFactors = FALSE))
   }
@@ -364,7 +364,7 @@ coverageRows <- function(df, kind) {
     Strategy = df$Strategy, Legs = df$Legs, Pos = df$Pos, ExpDate = df$ExpDate,
     Contract = df$instrument, Match = df$Match, Action = coverageAction(df),
     Qty = df$quantity, OrderType = coverageType(df), Price = df$price, TIF = df$tif,
-    OrderStatus = df$status, OCA = df$ocaGroup, PermId = df$permId,
+    State = coverageState(df), OCA = df$ocaGroup, PermId = df$permId,
     Currency = df$currency, stringsAsFactors = FALSE)
 }
 
@@ -373,6 +373,20 @@ coverageRows <- function(df, kind) {
 ### the combo-level action when present.
 coverageAction <- function(df) {
   dplyr::coalesce(df$legAction, df$action)
+}
+
+
+### "PreSubmitted" is the normal resting state of a stop: a stop is a simulated
+### order type that IBKR holds and only routes to the exchange when its trigger
+### is touched. Reporting the raw status makes a perfectly healthy stop look
+### half-finished, so say what the state means instead.
+coverageState <- function(df) {
+  held <- ifelse(is.na(df$whyHeld), "Held", paste0("Held: ", df$whyHeld))
+  dplyr::case_when(
+    is.na(df$status) ~ NA_character_,
+    df$status == "Submitted" ~ "Working",
+    df$status %in% c("PreSubmitted", "PendingSubmit") ~ held,
+    .default = df$status)
 }
 
 

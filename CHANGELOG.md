@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.17.0] - 2026-09-01
+
+### Changed
+- **`inst/python/tdata_py/orders.py`**: new `whyHeld` column, TWS' own reason for holding an order rather than routing it.
+- **`R/orders.R`**: the coverage table's `OrderStatus` column becomes **`State`**, reporting what the status *means* instead of the raw TWS value: `Working` (Submitted - live at the exchange), `Held: trigger`, `Held` (PreSubmitted/PendingSubmit), and anything else passed through unchanged.
+  - Why: a stop is a **simulated order type**. IBKR holds it and only routes it to the exchange when the trigger price is touched, so `PreSubmitted` is a resting stop's normal, permanent state - every stop in the live account reports `PreSubmitted` with `whyHeld='trigger'`. Showing the raw status in a table whose question is "is this position covered?" made a perfectly healthy stop look half-submitted.
+
 ## [5.16.0] - 2026-09-01
 
 ### Fixed

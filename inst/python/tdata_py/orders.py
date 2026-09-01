@@ -23,7 +23,7 @@ OPEN_ORDER_COLUMNS = [
     'expiry', 'strike', 'right', 'multiplier', 'currency', 'exchange',
     'action', 'quantity', 'orderType', 'algoStrategy',
     'lmtPrice', 'auxPrice', 'trailStopPrice',
-    'tif', 'status', 'filled', 'remaining',
+    'tif', 'status', 'whyHeld', 'filled', 'remaining',
 ]
 
 
@@ -115,6 +115,9 @@ def _order_row(order, contract, status, bag=None, leg=None,
         'trailStopPrice': _num(getattr(order, 'trailStopPrice', None)),
         'tif': order.tif,
         'status': status.status,
+        # Why TWS is holding the order rather than routing it - 'trigger'
+        # for a resting stop, which is its normal state, not a problem.
+        'whyHeld': _text(status.whyHeld),
         'filled': _num(status.filled),
         'remaining': _num(status.remaining),
     }
