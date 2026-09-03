@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.18.0] - 2026-09-03
+
+### Fixed
+- **`R/account.R` `getAccountLive()`** — three defects that left the "Live" Account tab reading `NA` for every recent date (TODO #80):
+  - **Currency was never written.** Live rows stored `Currency = NULL`; `AccountWithConversionRate` derives `chf_conversion_rate` by joining on `Currency`, so a NULL yields a NULL rate and `readAccount("Live")` multiplied every metric by NA. **475 of 1281** Live rows were affected. The row now always declares a currency, and the summed amounts are converted to the base currency first (`convert_to_base_date`) so the stored row is self-consistent with the currency it declares — sub-account snapshots were USD historically and CHF since.
+  - **An arbitrary row was picked per date.** `inner_join(..., multiple = "any")` took any row of the day per account. A cash-flow row carries `NetLiquidation = 0` and its own native currency, so picking one understated Live NLV by an entire sub-account and mixed currencies into a row that can only declare one. The day's value is now the **last snapshot with a non-zero NetLiquidation**. Same class of bug as the read-side `account_extend_data` fix in Tuser `03b243b`, but on the write side — and newly reachable by anyone pressing the Cash Flow button.
+  - **Cash flows did not propagate.** A flow reached Live only if that day's arbitrary pick happened to land on the cash-flow row. Flows are now summed across every row of the date, each converted from the currency it was booked in.
+- **`R/account.R` `getAccountLive()`**: idempotent. It runs several times a day and appended, duplicating a date once per run (`20260831 10:00:39` was stored four times; 314 duplicate rows accumulated). It now deletes the dates it is about to write. One row per date, the day's close.
+
+### Added
+- **`scripts/fix_live_account_currency.R`** (repo root, not the package): repairs the rows already stored, which the code fix cannot reach — backfills `Currency` from each date's sub-account snapshots and removes duplicate rows **proven identical in every value column**. 9 of the 221 duplicated `(date, heure)` groups disagree on their values; those are reported and left for manual review rather than resolved by an arbitrary pick, which is the very bug being fixed. Dry-run by default, binary DB backup before writing, single transaction.
+
 ## [5.17.0] - 2026-09-01
 
 ### Changed

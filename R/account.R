@@ -1295,9 +1295,28 @@ getAccountChoices <- function(type = c("all", "ibkr", "trade")) {
 
 #'   getAccountLive
 #'
-#'This function reads last portfolio from Gonet and then deduces account record similar to IBKR
-#'and stores it into DB "Account" table.
-#'The tricky piece is to manage Cash positions
+#'Derives the virtual "Live" account (U1804173 + U25343478 + Gonet) for today and
+#'stores it in the DB \code{Account} table. Live has no table of its own.
+#'
+#'Three rules make the result usable by \code{readAccount("Live")}:
+#'
+#'\itemize{
+#'  \item \strong{The day's row is the last REAL snapshot.} A cash-flow row carries
+#'    \code{NetLiquidation = 0} and is booked in its own native currency, so
+#'    picking one as the day's value understated Live NLV by a whole sub-account
+#'    and mixed currencies. Only rows with a non-zero NetLiquidation are eligible.
+#'  \item \strong{Currency is always written.} A NULL \code{Currency} makes the
+#'    \code{AccountWithConversionRate} view join produce a NULL rate, which turns
+#'    every metric into NA - the whole Live Account tab. Amounts are converted to
+#'    the base currency before summing, so the stored row is self-consistent with
+#'    the \code{Currency} it declares.
+#'  \item \strong{Cash flows are summed per day} across every row of the day, each
+#'    converted from its native currency, rather than being whatever an arbitrary
+#'    joined row happened to carry.
+#'}
+#'
+#'Idempotent: it runs several times a day and replaces the dates it writes instead
+#'of appending, which used to leave a date duplicated once per run.
 #'
 #'@returns No value
 #'@export
@@ -1318,24 +1337,56 @@ getAccountLive <- function() {
   sum.var.gonet = account.var.gonet[-(1:3)]
 
   s_date = format(Sys.Date(), "%Y%m%d")
+  base_ccy = getParam("BaseCurrency")
+  if (is.null(base_ccy) || is.na(base_ccy)) base_ccy = "CHF"
 
   #### Post-processing function: computes Live = U1804173 + U25343478 + Gonet
   #### Assumes all three accounts are already stored in Account table
 
   conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
   account_d <- DBI::dbReadTable(conn, "Account")
   account_d <- dplyr::filter(account_d, date >= s_date)
 
-  acc_ib1 = dplyr::select(dplyr::filter(account_d, account == "U1804173"), dplyr::all_of(account.var))
-  acc_ib2 = dplyr::select(dplyr::filter(account_d, account == "U25343478"), dplyr::all_of(account.var))
-  acc_gon = dplyr::select(dplyr::filter(account_d, account == "Gonet"), dplyr::all_of(account.var.gonet))
+  ## The day's snapshot for an account: the last heure among rows that carry a
+  ## real NetLiquidation. Cash-flow rows have NetLiquidation = 0 and their own
+  ## native currency, so including them both understates the day's value and
+  ## mixes currencies into a row that can only declare one.
+  daily_snapshot = function(acct, vars) {
+    rows = dplyr::filter(account_d, account == acct,
+                         !is.na(NetLiquidation), NetLiquidation != 0)
+    if (!nrow(rows)) return(rows[, c(vars, "Currency"), drop = FALSE])
+    rows = dplyr::ungroup(dplyr::slice_max(dplyr::group_by(rows, date), heure,
+                                           n = 1, with_ties = FALSE))
+    rows = dplyr::select(rows, dplyr::all_of(c(vars, "Currency")))
+    ## Convert to base currency before any summing: sub-account snapshots have
+    ## been USD historically and CHF since, and Live declares a single Currency.
+    for (v in vars[-(1:3)])
+      rows[[v]] = convert_to_base_date(rows[[v]], rows$Currency, rows$date)
+    rows
+  }
 
-  ## Join IBKR sub-accounts (same trading calendar -> inner_join)
-  ibkr = dplyr::inner_join(acc_ib1, acc_ib2, by = "date", multiple = "any", suffix = c(".ib1", ".ib2"))
+  ## The day's cash flow for an account: every flow row of that date, each
+  ## converted from the currency it was booked in. Taking it from one arbitrary
+  ## joined row meant a flow reached Live only if that row happened to be picked.
+  daily_cashflow = function(acct) {
+    rows = dplyr::filter(account_d, account == acct, !is.na(CashFlow), CashFlow != 0)
+    if (!nrow(rows)) return(data.frame(date = numeric(0), flow = numeric(0)))
+    rows$.flow = convert_to_base_date(rows$CashFlow, rows$Currency, rows$date)
+    dplyr::summarize(dplyr::group_by(rows, date),
+                     flow = sum(.flow, na.rm = TRUE), .groups = "drop")
+  }
+
+  acc_ib1 = daily_snapshot("U1804173", account.var)
+  acc_ib2 = daily_snapshot("U25343478", account.var)
+  acc_gon = daily_snapshot("Gonet", account.var.gonet)
+
+  ## Join IBKR sub-accounts (same trading calendar -> inner_join). One row per
+  ## date on each side now, so no arbitrary pick is involved.
+  ibkr = dplyr::inner_join(acc_ib1, acc_ib2, by = "date", suffix = c(".ib1", ".ib2"))
 
   if (!nrow(ibkr)) {
     warning("Not enough data: need both U1804173 and U25343478 for Live account")
-    DBI::dbDisconnect(conn)
     return(invisible())
   }
 
@@ -1347,7 +1398,7 @@ getAccountLive <- function() {
   ibkr_base = data.frame(date = ibkr$date, heure = ibkr$heure.ib1, ibkr_sum)
   gonet_num = dplyr::select(acc_gon, date, dplyr::all_of(sum.var.gonet))
 
-  merged = dplyr::left_join(ibkr_base, gonet_num, by = "date", multiple = "any", suffix = c("", ".gon"))
+  merged = dplyr::left_join(ibkr_base, gonet_num, by = "date", suffix = c("", ".gon"))
 
   ## Add Gonet values where available (fill missing with 0)
   for (v in sum.var.gonet) {
@@ -1360,13 +1411,32 @@ getAccountLive <- function() {
     }
   }
 
-  ## Build Live account record
-  data = cbind(account = "Live", merged)
-  data = dplyr::select(data, dplyr::all_of(account.var))
+  ## CashFlow comes from the per-day aggregation, not from the snapshot rows
+  ## (which are all zero by construction now).
+  flows = dplyr::bind_rows(daily_cashflow("U1804173"),
+                           daily_cashflow("U25343478"),
+                           daily_cashflow("Gonet"))
+  if (nrow(flows)) {
+    flows = dplyr::summarize(dplyr::group_by(flows, date),
+                             flow = sum(flow, na.rm = TRUE), .groups = "drop")
+    merged = dplyr::left_join(merged, flows, by = "date")
+    merged$CashFlow = round(ifelse(is.na(merged$flow), 0, merged$flow), 2)
+    merged$flow = NULL
+  } else {
+    merged$CashFlow = 0
+  }
 
-  ### Store in DB
+  ## Build Live account record. Currency is mandatory: the
+  ## AccountWithConversionRate view joins on it, and a NULL yields a NULL rate
+  ## that turns every metric into NA.
+  data = cbind(account = "Live", merged, Currency = base_ccy)
+  data = dplyr::select(data, dplyr::all_of(c(account.var, "Currency")))
+
+  ### Store in DB, replacing the dates written rather than appending to them
+  DBI::dbExecute(conn,
+                 sprintf("DELETE FROM Account WHERE account = 'Live' AND date IN (%s)",
+                         paste(unique(data$date), collapse = ",")))
   safe_db_append(conn, "Account", data)
-  DBI::dbDisconnect(conn)
 }
 
 #'@keywords internal
