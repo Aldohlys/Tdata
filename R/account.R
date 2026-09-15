@@ -16,7 +16,8 @@ get_account_table_name <- function() "Account"
 #'@returns a tibble with the following fields: \code{ account	date	heure Currency
 #' NetLiquidation	EquityWithLoanValue	FullAvailableFunds	FullInitMarginReq	FullMaintMarginReq
 #' FullExcessLiquidity	OptionMarketValue	StockMarketValue	UnrealizedPnL	RealizedPnL	TotalCashBalance
-#'  CashFlow}
+#'  CashFlow Notes}. \code{Notes} is free text (e.g. why a cash flow was
+#'  recorded) and, unlike the amounts, is not converted to the base currency.
 #'@examples
 #'\dontrun{
 #'readAccount("DU5555")
@@ -61,7 +62,8 @@ readAccount = function(account_name) {
       CashBalanceCHF * ", conversion_column, " AS CashBalanceCHF,
       CashBalanceEUR * ", conversion_column, " AS CashBalanceEUR,
       CashBalanceUSD * ", conversion_column, " AS CashBalanceUSD,
-      CashFlow * ", conversion_column, " AS CashFlow
+      CashFlow * ", conversion_column, " AS CashFlow,
+      Notes
   FROM ", get_account_view_name(), "
   WHERE account = ?")
 

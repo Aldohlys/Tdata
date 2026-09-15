@@ -63,7 +63,8 @@ test_that("readAccount Simu  returns some data and columns look good", {
     identical(colnames(acc),  c("date", "heure", "Currency", "NetLiquidation",	"EquityWithLoanValue",	"FullAvailableFunds",
                                 "FullInitMarginReq",	"FullMaintMarginReq", "FullExcessLiquidity",
                                 "OptionMarketValue",	"StockMarketValue",	"UnrealizedPnL",
-                                "RealizedPnL",	"TotalCashBalance", "CashBalanceCHF", "CashBalanceEUR", "CashBalanceUSD", "CashFlow")) &&
+                                "RealizedPnL",	"TotalCashBalance", "CashBalanceCHF", "CashBalanceEUR", "CashBalanceUSD", "CashFlow",
+                                "Notes")) &&
       nrow(acc) >1
   })
 })
@@ -75,7 +76,8 @@ test_that("readAccount Gonet  returns some data and columns look good", {
     identical(colnames(acc),  c("date","heure", "Currency", "NetLiquidation",	"EquityWithLoanValue",	"FullAvailableFunds",
                                 "FullInitMarginReq",	"FullMaintMarginReq", "FullExcessLiquidity",
                                 "OptionMarketValue",	"StockMarketValue",	"UnrealizedPnL",
-                                "RealizedPnL",	"TotalCashBalance", "CashBalanceCHF", "CashBalanceEUR", "CashBalanceUSD","CashFlow")) &&
+                                "RealizedPnL",	"TotalCashBalance", "CashBalanceCHF", "CashBalanceEUR", "CashBalanceUSD","CashFlow",
+                                "Notes")) &&
       nrow(acc) >1
   })
 })
@@ -169,10 +171,45 @@ test_that("readAccount with mocked view returns rows for U1804173", {
         "FullAvailableFunds","FullInitMarginReq","FullMaintMarginReq",
         "FullExcessLiquidity","OptionMarketValue","StockMarketValue",
         "UnrealizedPnL","RealizedPnL","TotalCashBalance",
-        "CashBalanceCHF","CashBalanceEUR","CashBalanceUSD","CashFlow"))
+        "CashBalanceCHF","CashBalanceEUR","CashBalanceUSD","CashFlow","Notes"))
       expect_s3_class(acc$date, "Date")
       expect_s3_class(acc$heure, "hms")
     })
+})
+
+test_that("readAccount returns Notes as free text, not converted", {
+  with_mocked_bindings(
+    get_account_view_name = function() "TestAccountWithConversionRate", {
+      acc <- readAccount("U1804173")
+      expect_type(acc$Notes, "character")
+    })
+})
+
+test_that("Account rows append with or without a Notes column", {
+  ### Writers that predate Notes (getIBKR account snapshot, getAccountGonet,
+  ### getAccountLive) append data frames with no Notes column; cash-flow rows
+  ### carry one. Both must fit the live Account schema. Runs on an in-memory
+  ### copy of that schema, never on the real table.
+  conn <- safe_db_connect()
+  schema <- DBI::dbGetQuery(conn, "SELECT sql FROM sqlite_master WHERE name = 'Account'")$sql
+  DBI::dbDisconnect(conn)
+  expect_true(grepl("Notes", schema, fixed = TRUE))
+
+  mem <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+  on.exit(DBI::dbDisconnect(mem), add = TRUE)
+  DBI::dbExecute(mem, schema)
+
+  snapshot <- data.frame(account = "U1804173", date = 20260915L, heure = "10:00:00",
+                         NetLiquidation = 1000, CashFlow = 0, Currency = "CHF")
+  cash_flow <- data.frame(account = "U1804173", date = 20260915L, heure = "00:00:01",
+                          NetLiquidation = 0, CashFlow = 250, Currency = "CHF",
+                          Notes = "Deposit")
+  safe_db_append(mem, "Account", snapshot)
+  safe_db_append(mem, "Account", cash_flow)
+
+  got <- DBI::dbGetQuery(mem, "SELECT heure, Notes FROM Account ORDER BY heure")
+  expect_equal(nrow(got), 2)
+  expect_equal(got$Notes, c("Deposit", NA))
 })
 
 test_that("readAccount with mocked view returns 0 rows for unknown account", {

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.19.3] - 2026-09-15
+
+### Added
+- **`R/account.R` `readAccount()`**: returns the new `Account.Notes` column (TODO #81) as a plain text passthrough — not multiplied by the conversion rate like the numeric columns. Cash-flow rows recorded from Tuser's Cash Flow modal now carry why they were entered (deposit, withdrawal, transfer, plus the user's own text). The column is added by `scripts/migrate_account_notes.R` (repo root); every existing writer keeps working because they append data frames without it.
+- **`tests/testthat/test-account.R`**: `readAccount` column set includes `Notes`; new checks that `Notes` comes back as text and that Account rows append both with and without a `Notes` column (in-memory copy of the live schema).
+
 ## [5.19.2] - 2026-09-15
 
 ### Removed
