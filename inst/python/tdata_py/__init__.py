@@ -149,8 +149,7 @@ try:
 
     # Import on-demand retrieval functions
     from .on_demand_historical import (
-        get_or_retrieve_option_historical_data,
-        clear_on_demand_cache
+        get_or_retrieve_option_historical_data
     )
     
     historical_data_available = True

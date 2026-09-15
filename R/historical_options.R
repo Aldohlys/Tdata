@@ -161,68 +161,6 @@ get_or_retrieve_option_historical <- function(
 }
 
 
-#' Clear On-Demand Option Data Cache
-#'
-#' Clean up cached on-demand option data files to free disk space.
-#'
-#' @param symbol Character. If specified, only clear cache for this symbol. Default: NULL (all symbols)
-#' @param older_than_days Integer. Remove files older than this many days. Default: 30
-#'
-#' @return A list with cleanup summary:
-#' \itemize{
-#'   \item files_removed: Number of files removed
-#'   \item space_freed_mb: Disk space freed in megabytes
-#' }
-#'
-#' @examples
-#' \dontrun{
-#' # Clear all cache older than 30 days
-#' summary <- clear_on_demand_cache()
-#'
-#' # Clear cache for SPY only
-#' spy_summary <- clear_on_demand_cache(symbol = "SPY")
-#'
-#' # Clear all cache older than 7 days
-#' recent_summary <- clear_on_demand_cache(older_than_days = 7)
-#' }
-#'
-#' @export
-clear_on_demand_cache <- function(symbol = NULL, older_than_days = 30) {
-
-  tryCatch({
-    tdata_py <- get_tdata_py()
-    if (is.null(tdata_py)) return(list(error = "Python module not available"))
-
-    logger::log_info(paste0(
-      "Clearing on-demand cache",
-      if (!is.null(symbol)) paste0(" for symbol: ", symbol) else "",
-      " (older than ", older_than_days, " days)"
-    ))
-
-    # Call Python function (imported directly into tdata_py namespace)
-    result <- tdata_py$clear_on_demand_cache(
-      symbol = symbol,
-      older_than_days = as.integer(older_than_days)
-    )
-
-    # Convert result to R list
-    result_list <- reticulate::py_to_r(result)
-
-    logger::log_info(paste0(
-      "Cache cleanup complete: ",
-      result_list$files_removed, " files removed, ",
-      result_list$space_freed_mb, " MB freed"
-    ))
-
-    return(result_list)
-
-  }, error = function(e) {
-    logger::log_error(paste0("Error in clear_on_demand_cache: ", e$message), namespace="Tdata")
-    return(list(error = e$message))
-  })
-}
-
-
 #' Qualify an Option Contract via IBKR
 #'
 #' Asks IBKR to resolve the correct tradingClass, conId, and exchange for an

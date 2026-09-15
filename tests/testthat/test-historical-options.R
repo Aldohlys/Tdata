@@ -172,45 +172,6 @@ test_that("get_or_retrieve_option_historical validates data_type parameter", {
   }
 })
 
-test_that("clear_on_demand_cache accepts valid parameters", {
-  # Should accept no parameters
-  result1 <- tryCatch({
-    clear_on_demand_cache()
-  }, error = function(e) {
-    list(error = e$message)
-  })
-
-  # Result should be a list (may have error key if Python unavailable)
-  expect_type(result1, "list")
-
-  # Should accept symbol parameter
-  result2 <- tryCatch({
-    clear_on_demand_cache(symbol = "SPY")
-  }, error = function(e) {
-    list(error = e$message)
-  })
-
-  expect_type(result2, "list")
-
-  # Should accept older_than_days parameter
-  result3 <- tryCatch({
-    clear_on_demand_cache(older_than_days = 7)
-  }, error = function(e) {
-    list(error = e$message)
-  })
-
-  expect_type(result3, "list")
-
-  # Should accept both parameters
-  result4 <- tryCatch({
-    clear_on_demand_cache(symbol = "SPY", older_than_days = 14)
-  }, error = function(e) {
-    list(error = e$message)
-  })
-
-  expect_type(result4, "list")
-})
-
 test_that("get_or_retrieve_option_historical returns tibble or NULL", {
   skip_if_no_ibkr_backend()
   # Call with valid parameters
@@ -306,35 +267,6 @@ test_that("get_or_retrieve_option_historical normalises 'Call'/'Put' to 'C'/'P' 
 
   get_or_retrieve_option_historical("SPY","SPY","20260620",500, right = "Call")
   expect_equal(captured$right, "C")
-})
-
-# ---------------------------------------------------------------------------
-# clear_on_demand_cache
-# ---------------------------------------------------------------------------
-test_that("clear_on_demand_cache returns python summary on success", {
-  fake_py <- list(clear_on_demand_cache = function(symbol, older_than_days) {
-    list(files_removed = 5L, space_freed_mb = 12.3)
-  })
-  local_mock_tdata_py(fake_py)
-
-  out <- clear_on_demand_cache(symbol = "SPY", older_than_days = 7)
-  expect_equal(out$files_removed, 5)
-  expect_equal(out$space_freed_mb, 12.3)
-})
-
-test_that("clear_on_demand_cache returns error list when tdata_py is NULL", {
-  local_mock_tdata_py(NULL)
-  out <- clear_on_demand_cache()
-  expect_true(!is.null(out[["error"]]))
-})
-
-test_that("clear_on_demand_cache catches Python errors", {
-  fake_py <- list(clear_on_demand_cache = function(...) stop("disk error"))
-  local_mock_tdata_py(fake_py)
-
-  out <- clear_on_demand_cache()
-  expect_true(!is.null(out[["error"]]))
-  expect_match(out[["error"]], "disk error")
 })
 
 # ---------------------------------------------------------------------------

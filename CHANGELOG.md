@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.19.0] - 2026-09-15
+
+### Removed
+- **`clear_on_demand_cache()`** — R wrapper (`R/historical_options.R`), its export and roxygen, the Python function (`inst/python/tdata_py/on_demand_historical.py`) and its `tdata_py/__init__.py` import, plus the four tests that covered it (TODO #83).
+  - Problem: it called `HistoricalStorage.get_on_demand_cache_root()`, a method that never existed, so every call raised, was swallowed, and logged `Error clearing on-demand cache` — several times per `devtools::test()` run. The tests only checked parameter shapes and a mocked Python layer, so a function that had never once worked read as covered.
+  - Why removed rather than fixed: there is no separate on-demand cache. On-demand retrievals are stored in the normal strikes directory (`_cache_retrieved_data()` is a placeholder), so the obvious fix — pointing the method at `strikes_dir` — would have made the `rglob("*.parquet")` + `unlink()` loop delete every historical option file older than 30 days. No app called it.
+
 ## [5.18.0] - 2026-09-03
 
 ### Fixed
