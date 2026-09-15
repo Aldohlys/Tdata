@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.19.2] - 2026-09-15
+
+### Removed
+- **`inst/python/scripts/complete_cache_reset.py`** — whole file. It could not be imported (relative `from .core import` outside any package), nothing in RApplication or NewTrading referenced it, and after the 5.19.1 dead-code pass its remaining functions had no callers.
+
 ## [5.19.1] - 2026-09-15
 
 ### Removed
