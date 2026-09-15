@@ -210,7 +210,7 @@ test_that("getForwardPrice with r < q (negative cost of carry) gives F < S", {
 })
 
 # ---------------------------------------------------------------------------
-# OptionSurface skew helpers (TODO #50, Phase 2a) — pure logic, no DB/IBKR.
+# OptionSurface skew helpers — pure logic, no DB/IBKR.
 # .iv_at_delta picks IV at the nearest delta; .compute_capture_skews derives
 # per-capture 25d-vs-50d put/call skew. getSkewPercentiles itself is DB-bound
 # and exercised separately against live data.

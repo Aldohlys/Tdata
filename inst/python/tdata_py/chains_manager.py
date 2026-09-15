@@ -1113,50 +1113,6 @@ def discoverSymbol(sym, format='summary'):
         package_logger.error(f"Error discovering {sym}: {e}")
         return {'symbol': sym, 'error': str(e)}
 
-def initializeMultipleSymbols(symbols, force_refresh=False):
-    """
-    R-friendly batch initialization.
-    
-    Args:
-        symbols (list): List of symbols to initialize
-        force_refresh (bool): Whether to force refresh
-    
-    Returns:
-        dict: Results summary
-    """
-    try:
-        if isinstance(symbols, str):
-            symbols = [symbols]  # Handle single symbol
-        
-        return initialize_chains_for_symbols(symbols, force_refresh)
-    except Exception as e:
-        package_logger.error(f"Error in batch initialization: {e}")
-        return {'error': str(e)}
-
-def exploreMultipleSymbols(symbols):
-    """
-    Explore multiple symbols and return combined summary.
-
-    Args:
-        symbols (list): List of symbols to explore
-
-    Returns:
-        dict: Combined exploration results
-    """
-    try:
-        if isinstance(symbols, str):
-            symbols = [symbols]
-
-        results = {}
-        for symbol in symbols:
-            results[symbol] = discoverSymbol(symbol, 'summary')
-
-        return results
-    except Exception as e:
-        package_logger.error(f"Error exploring multiple symbols: {e}")
-        return {'error': str(e)}
-
-
 def get_chain_oi(sym, expiration, strike_min=None, strike_max=None,
                  trading_class=None, ib_connection=None,
                  wait_seconds=2.0, batch_size=40):

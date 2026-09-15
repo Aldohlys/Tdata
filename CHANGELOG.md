@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.19.1] - 2026-09-15
+
+### Removed
+- Functions with no caller in any package, app, script or slash command (TODO #74 dead-code pass). Found by token scan across RApplication and NewTrading, then re-scanned until no new orphans appeared:
+  - `R/interest_rates_eu_utils.R` — whole file (`get_euribor_data`)
+  - `R/interest_rate_utils.R` — internal (`@noRd`) `update_static_saron`, `get_swiss_bond_yields`, `get_swiss_bond_yields_numeric`, `update_static_yields`
+  - `inst/python/tdata_py/chains_manager.py` — `initializeMultipleSymbols`, `exploreMultipleSymbols`
+  - `inst/python/tdata_py/contract.py` — `getStrikesFromRange`
+  - `inst/python/tdata_py/focused_historical.py` — `load_contract_for_graph`, `get_portfolio_overview`, `update_priority_contracts`
+  - `inst/python/tdata_py/interest_rate_utils.py` — `get_interest_rate_for_expiry`
+  - `inst/python/tdata_py/parquet_utils.py` — `_group_files_by_structure`, `_display_grouped_files`
+  - `inst/python/scripts/complete_cache_reset.py` — `selective_cache_cleanup`, `quick_reset_and_test`
+
+### Changed
+- Comments that pointed at completed plan phases or closed TODOs (#27, #49, #50 Phase 2a) now describe the code as it stands: `R/cache_warnings.R`, `R/volatility.R`, `tests/testthat/test-volatility.R`. No behaviour change.
+
 ## [5.19.0] - 2026-09-15
 
 ### Removed

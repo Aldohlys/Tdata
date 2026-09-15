@@ -1,4 +1,4 @@
-# Surface stale-cache warnings buffered by the Python layer (TODO #27, Part 1).
+# Surface stale-cache warnings buffered by the Python layer.
 #
 # When getChains()/getOptionStrikes() find a chain/strike parquet cache older
 # than cache_ttl_days, they delete it (forcing a fresh IBKR fetch) and append a

@@ -815,33 +815,6 @@ def _display_strike_analysis(df):
         most_common = max(common_intervals.items(), key=lambda x: x[1])
         print(f"  Most common interval: {most_common[0]} ({most_common[1]} occurrences)")
 
-def _group_files_by_structure(parquet_files, base_dir):
-    """Group files by symbol and trading class structure."""
-    grouped = {}
-    for file_path in sorted(parquet_files):
-        parts = file_path.relative_to(base_dir).parts
-        if len(parts) >= 3:  # symbol/trading_class/expiration.parquet
-            sym = parts[0]
-            tc = parts[1] 
-            exp = parts[2].replace('.parquet', '')
-            
-            if sym not in grouped:
-                grouped[sym] = {}
-            if tc not in grouped[sym]:
-                grouped[sym][tc] = []
-            grouped[sym][tc].append(exp)
-    
-    return grouped
-
-def _display_grouped_files(grouped):
-    """Display grouped files in organized format."""
-    for sym in sorted(grouped.keys()):
-        print(f"\n {sym}:")
-        for tc in sorted(grouped[sym].keys()):
-            expirations = sorted(grouped[sym][tc])
-            print(f"   {tc}: {len(expirations)} files")
-            print(f"     {', '.join(expirations)}")
-
 def _group_chains_files(chain_files, base_dir):
     """Group chain files by symbol: symbol/tradingclass_chain.parquet"""
     grouped = {}

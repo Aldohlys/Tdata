@@ -299,7 +299,7 @@ get180dIV <- function(tickers, LastIBKRPrice) {
 #' @param force_refresh logical - bypass quote caches and pull fresh from TWS (default FALSE)
 #' @param capture_surface logical - if TRUE, also capture the ~30 DTE IV surface to
 #'   OptionSurface via \code{captureOptionSurface} (once-per-day guarded). Default FALSE
-#'   keeps the scanner hot path unchanged; the daily collector sets it TRUE (TODO #50).
+#'   keeps the scanner hot path unchanged; the daily collector sets it TRUE.
 #' @return a data frame with for each row the following fields :
 #' \itemize{
 #' \item{\code{symbol} element of sym_list argument}
@@ -368,7 +368,7 @@ getVolMetrics <- function(sym_list, force_refresh = FALSE, capture_surface = FAL
     ### Fallback: iv30 from option chains when IBKR aggregate IV unavailable
     if (is.na(metrics$iv30)) {
       ### Option-strike selection needs a finite spot; otherwise NaN strikes get
-      ### shipped to IBKR (Error 320, connection drop). See TODO #49.
+      ### shipped to IBKR (Error 320, connection drop).
       if (!is.finite(metrics$price)) {
         logger::log_warn("iv30 unavailable for {sym} and spot price is NaN — skipping option-chain fallback", namespace = "Tdata")
       } else {
@@ -404,7 +404,7 @@ getVolMetrics <- function(sym_list, force_refresh = FALSE, capture_surface = FAL
       }
     }
 
-    ### Compute iv15, iv90, iv180 from option chains — skip if spot is non-finite (see TODO #49).
+    ### Compute iv15, iv90, iv180 from option chains — skip if spot is non-finite.
     ### iv15 is event-sensitive and noisy near expiry; interpret as indicative, not decision-grade.
     compute_iv_dte <- function(target_dte) {
       if (!is.finite(metrics$price)) {
@@ -460,7 +460,7 @@ getVolMetrics <- function(sym_list, force_refresh = FALSE, capture_surface = FAL
     ### Append to DB
     safe_db_append(conn, "Prices", metrics)
 
-    ### Forward IV-surface capture for skew percentiles (TODO #50, Phase 2a).
+    ### Forward IV-surface capture for skew percentiles.
     ### Opt-in (default FALSE) so the scanner's hot path is unaffected; the daily
     ### collector passes capture_surface=TRUE. Best-effort, once-per-day guarded,
     ### never throws — reuses the spot + iv30 already computed above.
@@ -473,7 +473,7 @@ getVolMetrics <- function(sym_list, force_refresh = FALSE, capture_surface = FAL
   })
 }
 
-### ---- 30-day IV skew percentiles (TODO #50, Phase 2a) -------------------------
+### ---- 30-day IV skew percentiles -------------------------
 ### Read off the OptionSurface table (populated by the forward surface-capture hook).
 ### Put and call skew are tracked INDEPENDENTLY -- their comparison is the signal:
 ### put skew >> call skew = downside richly priced; call skew >> put skew = upside
@@ -517,7 +517,7 @@ getVolMetrics <- function(sym_list, force_refresh = FALSE, capture_surface = FAL
 #'
 #' Current 30-day IV skew (put and call, tracked separately) and their percentile
 #' ranks over the trailing OptionSurface history. Skew = iv(25-delta) - iv(50-delta),
-#' read off the forward-collected OptionSurface table (see TODO #50, Phase 2a).
+#' read off the forward-collected OptionSurface table.
 #'
 #' One capture row-set per symbol per day; the latest capture is the "current" skew
 #' and is ranked against all captures in the lookback window (percentile = fraction of
@@ -582,7 +582,7 @@ getSkewPercentiles <- function(sym, lookback_days = 365L) {
 #'
 #' Capture the ~30 DTE implied-vol surface slice -- per-strike implied vol + delta
 #' for calls and puts spanning +/-1.5 sigma around spot -- and append it to the
-#' OptionSurface table (TODO #50, Phase 2a). One call = one capture timestamp.
+#' OptionSurface table. One call = one capture timestamp.
 #' Storing the full sliced surface (not just derived skews) is future-proof: any
 #' delta-bucket analytic (25d/50d skew, wings, term skew) is computable post-hoc.
 #' Read back by \code{getSkewPercentiles}.
