@@ -612,11 +612,19 @@ getStoredMetrics = function(name) {
 #' @param retry_delay Seconds to wait between retries
 #' @param timeout Seconds for connection timeout
 #' @param chunk_size Number of tickers to process in each batch
+#' @param include_today Keep the current day's bar when \code{to_date} is today.
+#'   Default FALSE returns completed sessions only, which is what indicator and
+#'   scanner callers expect. FX callers that need the latest rate pass TRUE.
 #' @return Data frame with columns: date, ticker, Open, High, Low, Close, Adjusted, and Volume
 #' @export
 getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date(),
                          max_retries = 5, retry_delay = 2,
-                         timeout = 10, chunk_size = 5) {
+                         timeout = 10, chunk_size = 5,
+                         include_today = FALSE) {
+
+  # Days added to the Yahoo request window before trimming back. See the
+  # getSymbols() call below for why the window has to overshoot.
+  QUERY_PAD_DAYS <- 3
 
   # Process input to get ticker names
   if (is.data.frame(tickers) && "YahooName" %in% colnames(tickers)) {
@@ -750,11 +758,32 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
         # so valid data isn't discarded. Actual Yahoo errors still propagate to tryCatch.
         attempt_result <- tryCatch(
         withCallingHandlers({
+          # Query past to_date and trim back below. Asking Yahoo for exactly
+          # to_date drops the final index entry while the value matrix keeps
+          # the live bar, so that bar lands on the PREVIOUS session's date with
+          # Close and Adjusted NA. It needs a null session between the last
+          # close and the live bar to show up: on 2026-09-21 Yahoo had no data
+          # for Euronext Paris on 09-17 or 09-18, and SAF/DG/SGO/BNP each came
+          # back with a row dated 2026-09-18 carrying that day's live O/H/L/V.
+          # CRST.L and AAPL, with no null sessions, were correct either way.
           ticker_data <- quantmod::getSymbols(ticker,
                                               from = from_date,
-                                              to = to_date,
+                                              to = as.Date(to_date) + QUERY_PAD_DAYS,
                                               auto.assign = FALSE,
                                               warnings = TRUE)
+          # Trim back. By default the cut is the day BEFORE today, which is what
+          # the un-padded request delivered for every ticker without a null
+          # session: completed sessions only, no live partial bar. FX callers
+          # that want the latest rate pass include_today = TRUE, which is also
+          # what the old code gave them (an FX bar is stamped 00:00 UTC and so
+          # survived the truncation, while a stock bar stamped at the exchange
+          # open did not — the inclusion rule was an accident of time zones).
+          if (!is.null(ticker_data) && nrow(ticker_data) > 0) {
+            cut_date <- if (isTRUE(include_today)) as.Date(to_date)
+                        else min(as.Date(to_date), Sys.Date() - 1)
+            ticker_data <- ticker_data[zoo::index(ticker_data) <= cut_date, ,
+                                       drop = FALSE]
+          }
 
           # If we get here, Yahoo didn't raise an error - process the data
           if (is.null(ticker_data) || nrow(ticker_data) == 0) {

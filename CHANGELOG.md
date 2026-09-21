@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.19.4] - 2026-09-21
+
+### Fixed
+- **`R/prices.R` `getYahooData()`**: the last bar could be returned under the previous session's date. Asking Yahoo for exactly `to_date` drops the final index entry while the value matrix keeps the live bar, so that bar lands on the preceding date with `Close` and `Adjusted` NA. It needs a null session between the last close and the live bar to appear: on 2026-09-21 Yahoo had no data for Euronext Paris on 09-17 or 09-18, and SAF/DG/SGO/BNP each came back with a row dated 2026-09-18 carrying that day's live Open/High/Low/Volume. CRST.L and AAPL, with no null sessions, were correct either way. The request now overshoots by `QUERY_PAD_DAYS = 3` and the series is trimmed back after the fetch, which restores the true dates.
+  - Downstream this was silent: `calc_ind()` in the BOT tools drops rows with an NA `Close`, so the fabricated row disappeared and only the report date looked odd. A fabricated row with a *valid* Close would have fed one session's High/Low into another session's date, and from there into ATR and the ZigZag pivots.
+  - Affects the 45 non-USD tickers (15 `.PA`, 12 `.SW`, 8 `.T`, 2 `.TO`, `.DE`/`.L`/`.F`/`.KQ`) whose home session can be open while the fetch runs.
+
+### Added
+- **`R/prices.R` `getYahooData(include_today = FALSE)`**: new argument. The default returns completed sessions only, reproducing what the un-padded request delivered for every ticker without a null session, so indicator and scanner callers are unchanged. The old inclusion rule was an accident of time zones — an FX bar is stamped 00:00 UTC and survived the truncation, a stock bar stamped at the exchange open did not.
+- **`R/currency.R`**: both `getYahooData()` calls (`getLastCHFValue`, `getLastUSDValue`) pass `include_today = TRUE`, keeping the latest FX rate available. Without it a Monday call with `from_date = Sys.Date() - 3` could return no rows at all for a pair such as `EURCHF=X`, which has no 09-18 bar.
+
 ## [5.19.3] - 2026-09-15
 
 ### Added

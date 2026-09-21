@@ -223,7 +223,8 @@ getLastCHFValue <- function(currency) {
     }
 
     # Get Yahoo data for CHF pairs and cross-rates
-    price_list <- getYahooData(fetch_tickers, from_date = Sys.Date() - 3)
+    price_list <- getYahooData(fetch_tickers, from_date = Sys.Date() - 3,
+                               include_today = TRUE)
 
     if (nrow(price_list) == 0) {
       logger::log_info("No currency data found!", namespace="Tdata")
@@ -363,7 +364,8 @@ getLastUSDValue = function(currency) {
 
   ### Direct call to YahooData to get last value as there is no known ticker
   ### 3 last days returned
-  price_list <- getYahooData(currency_detail$YahooName, from_date=Sys.Date()-3)
+  price_list <- getYahooData(currency_detail$YahooName, from_date=Sys.Date()-3,
+                             include_today = TRUE)
   last_nr = nrow(price_list)
 
   if ((last_nr == 0) | all(is.na(price_list$Adjusted))) {
