@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.6] - 2026-09-23
+
+### Fixed
+- **AMRZ was stored at its NYSE USD price under currency CHF** (`R/account.R`, `getGonet`, new internal `gonet_quote_to_position_ccy()`). The Tickers row for AMRZ describes the US listing (USD, used by the scanner), so IBKR quoted it in USD. The Gonet shares are the SIX line from the Holcim spin-off and are booked in CHF. The USD figure was taken as CHF and overstated the position by ~25% (22.09.2026: 39.00 stored against a SIX close of ~31.5). Each IBKR quote is now converted from the Tickers currency to the position's currency at today's rate. AMRZ is the only Gonet position where the two differ.
+  - History repaired in the DB: 285 Gonet snapshots (29.09.2025–22.09.2026) are converted at each day's USD/CHF. The converted prices land within ~1% of the SIX close. The 287 Account rows built on them were corrected in their own currency (−1.7k to −3.9k each). Backup: `data/mydb_before_amrz_fix.db`.
+
+### Changed
+- **`gonet_legs()` labels free shares and their fraction cash.** A zero-cost buy is `Grant` (Air Liquide loyalty attribution). An attributed cash event on a grant's date is `Grant cash`: the payment for the fractional grant shares, e.g. "Indemnisation 0.53 AIR LIQUIDE". Both used to read as Buy / Income. `gonet_income_actions` lists the cash-only actions. Lots, P&L and opening dates are unchanged.
+
+### Notes
+- Tests: 2 new in `tests/testthat/test-account.R` (the quote conversion, and the grant labels on AI).
+
 ## [5.20.5] - 2026-09-23
 
 ### Added

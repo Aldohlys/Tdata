@@ -980,6 +980,27 @@ gonet_fetch_yahoo_close <- function(sym_yahoo) {
        asof  = format(zoo::index(cl)[NROW(cl)], "%Y%m%d"))
 }
 
+## Converts IBKR quotes into the currency the Gonet position is booked in, for
+## symbols whose Tickers row quotes another listing (AMRZ: USD in Tickers, CHF
+## at Gonet). `quote_ccy` and `pos_ccy` are named by sym. Missing prices and
+## symbols without both currencies pass through unchanged. Uses today's rate,
+## the rate the snapshot is valued at.
+gonet_quote_to_position_ccy <- function(last_price, quote_ccy, pos_ccy,
+                                        rate = function(ccy) convert_to_base_date(1, ccy, Sys.Date())) {
+  if (is.null(last_price) || nrow(last_price) == 0) return(last_price)
+  for (i in seq_len(nrow(last_price))) {
+    s  <- last_price$sym[i]
+    qc <- unname(quote_ccy[s]); pc <- unname(pos_ccy[s])
+    if (length(qc) == 0 || length(pc) == 0 || is.na(qc) || is.na(pc) || qc == pc) next
+    if (gonet_price_missing(last_price$price[i])) next
+    conv <- last_price$price[i] * rate(qc) / rate(pc)
+    logger::log_info("Gonet: {s} quoted in {qc} ({last_price$price[i]}), position booked in {pc} - converted to {round(conv, 4)}",
+                     namespace = "Tdata")
+    last_price$price[i] <- conv
+  }
+  last_price
+}
+
 ## Cash events attributed to a trade. A GonetTrades.csv row whose sym_ibkr is a
 ## currency code is a cash ledger row. When its TradeNr also appears on a
 ## non-cash leg the row is a cash flow belonging to that trade -- a dividend, a
@@ -1124,8 +1145,8 @@ gonet_lots <- function(gonet_trades, as_of = NULL) {
   rows <- lapply(syms, function(sym) {
     l <- if (is.na(sym)) legs[is.na(legs$sym_yahoo), , drop = FALSE]
          else legs[!is.na(legs$sym_yahoo) & legs$sym_yahoo == sym, , drop = FALSE]
-    st <- l[l$action != "Income", , drop = FALSE]
-    income <- sum(l$realized[l$action == "Income"])
+    st <- l[!(l$action %in% gonet_income_actions), , drop = FALSE]
+    income <- sum(l$realized[l$action %in% gonet_income_actions])
     data.frame(sym_yahoo = sym, TradeNr = st$TradeNr[1],
                currency = st$currency[1],
                shares = if (nrow(st)) st$shares_after[nrow(st)] else 0,
@@ -1136,12 +1157,17 @@ gonet_lots <- function(gonet_trades, as_of = NULL) {
   do.call(rbind, rows)
 }
 
+## Leg actions that move cash but no shares: a dividend or other attributed
+## cash event, and the cash paid for the fractions of a free-share grant.
+gonet_income_actions <- c("Income", "Grant cash")
+
 ## Leg-by-leg history of the Gonet stock positions: the same average-cost walk
 ## as gonet_lots, kept one row per leg instead of folded into one per symbol.
 ## gonet_lots is built on it, so the history and the snapshot cannot disagree.
 ##
-## action is Buy, Sell or Income (a dividend or other cash event attributed to
-## the trade, gonet_cash_events). `realized` is what that leg banked: a sale's
+## action is Buy, Sell, Grant (a zero-cost free-share attribution), Income (a
+## dividend or other cash event attributed to the trade, gonet_cash_events) or
+## Grant cash (such an event on a grant's date: payment for the fractions). `realized` is what that leg banked: a sale's
 ## proceeds less the average cost it relieved, an income row's amount, 0 for a
 ## buy. shares_after / basis_after are the lot after the leg. Amounts are in
 ## the position's currency; an income paid in another currency is converted at
@@ -1203,7 +1229,10 @@ gonet_legs <- function(gonet_trades, as_of = NULL) {
       } else next                                   # a sale with nothing held books nothing
       out[[length(out) + 1]] <- data.frame(
         TradeNr = tr$TradeNr[i], sym_yahoo = sym, symbol = tr$sym_ibkr[i],
-        date = dates[i], action = if (n > 0) "Buy" else "Sell",
+        date = dates[i],
+        ### A buy at zero cost is a free-share grant (Air Liquide loyalty
+        ### attribution): no cash paid, the shares dilute the basis.
+        action = if (n < 0) "Sell" else if (isTRUE(tr$init_cost[i] == 0)) "Grant" else "Buy",
         pos = n, price = tr$init_price[i], total = tr$init_cost[i],
         realized = banked, shares_after = shares, basis_after = basis,
         currency = pos_ccy, stringsAsFactors = FALSE)
@@ -1228,10 +1257,16 @@ gonet_legs <- function(gonet_trades, as_of = NULL) {
     }
     if (length(out) == 0) return(NULL)
     l <- do.call(rbind, out)
+    ### Cash booked on a grant's date is the payment for the fractional grant
+    ### shares (the statement's "Indemnisation 0.53 AIR LIQUIDE"), not a dividend.
+    grant_days <- l$date[l$action == "Grant"]
+    l$action[l$action == "Income" & l$date %in% grant_days] <- "Grant cash"
     ### Stock legs keep their walk order (stable sort); income slots in by date.
-    l <- l[order(l$date, l$action == "Income"), , drop = FALSE]
-    for (k in seq_len(nrow(l))) if (l$action[k] == "Income") {
-      prev <- which(l$action[seq_len(k)] != "Income")
+    is_inc <- l$action %in% gonet_income_actions
+    l <- l[order(l$date, is_inc), , drop = FALSE]
+    is_inc <- l$action %in% gonet_income_actions
+    for (k in seq_len(nrow(l))) if (is_inc[k]) {
+      prev <- which(!is_inc[seq_len(k)])
       if (length(prev)) {
         l$shares_after[k] <- l$shares_after[max(prev)]
         l$basis_after[k]  <- l$basis_after[max(prev)]
@@ -1308,7 +1343,7 @@ getGonetTradeDates <- function(as_of = NULL) {
 }
 
 gonet_open_dates <- function(legs) {
-  st <- legs[legs$action != "Income", , drop = FALSE]
+  st <- legs[!(legs$action %in% gonet_income_actions), , drop = FALSE]
   empty <- data.frame(TradeNr = integer(), sym_yahoo = character(),
                       symbol = character(), orig_date = as.Date(character()),
                       stringsAsFactors = FALSE)
@@ -1466,6 +1501,7 @@ getGonet <- function(use_defaults = FALSE) {
   # Exclude precious metals symbols (start with PM_) from IBKR fetch
   symbols_delayed <- character()
   symbols_regular <- character()
+  quote_ccy <- character()          # currency IBKR quotes each symbol in
 
   for (s in portf$sym_ibkr) {
     ### Skip precious metals - they have web-based pricing
@@ -1474,6 +1510,7 @@ getGonet <- function(use_defaults = FALSE) {
     }
 
     ticker <- getTicker(s)
+    if (nrow(ticker) > 0 && !is.na(ticker$Currency)) quote_ccy[s] <- ticker$Currency
     if (nrow(ticker) > 0 && !is.na(ticker$Exchange) && ticker$Exchange %in% delayed_exchanges) {
       symbols_delayed <- c(symbols_delayed, s)
     } else {
@@ -1494,6 +1531,15 @@ getGonet <- function(use_defaults = FALSE) {
 
   # Combine results
   last_price <- do.call(rbind, last_price_list)
+
+  ### IBKR quotes the listing the Tickers row describes, which is not always
+  ### the one Gonet holds. AMRZ is the US listing there (USD, used by the
+  ### scanner) while the Gonet shares are the SIX line from the Holcim spin-off
+  ### and are booked in CHF -- the USD quote was stored as CHF and overstated
+  ### the position by ~25%. Convert each quote to the position's currency.
+  last_price <- gonet_quote_to_position_ccy(
+    last_price, quote_ccy,
+    stats::setNames(portf$currency, portf$sym_ibkr))
 
   ### Fetch prices for precious metals from web sources
   if (any(precious_metals_mask)) {

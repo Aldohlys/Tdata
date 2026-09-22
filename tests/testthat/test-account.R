@@ -1439,3 +1439,33 @@ test_that("gonet_open_dates counts a reopened position from the reopening", {
                           c(100, -100), c(-1000, 1200), TradeNr = 8L)
   expect_equal(nrow(gonet_open_dates(gonet_legs(closed))), 0)
 })
+
+### ---------------------------------------------------------------------------
+### gonet_quote_to_position_ccy(): quote listing vs booked listing
+### ---------------------------------------------------------------------------
+
+test_that("gonet_quote_to_position_ccy converts a USD quote for a CHF-booked position", {
+  lp <- data.frame(sym = c("AMRZ", "ABBN", "NUCL"), price = c(39, 59.5, 0),
+                   stringsAsFactors = FALSE)
+  rate <- function(ccy) c(CHF = 1, USD = 0.8217, EUR = 0.94)[[ccy]]
+  res <- gonet_quote_to_position_ccy(lp,
+           quote_ccy = c(AMRZ = "USD", ABBN = "CHF", NUCL = "GBP"),
+           pos_ccy   = c(AMRZ = "CHF", ABBN = "CHF", NUCL = "USD"), rate = rate)
+  expect_equal(res$price[1], 39 * 0.8217)
+  expect_equal(res$price[2], 59.5)      # same currency: untouched
+  expect_equal(res$price[3], 0)         # missing price: left for the fallback
+})
+
+test_that("gonet_legs labels a zero-cost buy as Grant and its same-day cash as Grant cash", {
+  tr <- rbind(
+    gonet_fixture("AI.PA", "AI", c("01.03.2021", "10.06.2026"), c(180, 16),
+                  c(-21798.15, 0), "EUR", TradeNr = 1L),
+    gonet_fixture("EUR", "EUR", c("20.05.2026", "10.06.2026"), c(0, 0),
+                  c(424.57, 50.25), "EUR", TradeNr = 1L))
+  res <- gonet_legs(tr)
+  expect_equal(res$action, c("Buy", "Income", "Grant", "Grant cash"))
+  expect_equal(res$shares_after[4], 196)
+  lots <- gonet_lots(tr)
+  expect_equal(lots$shares, 196)
+  expect_equal(lots$income, 424.57 + 50.25)
+})
