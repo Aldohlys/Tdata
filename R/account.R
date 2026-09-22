@@ -838,6 +838,20 @@ gonet_price_missing <- function(price) {
   !is.finite(price) | price <= 0
 }
 
+## The price to use for each symbol whose fetch returned nothing: the operator's
+## if there is an operator to ask, otherwise the carried-forward default.
+##
+## Asking is only safe at an interactive prompt. Without a console
+## Tbasics::enter_numerical_data falls through to readLines("stdin"), which
+## BLOCKS rather than returning -- and getGonet runs unattended from
+## daily_portfolio_update.R, so one missing price would hang the scheduled task
+## for ever. Under Shiny the answer is the defaults either way: that is what
+## enter_numerical_data's own isRunning() branch returns.
+gonet_prices_or_ask <- function(syms, defaults, ask = interactive()) {
+  if (!ask) return(defaults)
+  Tbasics::enter_numerical_data(syms, defaults)
+}
+
 ## Last price actually observed for each symbol, used when the live fetch
 ## returns nothing.
 ##
@@ -1341,10 +1355,9 @@ getGonet <- function(use_defaults = FALSE) {
       }
     }
 
-    ### Prompt for the prices, showing the carried-forward values as defaults.
-    ### Under Shiny there is no console: enter_numerical_data returns the
-    ### defaults silently, which is what makes the fallback work from the app.
-    entered_prices <- Tbasics::enter_numerical_data(price_user$sym, default_values)
+    ### Ask the operator when there is one; otherwise take the carried-forward
+    ### price rather than blocking on stdin (see gonet_prices_or_ask).
+    entered_prices <- gonet_prices_or_ask(price_user$sym, default_values)
 
     ### Update price_user with entered prices
     price_user$price <- entered_prices

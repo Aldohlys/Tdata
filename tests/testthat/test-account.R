@@ -1299,3 +1299,20 @@ test_that("gonet_last_known_price resolves each symbol from its own best source"
       expect_equal(res$source[res$sym == "CNYA"], "Prices table")
     })
 })
+
+test_that("gonet_prices_or_ask takes the carried-forward price when unattended", {
+  ### getGonet runs unattended from daily_portfolio_update.R. Without a console
+  ### Tbasics::enter_numerical_data blocks on readLines("stdin") instead of
+  ### returning, so one missing price would hang the scheduled task for ever.
+  ### Nothing may be asked unless ask = TRUE.
+  expect_equal(gonet_prices_or_ask(c("NUCL", "DTLA"), c(51.96, 4.4443), ask = FALSE),
+               c(51.96, 4.4443))
+
+  ### An unresolved price stays NA and is not turned into a number.
+  expect_equal(gonet_prices_or_ask("CNYA", NA_real_, ask = FALSE), NA_real_)
+
+  ### The default must be "don't ask": interactive() is FALSE under both
+  ### Rscript and Shiny, which are the two ways getGonet actually runs.
+  expect_false(interactive())
+  expect_equal(gonet_prices_or_ask("NUCL", 51.96), 51.96)
+})

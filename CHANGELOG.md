@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.2] - 2026-09-22
+
+### Fixed
+- **`getGonet` could hang for ever on a missing price** (`R/account.R`). 5.20.1 made the no-price fallback actually fire, and it routed every case through `Tbasics::enter_numerical_data()`. That function asks `shiny::isRunning()` first and `interactive()` second, but its last resort is `readLines(con = "stdin", n = 1)`, which under `Rscript` **blocks** instead of returning. `getGonet` runs unattended from `daily_portfolio_update.R`, so a single unpriced symbol — NUCL, DTLA and CNYA are unpriced every run — would have hung the scheduled task indefinitely. Confirmed by running the call under `Rscript`: it never returned and had to be killed.
+  - The bug was latent in 5.20.1 only: before it, `price_user` was empty because a `0` was mistaken for a real quote, so the prompt was never reached.
+  - **`gonet_prices_or_ask(syms, defaults, ask = interactive())`** (new internal): asks only when there is an operator at a console, and otherwise returns the carried-forward prices. Under Shiny the result is identical — that is what `enter_numerical_data`'s own `isRunning()` branch returns — so the app behaves exactly as in 5.20.1.
+
+### Notes
+- Tests: 1 new in `tests/testthat/test-account.R`, asserting the unattended branch returns the defaults, that an unresolved price stays `NA` rather than becoming a number, and that the default is "don't ask" (`interactive()` is FALSE under both `Rscript` and Shiny, the two ways `getGonet` actually runs).
+
 ## [5.20.1] - 2026-09-22
 
 ### Fixed
