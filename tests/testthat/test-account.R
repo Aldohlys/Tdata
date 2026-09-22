@@ -930,14 +930,14 @@ test_that("getIBKR logs unmatched instruments (TradeNr=NA) and still returns 2",
 
 ## Minimal GonetTrades.csv shape. init_cost is the cash flow: negative on a buy
 ## (cash out), positive on a sell (proceeds in).
-gonet_legs <- function(sym_yahoo, sym_ibkr, dates, qty, cost, currency = "CHF", TradeNr = 1L) {
+gonet_fixture <- function(sym_yahoo, sym_ibkr, dates, qty, cost, currency = "CHF", TradeNr = 1L) {
   data.frame(TradeNr = TradeNr, orig_date = dates, sym_yahoo = sym_yahoo,
              sym_ibkr = sym_ibkr, init_position = qty, init_price = NA_real_,
              init_cost = cost, currency = currency, stringsAsFactors = FALSE)
 }
 
 test_that("gonet_lots leaves a never-sold position at its purchase basis", {
-  legs <- gonet_legs("TTE.PA", "TTE", "03.05.2023", 250, -8533.37, "EUR")
+  legs <- gonet_fixture("TTE.PA", "TTE", "03.05.2023", 250, -8533.37, "EUR")
   res  <- gonet_lots(legs)
 
   expect_equal(res$shares, 250)
@@ -948,7 +948,7 @@ test_that("gonet_lots leaves a never-sold position at its purchase basis", {
 test_that("gonet_lots relieves only the sold fraction of the basis (ABBN)", {
   ### 500 @ 32.92 then 200 sold @ 85.99. The surviving 300 shares keep the
   ### original 32.92 average; the gain on the 200 is realized, not unrealized.
-  legs <- gonet_legs("ABBN.SW", "ABBN", c("28.09.2023", "03.07.2026"),
+  legs <- gonet_fixture("ABBN.SW", "ABBN", c("28.09.2023", "03.07.2026"),
                      c(500, -200), c(-16460, 17197.6))
   res  <- gonet_lots(legs)
 
@@ -964,7 +964,7 @@ test_that("gonet_lots relieves only the sold fraction of the basis (ABBN)", {
 })
 
 test_that("gonet_lots carries the reduced basis across successive sales", {
-  legs <- gonet_legs("HOLN.SW", "HOLN",
+  legs <- gonet_fixture("HOLN.SW", "HOLN",
                      c("01.01.2023", "21.08.2024", "20.06.2025"),
                      c(660, -140, -260), c(-18048, 10887.3, 12376))
   res  <- gonet_lots(legs)
@@ -976,7 +976,7 @@ test_that("gonet_lots carries the reduced basis across successive sales", {
 })
 
 test_that("gonet_lots reports a loss-making sale as negative realized", {
-  legs <- gonet_legs("OR.PA", "OR", c("01.01.2023", "19.08.2024"),
+  legs <- gonet_fixture("OR.PA", "OR", c("01.01.2023", "19.08.2024"),
                      c(60, -30), c(-24380.98, 11361.92), "EUR")
   res  <- gonet_lots(legs)
 
@@ -986,7 +986,7 @@ test_that("gonet_lots reports a loss-making sale as negative realized", {
 })
 
 test_that("gonet_lots zeroes the basis on a full close", {
-  legs <- gonet_legs("NESN.SW", "NESN", c("01.01.2023", "15.12.2023"),
+  legs <- gonet_fixture("NESN.SW", "NESN", c("01.01.2023", "15.12.2023"),
                      c(150, -150), c(-17803.39, 14540))
   res  <- gonet_lots(legs)
 
@@ -996,7 +996,7 @@ test_that("gonet_lots zeroes the basis on a full close", {
 })
 
 test_that("gonet_lots clamps a sale larger than the holding", {
-  legs <- gonet_legs("X.SW", "X", c("01.01.2023", "01.02.2023"),
+  legs <- gonet_fixture("X.SW", "X", c("01.01.2023", "01.02.2023"),
                      c(100, -150), c(-1000, 1800))
   res  <- gonet_lots(legs)
 
@@ -1005,7 +1005,7 @@ test_that("gonet_lots clamps a sale larger than the holding", {
 })
 
 test_that("gonet_lots as_of ignores legs after the cutoff", {
-  legs <- gonet_legs("ABBN.SW", "ABBN", c("28.09.2023", "03.07.2026"),
+  legs <- gonet_fixture("ABBN.SW", "ABBN", c("28.09.2023", "03.07.2026"),
                      c(500, -200), c(-16460, 17197.6))
 
   before <- gonet_lots(legs, as_of = "2026-07-02")
@@ -1021,8 +1021,8 @@ test_that("gonet_lots excludes unattributed CASH ledger rows", {
   ### The baseline rows carry TradeNrs of their own (26/27/28) that match no
   ### trade, which is what keeps them out of any position's P&L.
   legs <- rbind(
-    gonet_legs("ABBN.SW", "ABBN", "28.09.2023", 500, -16460),
-    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L))
+    gonet_fixture("ABBN.SW", "ABBN", "28.09.2023", 500, -16460),
+    gonet_fixture("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L))
   res <- gonet_lots(legs)
 
   expect_equal(nrow(res), 1)
@@ -1034,7 +1034,7 @@ test_that("gonet_lots excludes unattributed CASH ledger rows", {
 test_that("gonet_lots keeps the basis of the NA-keyed precious-metal row", {
   ### The precious metal carries a literal "NA" sym_yahoo. Matching it with
   ### `== NA` silently drops every leg and returns a zero basis.
-  legs <- gonet_legs(NA_character_, "PM_15606539", "01.03.2021", 67, -22197.1)
+  legs <- gonet_fixture(NA_character_, "PM_15606539", "01.03.2021", 67, -22197.1)
   res  <- gonet_lots(legs)
 
   expect_equal(res$shares, 67)
@@ -1043,7 +1043,7 @@ test_that("gonet_lots keeps the basis of the NA-keyed precious-metal row", {
 })
 
 test_that("gonet_lots returns an empty frame when there are no stock legs", {
-  legs <- gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD")
+  legs <- gonet_fixture("USD", "USD", "10.07.2026", 522.42, -522.42, "USD")
   res  <- gonet_lots(legs)
 
   expect_equal(nrow(res), 0)
@@ -1064,8 +1064,8 @@ test_that("gonet_lots returns an empty frame when there are no stock legs", {
 
 test_that("gonet_cash_events picks up a cash row whose TradeNr matches a trade", {
   legs <- rbind(
-    gonet_legs("TRE7.L", "TRE7", "05.09.2024", 300, -11772.92, "USD", TradeNr = 15L),
-    gonet_legs("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 15L))
+    gonet_fixture("TRE7.L", "TRE7", "05.09.2024", 300, -11772.92, "USD", TradeNr = 15L),
+    gonet_fixture("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 15L))
   ev <- gonet_cash_events(legs)
 
   expect_equal(nrow(ev), 1)
@@ -1076,8 +1076,8 @@ test_that("gonet_cash_events picks up a cash row whose TradeNr matches a trade",
 
 test_that("gonet_cash_events ignores the baseline rows", {
   legs <- rbind(
-    gonet_legs("ABBN.SW", "ABBN", "28.09.2023", 500, -16460, TradeNr = 10L),
-    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L))
+    gonet_fixture("ABBN.SW", "ABBN", "28.09.2023", 500, -16460, TradeNr = 10L),
+    gonet_fixture("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L))
 
   expect_equal(nrow(gonet_cash_events(legs)), 0)
 })
@@ -1086,9 +1086,9 @@ test_that("gonet_cash_events books an event dated on the baseline date", {
   ### The QQQ dividend of 10.07.2026 falls on the day the baseline was struck.
   ### Attribution is by TradeNr alone, so the date must not exclude it.
   legs <- rbind(
-    gonet_legs("QQQ", "QQQ", "09.05.2023", 62, -19885.58, "USD", TradeNr = 9L),
-    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L),
-    gonet_legs("USD", "USD", "10.07.2026", 35.3, 35.3, "USD", TradeNr = 9L))
+    gonet_fixture("QQQ", "QQQ", "09.05.2023", 62, -19885.58, "USD", TradeNr = 9L),
+    gonet_fixture("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L),
+    gonet_fixture("USD", "USD", "10.07.2026", 35.3, 35.3, "USD", TradeNr = 9L))
   ev <- gonet_cash_events(legs)
 
   expect_equal(nrow(ev), 1)
@@ -1100,11 +1100,11 @@ test_that("gonet_cash_events books a reused TradeNr against the instrument then 
   ### Gonet TradeNrs are reused across instruments, so the event belongs to the
   ### leg current on its own date, not to whichever leg happens to come first.
   legs <- rbind(
-    gonet_legs("OLD.SW", "OLD", c("01.01.2023", "01.06.2024"), c(100, -100),
+    gonet_fixture("OLD.SW", "OLD", c("01.01.2023", "01.06.2024"), c(100, -100),
                c(-10000, 12000), TradeNr = 21L),
-    gonet_legs("NEW.SW", "NEW", "01.07.2024", 200, -20000, TradeNr = 21L),
-    gonet_legs("CHF", "CHF", "01.03.2023", 50, 50, "CHF", TradeNr = 21L),
-    gonet_legs("CHF", "CHF", "01.09.2024", 80, 80, "CHF", TradeNr = 21L))
+    gonet_fixture("NEW.SW", "NEW", "01.07.2024", 200, -20000, TradeNr = 21L),
+    gonet_fixture("CHF", "CHF", "01.03.2023", 50, 50, "CHF", TradeNr = 21L),
+    gonet_fixture("CHF", "CHF", "01.09.2024", 80, 80, "CHF", TradeNr = 21L))
   ev <- gonet_cash_events(legs)
 
   expect_equal(nrow(ev), 2)
@@ -1114,8 +1114,8 @@ test_that("gonet_cash_events books a reused TradeNr against the instrument then 
 
 test_that("gonet_lots books a dividend as realized income, leaving the basis alone", {
   legs <- rbind(
-    gonet_legs("TRE7.L", "TRE7", "05.09.2024", 300, -11772.92, "USD", TradeNr = 15L),
-    gonet_legs("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 15L))
+    gonet_fixture("TRE7.L", "TRE7", "05.09.2024", 300, -11772.92, "USD", TradeNr = 15L),
+    gonet_fixture("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 15L))
   res <- gonet_lots(legs)
 
   expect_equal(res$shares, 300)
@@ -1128,8 +1128,8 @@ test_that("gonet_lots converts an event paid in another currency at the event da
   ### AMRZ is booked in CHF and pays its dividend in USD. The realized figure
   ### lives in the position's currency, at the rate on the day the cash landed.
   legs <- rbind(
-    gonet_legs("AMRZ.SW", "AMRZ", "23.06.2025", 260, -6084, "CHF", TradeNr = 19L),
-    gonet_legs("USD", "USD", "26.08.2026", 28.6, 28.6, "USD", TradeNr = 19L))
+    gonet_fixture("AMRZ.SW", "AMRZ", "23.06.2025", 260, -6084, "CHF", TradeNr = 19L),
+    gonet_fixture("USD", "USD", "26.08.2026", 28.6, 28.6, "USD", TradeNr = 19L))
 
   with_mocked_bindings(
     convert_to_base_date = .gonet_fx_stub(list("20260826" = 0.8058)), {
@@ -1142,9 +1142,9 @@ test_that("gonet_lots converts an event paid in another currency at the event da
 
 test_that("gonet_lots adds income on top of the gain banked by a sale", {
   legs <- rbind(
-    gonet_legs("ABBN.SW", "ABBN", c("28.09.2023", "03.07.2026"), c(500, -200),
+    gonet_fixture("ABBN.SW", "ABBN", c("28.09.2023", "03.07.2026"), c(500, -200),
                c(-16460, 17197.6), TradeNr = 10L),
-    gonet_legs("CHF", "CHF", "01.08.2026", 300, 300, "CHF", TradeNr = 10L))
+    gonet_fixture("CHF", "CHF", "01.08.2026", 300, 300, "CHF", TradeNr = 10L))
   res <- gonet_lots(legs)
 
   expect_equal(res$basis, 9876)
@@ -1153,8 +1153,8 @@ test_that("gonet_lots adds income on top of the gain banked by a sale", {
 
 test_that("gonet_lots as_of excludes a cash event after the cutoff", {
   legs <- rbind(
-    gonet_legs("TRE7.L", "TRE7", "05.09.2024", 300, -11772.92, "USD", TradeNr = 15L),
-    gonet_legs("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 15L))
+    gonet_fixture("TRE7.L", "TRE7", "05.09.2024", 300, -11772.92, "USD", TradeNr = 15L),
+    gonet_fixture("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 15L))
 
   expect_equal(gonet_lots(legs, as_of = "2026-09-16")$realized, 0)
   expect_equal(gonet_lots(legs, as_of = "2026-09-18")$realized, 117.09)
@@ -1169,9 +1169,9 @@ test_that("gonet_cash_balances adds post-baseline sale proceeds to the balance",
   ### value while cash stayed at its stale CSV figure, so the snapshot lost the
   ### proceeds entirely.
   legs <- rbind(
-    gonet_legs("SLHN.SW", "SLHN", c("27.07.2021", "17.09.2026"), c(38, -12),
+    gonet_fixture("SLHN.SW", "SLHN", c("27.07.2021", "17.09.2026"), c(38, -12),
                c(-16115.3, 10816.15), "CHF", TradeNr = 5L),
-    gonet_legs("CHF", "CHF", "10.07.2026", 45643.79, -45643.79, "CHF", TradeNr = 26L))
+    gonet_fixture("CHF", "CHF", "10.07.2026", 45643.79, -45643.79, "CHF", TradeNr = 26L))
 
   expect_equal(gonet_cash_balances(legs)[["CHF"]], 45643.79 + 10816.15)
 })
@@ -1179,27 +1179,27 @@ test_that("gonet_cash_balances adds post-baseline sale proceeds to the balance",
 test_that("gonet_cash_balances leaves legs dated before the baseline alone", {
   ### They are already inside the balance read off the bank statement.
   legs <- rbind(
-    gonet_legs("CNYA.SW", "CNYA", "09.07.2026", 2670, -16956.55, "USD", TradeNr = 25L),
-    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L))
+    gonet_fixture("CNYA.SW", "CNYA", "09.07.2026", 2670, -16956.55, "USD", TradeNr = 25L),
+    gonet_fixture("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L))
 
   expect_equal(gonet_cash_balances(legs)[["USD"]], 522.42)
 })
 
 test_that("gonet_cash_balances adds attributed cash events, including same-day ones", {
   legs <- rbind(
-    gonet_legs("QQQ", "QQQ", "09.05.2023", 62, -19885.58, "USD", TradeNr = 9L),
-    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L),
-    gonet_legs("USD", "USD", "10.07.2026", 35.3, 35.3, "USD", TradeNr = 9L),
-    gonet_legs("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 9L))
+    gonet_fixture("QQQ", "QQQ", "09.05.2023", 62, -19885.58, "USD", TradeNr = 9L),
+    gonet_fixture("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L),
+    gonet_fixture("USD", "USD", "10.07.2026", 35.3, 35.3, "USD", TradeNr = 9L),
+    gonet_fixture("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 9L))
 
   expect_equal(gonet_cash_balances(legs)[["USD"]], 522.42 + 35.3 + 117.09)
 })
 
 test_that("gonet_cash_balances as_of rolls the balance forward to a past date", {
   legs <- rbind(
-    gonet_legs("QQQ", "QQQ", "09.05.2023", 62, -19885.58, "USD", TradeNr = 9L),
-    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L),
-    gonet_legs("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 9L))
+    gonet_fixture("QQQ", "QQQ", "09.05.2023", 62, -19885.58, "USD", TradeNr = 9L),
+    gonet_fixture("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L),
+    gonet_fixture("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 9L))
 
   expect_equal(gonet_cash_balances(legs, as_of = "2026-08-31")[["USD"]], 522.42)
   expect_equal(gonet_cash_balances(legs, as_of = "2026-09-30")[["USD"]], 639.51)
@@ -1208,7 +1208,7 @@ test_that("gonet_cash_balances as_of rolls the balance forward to a past date", 
 test_that("gonet_cash_balances returns nothing when the ledger has no baseline row", {
   ### The caller then keeps whatever GonetPos.csv declares rather than writing
   ### a balance built from trade legs alone.
-  legs <- gonet_legs("ABBN.SW", "ABBN", "28.09.2023", 500, -16460)
+  legs <- gonet_fixture("ABBN.SW", "ABBN", "28.09.2023", 500, -16460)
 
   expect_equal(length(gonet_cash_balances(legs)), 0)
 })
@@ -1390,4 +1390,52 @@ test_that("gonet_yahoo_price rejects a quote more than 2x from the last known pr
 test_that("gonet_yahoo_price survives a failing fetch", {
   res <- gonet_yahoo_price("NUCL", "NUCL.L", fetch = function(y) stop("HTTP 429"))
   expect_equal(nrow(res), 0)
+})
+
+### ---------------------------------------------------------------------------
+### gonet_legs() / gonet_open_dates(): leg-by-leg history for the Trade tab
+### ---------------------------------------------------------------------------
+
+test_that("gonet_legs keeps each leg with the realized P&L it banked", {
+  ### OR: 60 bought, 30 sold. The sale relieves half the basis and banks the rest.
+  tr <- gonet_fixture("OR.PA", "OR", c("13.12.2021", "19.08.2024"),
+                      c(60, -30), c(-24380.97, 11361.92), "EUR", TradeNr = 6L)
+  res <- gonet_legs(tr)
+  expect_equal(res$action, c("Buy", "Sell"))
+  expect_equal(res$date, as.Date(c("2021-12-13", "2024-08-19")))
+  expect_equal(res$realized, c(0, 11361.92 - 24380.97 / 2))
+  expect_equal(res$shares_after, c(60, 30))
+  expect_equal(res$basis_after, c(24380.97, 24380.97 / 2))
+})
+
+test_that("gonet_lots equals the last state and the summed realized of gonet_legs", {
+  tr <- gonet_fixture("OR.PA", "OR", c("19.08.2024", "13.12.2021"),
+                      c(-30, 60), c(11361.92, -24380.97), "EUR", TradeNr = 6L)
+  legs <- gonet_legs(tr)
+  lots <- gonet_lots(tr)
+  expect_equal(lots$shares, 30)
+  expect_equal(lots$basis, legs$basis_after[2])
+  expect_equal(lots$realized, sum(legs$realized))
+})
+
+test_that("gonet_legs slots a same-currency dividend in by date", {
+  tr <- rbind(
+    gonet_fixture("OR.PA", "OR", c("13.12.2021", "19.08.2024"),
+                  c(60, -30), c(-24380.97, 11361.92), "EUR", TradeNr = 6L),
+    gonet_fixture("EUR", "EUR", "30.04.2024", 303.79, 303.79, "EUR", TradeNr = 6L))
+  res <- gonet_legs(tr)
+  expect_equal(res$action, c("Buy", "Income", "Sell"))
+  expect_equal(res$realized[2], 303.79)
+  expect_equal(res$shares_after[2], 60)
+  expect_equal(gonet_lots(tr)$income, 303.79)
+})
+
+test_that("gonet_open_dates counts a reopened position from the reopening", {
+  tr <- gonet_fixture("X.SW", "X", c("01.01.2022", "01.06.2023", "01.03.2024"),
+                      c(100, -100, 50), c(-1000, 1200, -600), TradeNr = 7L)
+  od <- gonet_open_dates(gonet_legs(tr))
+  expect_equal(od$orig_date, as.Date("2024-03-01"))
+  closed <- gonet_fixture("Y.SW", "Y", c("01.01.2022", "01.06.2023"),
+                          c(100, -100), c(-1000, 1200), TradeNr = 8L)
+  expect_equal(nrow(gonet_open_dates(gonet_legs(closed))), 0)
 })

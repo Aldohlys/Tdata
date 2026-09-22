@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.5] - 2026-09-23
+
+### Added
+- **Leg-by-leg Gonet history** (`R/account.R`, new internal `gonet_legs()`, exported `getGonetLegs()`). It uses the same average-cost walk as `gonet_lots()` but keeps one row per leg: `TradeNr, sym_yahoo, symbol, date, action (Buy/Sell/Income), pos, price, total, realized, shares_after, basis_after, currency`. `realized` is what the leg banked. For a sale, that is proceeds less the average cost it relieved: OR sold 30 of 60 on 2024-08-19 for EUR 11,361.92 against a basis of EUR 12,190.49, so −828.57. For a dividend attributed to the trade, it is the amount. The Tuser Trade tab uses it for the Gonet History table.
+  - `gonet_lots()` is now a summary of `gonet_legs()`, so the snapshot and the history cannot disagree. Its output is unchanged.
+  - `getGonetLegs()` renames each leg's symbol to the GonetPos.csv name (via `sym_yahoo`) because the two files can disagree: the EUR bond fund is `433080107` in the trades and `IE00B67T5G21` in the positions. Precious metals become `PM_<ZKB id>`, as in the snapshot.
+- **`getGonetTradeDates()`** (exported) returns the opening date of each open Gonet position: the first buy after the holding was last flat. HOLN therefore opens on 2025-06-23, because the ledger books the Amrize spin-off as a sale plus a new trade 18.
+- `read_gonet_trades()` (internal) reads GonetTrades.csv from `gonet_dir`.
+
+### Notes
+- Tests: 4 new in `tests/testthat/test-account.R`: OR's partial sale, lots = summary of legs, a dividend slotted in by date, and a reopened position dated from the reopening. The test fixture helper previously named `gonet_legs` is renamed `gonet_fixture`.
+
 ## [5.20.4] - 2026-09-22
 
 ### Added

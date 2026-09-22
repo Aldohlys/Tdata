@@ -1115,6 +1115,48 @@ gonet_lots <- function(gonet_trades, as_of = NULL) {
                       basis = numeric(), realized = numeric(),
                       income = numeric(), stringsAsFactors = FALSE)
 
+  legs <- gonet_legs(gonet_trades, as_of)
+  if (nrow(legs) == 0) return(empty)
+
+  ### One row per symbol, in the order the symbols first trade -- the walk's
+  ### own order. The NA key (precious metals) is matched explicitly, as below.
+  syms <- unique(legs$sym_yahoo)
+  rows <- lapply(syms, function(sym) {
+    l <- if (is.na(sym)) legs[is.na(legs$sym_yahoo), , drop = FALSE]
+         else legs[!is.na(legs$sym_yahoo) & legs$sym_yahoo == sym, , drop = FALSE]
+    st <- l[l$action != "Income", , drop = FALSE]
+    income <- sum(l$realized[l$action == "Income"])
+    data.frame(sym_yahoo = sym, TradeNr = st$TradeNr[1],
+               currency = st$currency[1],
+               shares = if (nrow(st)) st$shares_after[nrow(st)] else 0,
+               basis  = if (nrow(st)) st$basis_after[nrow(st)]  else 0,
+               realized = sum(l$realized), income = income,
+               stringsAsFactors = FALSE)
+  })
+  do.call(rbind, rows)
+}
+
+## Leg-by-leg history of the Gonet stock positions: the same average-cost walk
+## as gonet_lots, kept one row per leg instead of folded into one per symbol.
+## gonet_lots is built on it, so the history and the snapshot cannot disagree.
+##
+## action is Buy, Sell or Income (a dividend or other cash event attributed to
+## the trade, gonet_cash_events). `realized` is what that leg banked: a sale's
+## proceeds less the average cost it relieved, an income row's amount, 0 for a
+## buy. shares_after / basis_after are the lot after the leg. Amounts are in
+## the position's currency; an income paid in another currency is converted at
+## its own date. `total` is the cash moved (init_cost: negative for a buy).
+##
+## Gonet reuses TradeNrs across instruments, so a leg is identified by
+## (TradeNr, sym_yahoo), never by TradeNr alone.
+gonet_legs <- function(gonet_trades, as_of = NULL) {
+  empty <- data.frame(TradeNr = integer(), sym_yahoo = character(),
+                      symbol = character(), date = as.Date(character()),
+                      action = character(), pos = numeric(), price = numeric(),
+                      total = numeric(), realized = numeric(),
+                      shares_after = numeric(), basis_after = numeric(),
+                      currency = character(), stringsAsFactors = FALSE)
+
   tr <- gonet_trades[is.na(gonet_trades$sym_ibkr) | is.na(gonet_trades$currency) |
                        gonet_trades$sym_ibkr != gonet_trades$currency, , drop = FALSE]
   if (nrow(tr) == 0) return(empty)
@@ -1129,6 +1171,7 @@ gonet_lots <- function(gonet_trades, as_of = NULL) {
 
   ord <- order(dates)
   tr  <- tr[ord, , drop = FALSE]
+  dates <- dates[ord]
 
   events <- gonet_cash_events(gonet_trades)
   if (!is.null(as_of) && nrow(events) > 0)
@@ -1141,25 +1184,34 @@ gonet_lots <- function(gonet_trades, as_of = NULL) {
     ### with the position row the same way.
     idx <- if (is.na(sym)) which(is.na(tr$sym_yahoo))
            else which(!is.na(tr$sym_yahoo) & tr$sym_yahoo == sym)
-    shares <- 0; basis <- 0; realized <- 0
+    pos_ccy <- tr$currency[idx[1]]
+    shares <- 0; basis <- 0
+    out <- list()
     for (i in idx) {
       n <- tr$init_position[i]
       if (is.na(n) || n == 0) next
+      banked <- 0
       if (n > 0) {                                  # buy: add to the lot
         shares <- shares + n
         basis  <- basis + (-tr$init_cost[i])        # init_cost is cash out (<= 0)
       } else if (shares > 0) {                      # sell: relieve the closed fraction
         frac        <- min(1, (-n) / shares)        # clamp: never relieve more than held
         closed_cost <- basis * frac
-        realized    <- realized + (tr$init_cost[i] - closed_cost)
+        banked      <- tr$init_cost[i] - closed_cost
         shares      <- shares + n
         basis       <- basis - closed_cost
-      }
+      } else next                                   # a sale with nothing held books nothing
+      out[[length(out) + 1]] <- data.frame(
+        TradeNr = tr$TradeNr[i], sym_yahoo = sym, symbol = tr$sym_ibkr[i],
+        date = dates[i], action = if (n > 0) "Buy" else "Sell",
+        pos = n, price = tr$init_price[i], total = tr$init_cost[i],
+        realized = banked, shares_after = shares, basis_after = basis,
+        currency = pos_ccy, stringsAsFactors = FALSE)
     }
 
     ### Dividends and other attributed cash events, in the position's currency.
-    pos_ccy <- tr$currency[idx[1]]
-    income  <- 0
+    ### They move neither shares nor basis; the lot state after them is the
+    ### state of the last stock leg on or before their date.
     eidx <- if (nrow(events) == 0) integer(0)
             else if (is.na(sym)) which(is.na(events$sym_yahoo))
             else which(!is.na(events$sym_yahoo) & events$sym_yahoo == sym)
@@ -1168,15 +1220,111 @@ gonet_lots <- function(gonet_trades, as_of = NULL) {
       if (!identical(events$currency[j], pos_ccy))
         amt <- convert_to_base_date(amt, events$currency[j], events$date[j]) /
                convert_to_base_date(1,   pos_ccy,            events$date[j])
-      income <- income + amt
+      out[[length(out) + 1]] <- data.frame(
+        TradeNr = events$TradeNr[j], sym_yahoo = sym, symbol = tr$sym_ibkr[idx[1]],
+        date = events$date[j], action = "Income", pos = 0, price = NA_real_,
+        total = amt, realized = amt, shares_after = NA_real_, basis_after = NA_real_,
+        currency = pos_ccy, stringsAsFactors = FALSE)
     }
-
-    data.frame(sym_yahoo = sym, TradeNr = tr$TradeNr[idx[1]],
-               currency = pos_ccy, shares = shares,
-               basis = basis, realized = realized + income,
-               income = income, stringsAsFactors = FALSE)
+    if (length(out) == 0) return(NULL)
+    l <- do.call(rbind, out)
+    ### Stock legs keep their walk order (stable sort); income slots in by date.
+    l <- l[order(l$date, l$action == "Income"), , drop = FALSE]
+    for (k in seq_len(nrow(l))) if (l$action[k] == "Income") {
+      prev <- which(l$action[seq_len(k)] != "Income")
+      if (length(prev)) {
+        l$shares_after[k] <- l$shares_after[max(prev)]
+        l$basis_after[k]  <- l$basis_after[max(prev)]
+      }
+    }
+    l
   })
-  do.call(rbind, rows)
+  rows <- Filter(Negate(is.null), rows)
+  if (length(rows) == 0) return(empty)
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}
+
+## Reads GonetTrades.csv from the configured Gonet directory. NULL, with a
+## warning, when the file is missing.
+read_gonet_trades <- function() {
+  f <- file.path(config::get("gonet_dir"), "GonetTrades.csv")
+  if (!file.exists(f)) {
+    warning("Gonet trades file not found: ", f)
+    return(NULL)
+  }
+  suppressWarnings(readr::read_delim(file = f, delim = ";", show_col_types = FALSE,
+    locale = readr::locale(date_names = "en", decimal_mark = ".", grouping_mark = "",
+                           encoding = "UTF-8")))
+}
+
+#'   getGonetLegs
+#'
+#' Leg-by-leg history of the Gonet positions, read from GonetTrades.csv: every
+#' buy, sale and attributed dividend with the realized P&L it banked and the lot
+#' (shares, basis) after it. See \code{gonet_legs}.
+#'
+#' @param as_of Optional date: only legs on or before it.
+#' @returns data.frame with TradeNr, sym_yahoo, symbol, date, action, pos, price,
+#'   total, realized, shares_after, basis_after, currency. Empty when the file is missing.
+#' @export
+getGonetLegs <- function(as_of = NULL) {
+  tr <- read_gonet_trades()
+  if (is.null(tr)) return(gonet_legs(data.frame(sym_ibkr = character(), currency = character()), as_of))
+  legs <- gonet_legs(tr, as_of)
+
+  ### Name each leg as the snapshot does. The Gonet table takes `symbol` from
+  ### GonetPos.csv, and the two files can disagree (the EUR bond fund is
+  ### 433080107 in the trades, IE00B67T5G21 in the positions). sym_yahoo is the
+  ### key both share.
+  pos_file <- file.path(config::get("gonet_dir"), "GonetPos.csv")
+  if (file.exists(pos_file) && nrow(legs) > 0) {
+    gp <- suppressWarnings(readr::read_delim(pos_file, delim = ";", show_col_types = FALSE))
+    m  <- match(legs$sym_yahoo, gp$sym_yahoo)
+    hit <- !is.na(m) & !is.na(legs$sym_yahoo)
+    legs$symbol[hit] <- gp$sym_ibkr[m[hit]]
+    ### Precious metals: the snapshot names them PM_<ZKB id> (see getGonet).
+    pm <- which(is.na(legs$sym_yahoo))
+    pm_row <- which(!is.na(gp$type) & gp$type == "Precious Metals")
+    if (length(pm) && length(pm_row))
+      legs$symbol[pm] <- paste0("PM_", sub(".*FI_ID_NOTATION=([0-9]+).*", "\\1", gp$exchange[pm_row[1]]))
+  }
+  legs
+}
+
+#'   getGonetTradeDates
+#'
+#' Opening date of each open Gonet position: the date of the first buy of the
+#' current holding, i.e. the first buy after the position was last flat.
+#' A position closed and reopened under the same symbol counts from the reopening.
+#'
+#' @param as_of Optional date: the state on that date.
+#' @returns data.frame with TradeNr, sym_yahoo, symbol, orig_date (Date).
+#' @export
+getGonetTradeDates <- function(as_of = NULL) {
+  legs <- getGonetLegs(as_of)
+  gonet_open_dates(legs)
+}
+
+gonet_open_dates <- function(legs) {
+  st <- legs[legs$action != "Income", , drop = FALSE]
+  empty <- data.frame(TradeNr = integer(), sym_yahoo = character(),
+                      symbol = character(), orig_date = as.Date(character()),
+                      stringsAsFactors = FALSE)
+  if (nrow(st) == 0) return(empty)
+  keys <- unique(st$sym_yahoo)
+  rows <- lapply(keys, function(sym) {
+    l <- if (is.na(sym)) st[is.na(st$sym_yahoo), , drop = FALSE]
+         else st[!is.na(st$sym_yahoo) & st$sym_yahoo == sym, , drop = FALSE]
+    if (l$shares_after[nrow(l)] <= 0) return(NULL)
+    flat  <- which(l$shares_after <= 0)
+    first <- if (length(flat)) max(flat) + 1 else 1
+    data.frame(TradeNr = l$TradeNr[first], sym_yahoo = sym, symbol = l$symbol[nrow(l)],
+               orig_date = l$date[first], stringsAsFactors = FALSE)
+  })
+  rows <- Filter(Negate(is.null), rows)
+  if (length(rows) == 0) empty else do.call(rbind, rows)
 }
 
 #'   getGonet
