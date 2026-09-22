@@ -829,6 +829,70 @@ gonet_realized_fx <- function(gonet_trades, ccy) {
   round(rfx, 2)
 }
 
+## Which fetched prices are unusable. IBKR does not signal an unsubscribed
+## instrument with NaN -- getValue returns a plain 0 alongside "Error 354,
+## Requested market data is not subscribed" -- so a test on is.nan() alone let
+## the 0 through and priced the position at zero. Anything non-finite or
+## non-positive means no price.
+gonet_price_missing <- function(price) {
+  !is.finite(price) | price <= 0
+}
+
+## Last price actually observed for each symbol, used when the live fetch
+## returns nothing.
+##
+## IBKR does not signal an unsubscribed instrument with NaN -- getValue returns
+## a plain 0 alongside "Error 354, Requested market data is not subscribed"
+## (NUCL, DTLA, CNYA on LSEETF). A 0 priced the position at zero and reported
+## the whole cost as a loss, so "no price" has to mean every non-positive or
+## non-finite value, not just NaN.
+##
+## The Gonet snapshot is searched first and the Prices table second. Snapshots
+## are written several times a day while Prices is only appended when a price is
+## typed in by hand -- it held NUCL from April and DTLA from December, and
+## nothing at all for CNYA. Rows priced at 0 by this very bug are skipped, so a
+## bad snapshot is not carried forward.
+##
+## Returns one row per symbol found: sym, price, asof, source.
+gonet_last_known_price <- function(syms) {
+  empty <- data.frame(sym = character(), price = numeric(),
+                      asof = character(), source = character(),
+                      stringsAsFactors = FALSE)
+  syms <- unique(syms[!is.na(syms)])
+  if (length(syms) == 0) return(empty)
+
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  ph   <- paste(rep("?", length(syms)), collapse = ",")
+  snap <- DBI::dbGetQuery(conn, paste0(
+    "SELECT symbol AS sym, mktPrice AS price, date, heure FROM Gonet ",
+    "WHERE symbol IN (", ph, ") AND mktPrice > 0 ",
+    "ORDER BY date DESC, heure DESC"), params = as.list(syms))
+
+  found <- empty
+  if (nrow(snap) > 0) {
+    snap <- snap[!duplicated(snap$sym), , drop = FALSE]   # most recent per symbol
+    found <- data.frame(sym = snap$sym, price = snap$price,
+                        asof = paste(snap$date, snap$heure),
+                        source = "Gonet snapshot", stringsAsFactors = FALSE)
+  }
+
+  missing <- setdiff(syms, found$sym)
+  if (length(missing) > 0) {
+    stored <- getStoredMetrics(missing)
+    if (nrow(stored) > 0) {
+      stored <- stored[!is.na(stored$price) & stored$price > 0, , drop = FALSE]
+      if (nrow(stored) > 0)
+        found <- rbind(found, data.frame(
+          sym = stored$sym, price = stored$price,
+          asof = as.character(stored$datetime), source = "Prices table",
+          stringsAsFactors = FALSE))
+    }
+  }
+  found
+}
+
 ## Cash events attributed to a trade. A GonetTrades.csv row whose sym_ibkr is a
 ## currency code is a cash ledger row. When its TradeNr also appears on a
 ## non-cash leg the row is a cash flow belonging to that trade -- a dividend, a
@@ -1250,27 +1314,36 @@ getGonet <- function(use_defaults = FALSE) {
     }
   }
 
-  #### price_user is the subset of last_price where price = NaN, i.e. price could not be retrieved from IBKR
-  price_user <- last_price[is.nan(last_price$price),]
+  #### price_user is the subset of last_price with no usable price, i.e. the
+  #### fetch returned nothing. IBKR answers an unsubscribed instrument with a
+  #### plain 0 rather than NaN (Error 354), so testing is.nan() alone let a 0
+  #### through: NUCL, DTLA and CNYA were priced at zero and their whole cost
+  #### reported as a loss. Any non-finite or non-positive price counts.
+  no_price  <- gonet_price_missing(last_price$price)
+  price_user <- last_price[no_price, , drop = FALSE]
   new_price_entries <- data.frame(sym = character(), datetime = character(), price = numeric(), stringsAsFactors = FALSE)
 
   if (nrow(price_user) > 0) {
-    ### Retrieve stored prices from database to use as defaults
-    stored_prices <- getStoredMetrics(price_user$sym)
+    ### Fall back to the last price actually observed for the symbol.
+    known <- gonet_last_known_price(price_user$sym)
 
-    ### Create vector of default values (stored prices if available, NA otherwise)
     default_values <- numeric(nrow(price_user))
     for (i in seq_len(nrow(price_user))) {
-      stored_row <- stored_prices[stored_prices$sym == price_user$sym[i], ]
-      if (nrow(stored_row) > 0 && !is.na(stored_row$price[1])) {
-        default_values[i] <- stored_row$price[1]
+      row <- known[known$sym == price_user$sym[i], , drop = FALSE]
+      if (nrow(row) > 0) {
+        default_values[i] <- row$price[1]
+        logger::log_warn("Gonet: no price for {price_user$sym[i]} - carrying forward {row$price[1]} from {row$source[1]} of {row$asof[1]}",
+                         namespace = "Tdata")
       } else {
         default_values[i] <- NA
+        logger::log_warn("Gonet: no price for {price_user$sym[i]} and none stored - its market value will be NA",
+                         namespace = "Tdata")
       }
     }
 
-    ### Prompt user for all prices, showing stored values as defaults
-    ### User can press Enter to keep default, or enter new value
+    ### Prompt for the prices, showing the carried-forward values as defaults.
+    ### Under Shiny there is no console: enter_numerical_data returns the
+    ### defaults silently, which is what makes the fallback work from the app.
     entered_prices <- Tbasics::enter_numerical_data(price_user$sym, default_values)
 
     ### Update price_user with entered prices
@@ -1278,6 +1351,8 @@ getGonet <- function(use_defaults = FALSE) {
 
     ### Save to database if user entered a valid price (not NA)
     ### Don't save if user just pressed Enter and kept the stored price (no change)
+    ### A carried-forward price equals its default, so it is not recorded as a
+    ### fresh observation -- only a hand-typed price is.
     changed_mask <- !is.na(entered_prices) &
                     (is.na(default_values) | abs(entered_prices - default_values) > 0.0001)
 
@@ -1288,7 +1363,7 @@ getGonet <- function(use_defaults = FALSE) {
   }
 
   ### Merge prices with value retrieved from IBKR plus prices with values entered by user
-  last_price <- rbind(last_price[!is.nan(last_price$price),],
+  last_price <- rbind(last_price[!no_price, , drop = FALSE],
                       price_user)
 
   ### Use these last_price as price for portf

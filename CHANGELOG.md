@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.1] - 2026-09-22
+
+### Fixed
+- **`getGonet` priced positions at 0 when IBKR returned no quote** (`R/account.R`). The 2026-09-22 snapshot carried `mktPrice = 0` for NUCL, DTLA and CNYA, so their `mktValue` was 0 and the whole cost was reported as a loss (CNYA −15 744 USD against a 16 957 USD position). The account row built on top of it understated `NetLiquidation` by the three positions' full market value.
+  - **Cause**: IBKR does not signal an unsubscribed instrument with `NaN`. Probed live, `tdata_py$getValue(reqType = 4)` answers `Error 354, Requested market data is not subscribed` with a plain **`0`**. The fallback tested `is.nan(price)` alone, so the 0 was taken for a real quote and never reached it. The three are all LSEETF; TRE7, on the same exchange, still returned 36.51, which is why this surfaced as a partial failure rather than an obvious outage.
+  - **`gonet_price_missing()`** (new internal): any non-finite **or non-positive** price counts as missing.
+  - **`gonet_last_known_price()`** (new internal): resolves the last price actually observed, from the most recent **Gonet snapshot with `mktPrice > 0`** and then from the `Prices` table. Snapshots are written several times a day; `Prices` is only appended when a price is typed by hand, and held NUCL from April, DTLA from December 2025 and nothing at all for CNYA — so the old default source was stale or absent exactly when it was needed.
+  - Rows priced at 0 by this very bug are **skipped** when searching back, so a bad snapshot is not carried forward and the position cannot freeze at zero.
+  - Each carry-forward logs a warning naming the price, its source and its date. A carried price equals its own default, so the existing `changed_mask` never records it in `Prices` as a fresh observation — only a hand-typed price is.
+  - When nothing is stored either, the price stays `NaN`: `mktValue` becomes NA and `getAccountGonet`'s completeness guard refuses to write an account row, rather than booking a wrong `NetLiquidation`.
+
+### Notes
+- Tuser consumer updated in lock-step (separate repo): `symbol/view/displaysymUI.R` `symPrice()` gated its column narrowing on `nrow > 0`, so a symbol with no stored metrics (CNYA) rendered `getStoredMetrics()`'s bare 13-column header and overflowed the sidebar across the main panel.
+- Tests: 6 new in `tests/testthat/test-account.R` — the predicate over `0`/`NaN`/`NA`/negative/valid, and the resolver's snapshot-first ordering, its skipping of a zeroed snapshot, the `Prices` fallback, an unknown symbol, and a mixed batch resolving each symbol from its own best source (in-memory SQLite fixture, `getStoredMetrics` mocked).
+
 ## [5.20.0] - 2026-09-22
 
 ### Added

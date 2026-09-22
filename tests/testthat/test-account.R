@@ -1212,3 +1212,90 @@ test_that("gonet_cash_balances returns nothing when the ledger has no baseline r
 
   expect_equal(length(gonet_cash_balances(legs)), 0)
 })
+
+### ---------------------------------------------------------------------------
+### gonet_price_missing() / gonet_last_known_price(): fallback when no price
+### ---------------------------------------------------------------------------
+
+test_that("gonet_price_missing treats an unsubscribed 0 as no price", {
+  ### The defect: IBKR answers Error 354 with price 0, not NaN, so a test on
+  ### is.nan() alone let it through and priced NUCL/DTLA/CNYA at zero.
+  expect_true(gonet_price_missing(0))
+  expect_true(gonet_price_missing(NaN))
+  expect_true(gonet_price_missing(NA_real_))
+  expect_true(gonet_price_missing(-1))
+  expect_false(gonet_price_missing(36.51))
+  expect_equal(gonet_price_missing(c(0, NaN, 36.51, NA)), c(TRUE, TRUE, FALSE, TRUE))
+})
+
+## A fresh in-memory Gonet table per call: the helper disconnects on exit, which
+## would destroy a shared one.
+.gonet_fixture_conn <- function(rows) {
+  function() {
+    conn <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+    DBI::dbWriteTable(conn, "Gonet", rows)
+    conn
+  }
+}
+
+.gonet_snap <- data.frame(
+  symbol   = c("NUCL", "NUCL", "NUCL", "DTLA"),
+  mktPrice = c(51.96, 0, 62.93, 4.4443),
+  date     = c("20260921", "20260922", "20260420", "20260921"),
+  heure    = c("17:06:47", "02:25:06", "23:27:00", "17:06:47"),
+  stringsAsFactors = FALSE)
+
+test_that("gonet_last_known_price takes the most recent snapshot price", {
+  with_mocked_bindings(
+    safe_db_connect = .gonet_fixture_conn(.gonet_snap),
+    getStoredMetrics = function(sym) data.frame(), {
+      res <- gonet_last_known_price("NUCL")
+      expect_equal(nrow(res), 1)
+      expect_equal(res$price, 51.96)
+      expect_equal(res$source, "Gonet snapshot")
+    })
+})
+
+test_that("gonet_last_known_price skips a snapshot zeroed by the missing-price bug", {
+  ### 20260922 is more recent than 20260921 but holds the 0 this fix exists to
+  ### avoid; carrying it forward would freeze the position at zero for good.
+  with_mocked_bindings(
+    safe_db_connect = .gonet_fixture_conn(.gonet_snap),
+    getStoredMetrics = function(sym) data.frame(), {
+      expect_equal(gonet_last_known_price("NUCL")$price, 51.96)
+    })
+})
+
+test_that("gonet_last_known_price falls back to the Prices table", {
+  ### CNYA has never been priced in a snapshot.
+  with_mocked_bindings(
+    safe_db_connect = .gonet_fixture_conn(.gonet_snap),
+    getStoredMetrics = function(sym) data.frame(
+      sym = "CNYA", datetime = "20251218 18:09", price = 5.99,
+      stringsAsFactors = FALSE), {
+      res <- gonet_last_known_price("CNYA")
+      expect_equal(res$price, 5.99)
+      expect_equal(res$source, "Prices table")
+    })
+})
+
+test_that("gonet_last_known_price returns nothing for a symbol it has never seen", {
+  with_mocked_bindings(
+    safe_db_connect = .gonet_fixture_conn(.gonet_snap),
+    getStoredMetrics = function(sym) data.frame(), {
+      expect_equal(nrow(gonet_last_known_price("NOSUCHSYM")), 0)
+    })
+})
+
+test_that("gonet_last_known_price resolves each symbol from its own best source", {
+  with_mocked_bindings(
+    safe_db_connect = .gonet_fixture_conn(.gonet_snap),
+    getStoredMetrics = function(sym) data.frame(
+      sym = "CNYA", datetime = "20251218 18:09", price = 5.99,
+      stringsAsFactors = FALSE), {
+      res <- gonet_last_known_price(c("NUCL", "DTLA", "CNYA", "NOSUCHSYM"))
+      expect_setequal(res$sym, c("NUCL", "DTLA", "CNYA"))
+      expect_equal(res$price[res$sym == "DTLA"], 4.4443)
+      expect_equal(res$source[res$sym == "CNYA"], "Prices table")
+    })
+})
