@@ -1355,3 +1355,39 @@ test_that("gonet_last_known_price dates a Prices-table fallback by its own entry
       expect_equal(res$unchanged_days, 280L)
     })
 })
+
+### ---------------------------------------------------------------------------
+### gonet_yahoo_price(): Yahoo close for symbols IBKR cannot price
+### ---------------------------------------------------------------------------
+
+.fake_yahoo <- function(prices) {
+  function(y) if (y %in% names(prices)) list(price = prices[[y]], asof = "20260921") else NULL
+}
+
+test_that("gonet_yahoo_price prices each symbol by its Yahoo ticker", {
+  res <- gonet_yahoo_price(c("TRE7", "NUCL"), c("TRE7.L", "NUCL.L"),
+                           fetch = .fake_yahoo(list(TRE7.L = 36.51, NUCL.L = 52.21)))
+  expect_equal(res$sym, c("TRE7", "NUCL"))
+  expect_equal(res$price, c(36.51, 52.21))
+  expect_equal(res$source, c("Yahoo TRE7.L", "Yahoo NUCL.L"))
+})
+
+test_that("gonet_yahoo_price skips symbols with no Yahoo ticker or no quote", {
+  ### The precious-metal row carries a literal "NA" sym_yahoo.
+  res <- gonet_yahoo_price(c("PM_1", "DTLA", "CNYA"), c("NA", "DTLA.L", NA),
+                           fetch = .fake_yahoo(list()))
+  expect_equal(nrow(res), 0)
+})
+
+test_that("gonet_yahoo_price rejects a quote more than 2x from the last known price", {
+  ### A GBp quote for a GBP-priced line is 100x off.
+  res <- gonet_yahoo_price(c("NUCL", "DTLA"), c("NUCL.L", "DTLA.L"),
+                           reference = c(52, 4.44),
+                           fetch = .fake_yahoo(list(NUCL.L = 5220, DTLA.L = 4.45)))
+  expect_equal(res$sym, "DTLA")
+})
+
+test_that("gonet_yahoo_price survives a failing fetch", {
+  res <- gonet_yahoo_price("NUCL", "NUCL.L", fetch = function(y) stop("HTTP 429"))
+  expect_equal(nrow(res), 0)
+})

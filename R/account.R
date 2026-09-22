@@ -929,6 +929,57 @@ gonet_last_known_price <- function(syms) {
   found
 }
 
+## Latest daily close from Yahoo for each symbol IBKR could not price.
+##
+## NUCL, DTLA and CNYA are not subscribed on LSEETF, so IBKR never prices them;
+## TRE7 is subscribed but trades a handful of shares a day, so it often has no
+## last either. Carrying the previous snapshot forward only freezes them, and a
+## snapshot taken before the day's first trade freezes them at yesterday's close
+## at best. Yahoo publishes a daily close for all of them (on a no-volume day it
+## is the quote), which is what the bank values them at.
+##
+## `sym_yahoo` is the GonetPos.csv column, named by `sym` (sym_ibkr). A price is
+## rejected when it is more than a factor 2 away from `reference` -- the last
+## known price -- which is the signature of a pence/pound quote or of the wrong
+## listing, not of a market move.
+##
+## Returns one row per symbol priced: sym, price, asof, source.
+gonet_yahoo_price <- function(sym, sym_yahoo, reference = rep(NA_real_, length(sym)),
+                              fetch = gonet_fetch_yahoo_close) {
+  empty <- data.frame(sym = character(), price = numeric(), asof = character(),
+                      source = character(), stringsAsFactors = FALSE)
+  rows <- lapply(seq_along(sym), function(i) {
+    y <- sym_yahoo[i]
+    if (is.na(y) || !nzchar(y) || y == "NA") return(NULL)
+    q <- tryCatch(fetch(y), error = function(e) {
+      logger::log_warn("Gonet: Yahoo fetch failed for {y}: {conditionMessage(e)}", namespace = "Tdata")
+      NULL
+    })
+    if (is.null(q) || gonet_price_missing(q$price)) return(NULL)
+    ref <- reference[i]
+    if (!is.na(ref) && ref > 0 && (q$price / ref > 2 || q$price / ref < 0.5)) {
+      logger::log_warn("Gonet: Yahoo {y} = {q$price} is more than 2x away from the last known {ref} - ignored",
+                       namespace = "Tdata")
+      return(NULL)
+    }
+    data.frame(sym = sym[i], price = q$price, asof = q$asof,
+               source = paste("Yahoo", y), stringsAsFactors = FALSE)
+  })
+  rows <- Filter(Negate(is.null), rows)
+  if (length(rows) == 0) empty else do.call(rbind, rows)
+}
+
+## Last non-missing daily close of one Yahoo symbol: list(price, asof).
+gonet_fetch_yahoo_close <- function(sym_yahoo) {
+  x <- suppressWarnings(quantmod::getSymbols(sym_yahoo, src = "yahoo",
+                                             from = Sys.Date() - 14,
+                                             auto.assign = FALSE))
+  cl <- stats::na.omit(quantmod::Cl(x))
+  if (NROW(cl) == 0) return(NULL)
+  list(price = as.numeric(cl[NROW(cl)]),
+       asof  = format(zoo::index(cl)[NROW(cl)], "%Y%m%d"))
+}
+
 ## Cash events attributed to a trade. A GonetTrades.csv row whose sym_ibkr is a
 ## currency code is a cash ledger row. When its TradeNr also appears on a
 ## non-cash leg the row is a cash flow belonging to that trade -- a dividend, a
@@ -1360,13 +1411,23 @@ getGonet <- function(use_defaults = FALSE) {
   new_price_entries <- data.frame(sym = character(), datetime = character(), price = numeric(), stringsAsFactors = FALSE)
 
   if (nrow(price_user) > 0) {
-    ### Fall back to the last price actually observed for the symbol.
+    ### Fall back to Yahoo's latest close, then to the last price actually
+    ### observed for the symbol.
     known <- gonet_last_known_price(price_user$sym)
+    yahoo <- gonet_yahoo_price(
+      price_user$sym,
+      portf$sym_yahoo[match(price_user$sym, portf$sym_ibkr)],
+      reference = known$price[match(price_user$sym, known$sym)])
 
     default_values <- numeric(nrow(price_user))
     for (i in seq_len(nrow(price_user))) {
-      row <- known[known$sym == price_user$sym[i], , drop = FALSE]
-      if (nrow(row) > 0) {
+      yrow <- yahoo[yahoo$sym == price_user$sym[i], , drop = FALSE]
+      row  <- known[known$sym == price_user$sym[i], , drop = FALSE]
+      if (nrow(yrow) > 0) {
+        default_values[i] <- yrow$price[1]
+        logger::log_info("Gonet: no IBKR price for {price_user$sym[i]} - using {yrow$price[1]} from {yrow$source[1]} close of {yrow$asof[1]}",
+                         namespace = "Tdata")
+      } else if (nrow(row) > 0) {
         default_values[i] <- row$price[1]
         logger::log_warn("Gonet: no price for {price_user$sym[i]} - carrying forward {row$price[1]} from {row$source[1]} of {row$asof[1]}, unchanged for {row$unchanged_days[1]} day(s)",
                          namespace = "Tdata")

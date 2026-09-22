@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.4] - 2026-09-22
+
+### Added
+- **`getGonet` falls back to Yahoo's daily close before carrying a stale price forward** (`R/account.R`, new internals `gonet_yahoo_price()` and `gonet_fetch_yahoo_close()`). IBKR never prices NUCL, DTLA and CNYA (LSEETF, not subscribed), and TRE7 trades a few shares a day, so it often has no last either. Carrying the previous snapshot forward froze them. The order is now IBKR → Yahoo (the `sym_yahoo` column of GonetPos.csv, last close within 14 days) → last Gonet snapshot → `Prices` table → operator prompt.
+  - A Yahoo quote more than a factor 2 away from the last known price is rejected. That catches a pence/pound quote or the wrong listing.
+  - A failed Yahoo fetch is logged and falls through to the carry-forward. It never aborts the snapshot.
+  - Yahoo prices are defaults, not hand entries, so they are not written to `Prices`.
+  - Background: before 5.20.1, the Gonet snapshots of 2026-07-01, 07-02, 07-29, 07-31, 08-09, 08-25, 08-26, 09-15 and 09-22 (02:23/02:25) stored `mktPrice = -1` for these lines and understated `NetLiquidation` by up to CHF 50k (Aug 25: NUCL, DTLA, TRE7, CNYA). Those rows were repaired in the DB from Yahoo closes.
+
+### Notes
+- Tests: 4 new in `tests/testthat/test-account.R` (mapping by Yahoo ticker, missing ticker/quote, 2x rejection, failing fetch). Live check on 2026-09-22 returned TRE7.L 36.51, NUCL.L 52.21, DTLA.L 4.445, CNYA.SW 5.995, 0P0000VJRQ.F 13.932 (closes of 09-21).
+
 ## [5.20.3] - 2026-09-22
 
 ### Added
