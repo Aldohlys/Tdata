@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.0] - 2026-09-22
+
+### Added
+- **Cash events can be booked against a trade** (`R/account.R`, new internal `gonet_cash_events()`). A `GonetTrades.csv` cash ledger row (`sym_ibkr` == the currency code) whose `TradeNr` also appears on a non-cash leg is a cash flow belonging to that trade — a dividend, a coupon, a tax refund — and now lands in that position's `realizedPnL` via `gonet_lots()`. The baseline rows keep TradeNrs of their own (26/27/28) that match no trade, so they are still excluded.
+  - **Sign convention on an attributed row**: `init_position` is the cash balance delta, `init_cost` the amount attributable to the trade as P&L. A dividend has them equal (all profit, no basis relieved) — `15;17.09.2026;USD;USD;117.09;1;117.09;USD`. A baseline row instead carries `init_cost = -init_position`, cash acquired at zero gain.
+  - Income adds to `realized` and to nothing else: `basis`, `shares` and therefore `avgCost` and `unPnL` are untouched, so a dividend does not read as an unrealized gain on the shares still held.
+  - **Attribution is by TradeNr alone, never by date** — the QQQ dividend of 10.07.2026 falls on the baseline date itself and still belongs to trade 9. The date only picks the target position: Gonet TradeNrs are reused across instruments, so an event is booked against the leg current on its own date.
+  - An event paid in a currency other than the position's is converted at the event date, the rate at which the cash was received. AMRZ is booked in CHF and pays USD: 28.60 USD on 26.08.2026 → 23.05 CHF of realized income.
+  - `gonet_lots()` returns a new `income` column carrying that component on its own; `realized` is the sum of banked sale gains and income.
+- **Cash balances are rolled forward from the ledger** (`R/account.R`, new internal `gonet_cash_balances()`, used by `getGonet`). Per currency: the sum of every cash ledger row's `init_position` (the baseline row's being the opening balance) plus every non-cash leg's `init_cost` dated after the baseline. The baseline date is the earliest date carrying an unattributed cash row.
+  - Problem: `GonetPos.csv` had to be re-edited by hand after every flow, and while it was stale a sale simply destroyed value in the snapshot — stock market value fell and cash did not rise. The 17.09.2026 SLHN sale left 10 816 CHF of proceeds nowhere, which is the kind of gap TODO #79 tracks.
+  - Effect today: CHF 45 643.79 → **56 459.94** (SLHN proceeds), USD 522.42 → **703.41** (dividends of 35.30 + 28.60 + 117.09), EUR unchanged at 1 762.94. `NetLiquidation` and the Gonet equity curve move with them.
+  - `GonetPos.csv` CASH rows still declare which currency books exist; the `position` they carry is the baseline value and is no longer read. Re-baselining means replacing the baseline rows, not adding a second set. A ledger balance in a currency with no CASH row is logged as a warning rather than silently dropped.
+  - `as_of` is supported, so `scripts/backfill_gonet_cost_basis.R` revalues historical snapshots with the dividends that had been received by each snapshot date.
+
+### Fixed
+- **Cash positions were invisible in the Trade tab** (`R/account.R` `getGonet`). 5.14.0 made `gonet_lots()` skip the cash ledger rows, so the `left_join` that attaches `TradeNr` had nothing to match and every cash row was written with `TradeNr = NA`. The Gonet stats table filters on `!is.na(TradeNr)`, so CHF/USD/EUR dropped out of it — and their realized FX (−4 590 CHF today) out of its TOTAL. The `TradeNr` now comes from the currency's baseline ledger row.
+
+### Notes
+- Tuser consumer updated in lock-step (separate repo): `symbol/logic/symf.R` + `logic/datatablef.R` `stats_all_gonet()` gained `realizedPnL` / `UnrealizedPnL` / `PnL` columns. Before this the tab showed `unPnL` alone under the heading `PnL`, so every gain banked since 5.14.0 — ABBN 10 614, HOLN 4 538, AI 2 968 — was missing from the per-trade figure and from the TOTAL.
+- Tests: 12 new in `tests/testthat/test-account.R` covering attribution (matching TradeNr, baseline rows ignored, baseline-date event, reused TradeNr), income (basis untouched, cross-currency conversion, income on top of a sale gain, `as_of`) and the balance roll-forward (sale proceeds, pre-baseline legs, same-day events, `as_of`, no baseline row).
+
 ## [5.19.4] - 2026-09-21
 
 ### Fixed

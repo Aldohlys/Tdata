@@ -829,6 +829,115 @@ gonet_realized_fx <- function(gonet_trades, ccy) {
   round(rfx, 2)
 }
 
+## Cash events attributed to a trade. A GonetTrades.csv row whose sym_ibkr is a
+## currency code is a cash ledger row. When its TradeNr also appears on a
+## non-cash leg the row is a cash flow belonging to that trade -- a dividend, a
+## coupon, a tax refund -- and not part of the cash baseline; the baseline rows
+## carry TradeNrs of their own (26/27/28) that match no trade.
+##
+## Sign convention on an attributed row: init_position is the cash balance
+## delta, init_cost the amount attributable to the trade as P&L. A dividend has
+## them equal (all profit, no basis relieved): +117.09 / +117.09. A baseline row
+## instead carries init_cost = -init_position, cash acquired at zero gain.
+##
+## The date plays no part in the attribution -- the QQQ dividend of 10.07.2026
+## falls on the baseline date itself and still belongs to trade 9. It is used
+## only to pick the target position: Gonet TradeNrs are reused across
+## instruments, so an event is booked against the leg current on its own date.
+gonet_cash_events <- function(gonet_trades) {
+  empty <- data.frame(TradeNr = integer(), date = as.Date(character()),
+                      sym_yahoo = character(), amount = numeric(),
+                      currency = character(), pos_currency = character(),
+                      balance_delta = numeric(), stringsAsFactors = FALSE)
+  if (nrow(gonet_trades) == 0) return(empty)
+
+  ### A bare `==` yields NA where either side is NA, and an NA row index hands
+  ### back a phantom all-NA row rather than dropping it.
+  is_cash <- !is.na(gonet_trades$sym_ibkr) & !is.na(gonet_trades$currency) &
+             gonet_trades$sym_ibkr == gonet_trades$currency
+  cash    <- gonet_trades[is_cash, , drop = FALSE]
+  stock   <- gonet_trades[!is_cash, , drop = FALSE]
+  if (nrow(cash) == 0 || nrow(stock) == 0) return(empty)
+
+  ev <- cash[cash$TradeNr %in% stock$TradeNr, , drop = FALSE]
+  if (nrow(ev) == 0) return(empty)
+
+  ev_dates    <- as.Date(as.character(ev$orig_date),    format = "%d.%m.%Y")
+  stock_dates <- as.Date(as.character(stock$orig_date), format = "%d.%m.%Y")
+
+  rows <- lapply(seq_len(nrow(ev)), function(i) {
+    idx <- which(stock$TradeNr == ev$TradeNr[i])
+    if (length(unique(stock$sym_yahoo[idx])) > 1)
+      logger::log_warn("Gonet TradeNr {ev$TradeNr[i]} spans several instruments ({paste(unique(stock$sym_ibkr[idx]), collapse=', ')}) - cash event of {ev$orig_date[i]} booked against the one held on that date",
+                       namespace = "Tdata")
+    ### The leg current on the event date; fall back to the earliest leg if the
+    ### event predates them all.
+    prior <- idx[!is.na(stock_dates[idx]) & stock_dates[idx] <= ev_dates[i]]
+    leg   <- if (length(prior)) prior[which.max(stock_dates[prior])]
+             else               idx[which.min(stock_dates[idx])]
+    data.frame(TradeNr       = ev$TradeNr[i],
+               date          = ev_dates[i],
+               sym_yahoo     = stock$sym_yahoo[leg],
+               amount        = ev$init_cost[i],
+               currency      = ev$currency[i],
+               pos_currency  = stock$currency[leg],
+               balance_delta = ev$init_position[i],
+               stringsAsFactors = FALSE)
+  })
+  do.call(rbind, rows)
+}
+
+## Cash balance per currency, rolled forward from the ledger baseline.
+##
+## Every cash ledger row's init_position is a balance delta, the baseline rows
+## included -- theirs is the opening balance read off the bank statement. So the
+## balance is that sum plus the cash moved by the stock legs booked since:
+##
+##   balance(ccy) = sum(init_position) over cash ledger rows in ccy
+##                + sum(init_cost)     over non-cash legs in ccy dated after the
+##                                     baseline (a buy takes cash out, a sale
+##                                     puts proceeds back in)
+##
+## The baseline date is the earliest date carrying an unattributed cash row
+## (10.07.2026). Legs on or before it are already inside the stated balance.
+## Unattributed cash rows dated later are ordinary flows -- a deposit, a
+## withdrawal, an FX conversion -- and are summed like any other. Re-baselining
+## therefore means replacing the old baseline rows, not adding a second set.
+##
+## GonetPos.csv is not consulted: its CASH rows would have to be re-edited after
+## every sale to stay right. as_of restricts the roll-forward to a past date.
+## Returns a named vector, empty when no baseline row exists (the caller then
+## keeps whatever GonetPos.csv declares).
+gonet_cash_balances <- function(gonet_trades, as_of = NULL) {
+  none <- stats::setNames(numeric(0), character(0))
+  if (nrow(gonet_trades) == 0) return(none)
+
+  dates <- as.Date(as.character(gonet_trades$orig_date), format = "%d.%m.%Y")
+  if (!is.null(as_of)) {
+    keep  <- !is.na(dates) & dates <= as.Date(as_of)
+    gonet_trades <- gonet_trades[keep, , drop = FALSE]
+    dates <- dates[keep]
+  }
+  if (nrow(gonet_trades) == 0) return(none)
+
+  is_cash    <- !is.na(gonet_trades$sym_ibkr) & !is.na(gonet_trades$currency) &
+                gonet_trades$sym_ibkr == gonet_trades$currency
+  trade_nrs  <- unique(gonet_trades$TradeNr[!is_cash])
+  baseline   <- is_cash & !(gonet_trades$TradeNr %in% trade_nrs) & !is.na(dates)
+  if (!any(baseline)) return(none)
+
+  cut_off     <- min(dates[baseline])
+  stock_after <- !is_cash & !is.na(dates) & dates > cut_off
+
+  ccys <- unique(gonet_trades$currency[is_cash | stock_after])
+  ccys <- ccys[!is.na(ccys)]
+  vapply(ccys, function(ccy) {
+    in_ccy <- !is.na(gonet_trades$currency) & gonet_trades$currency == ccy
+    round(sum(gonet_trades$init_position[in_ccy & is_cash], na.rm = TRUE) +
+          sum(gonet_trades$init_cost[in_ccy & stock_after], na.rm = TRUE), 2)
+  }, numeric(1))
+}
+
 ## Average-cost lots for Gonet stock positions. Walks each symbol's trades
 ## chronologically: a buy adds shares and cost, a sell relieves the proportional
 ## share of the cost and banks the difference as realized P&L. Returns one row
@@ -839,17 +948,24 @@ gonet_realized_fx <- function(gonet_trades, ccy) {
 ## proceeds exceed the original outlay, as on ABBN after selling 200 of 500 --
 ## and leaves the realized gain inside unPnL, which then reads as unrealized.
 ##
-## CASH ledger rows (sym_ibkr == the currency code) are excluded; they are
-## valued by gonet_realized_fx instead. as_of restricts the walk to legs on or
-## before that date, so a historical snapshot can be revalued on the basis that
-## applied when it was taken.
+## Cash events attributed to a trade (gonet_cash_events) are realized income:
+## a dividend adds to `realized` and to nothing else, so the surviving shares
+## keep their avgCost and the gain does not read as unrealized. One paid in a
+## currency other than the position's -- AMRZ is booked in CHF and pays USD --
+## is converted at the event date, the rate at which the cash was received.
+##
+## The remaining CASH ledger rows (sym_ibkr == the currency code) are excluded;
+## they are valued by gonet_realized_fx instead. as_of restricts the walk to
+## legs on or before that date, so a historical snapshot can be revalued on the
+## basis that applied when it was taken.
 gonet_lots <- function(gonet_trades, as_of = NULL) {
   empty <- data.frame(sym_yahoo = character(), TradeNr = integer(),
                       currency = character(), shares = numeric(),
                       basis = numeric(), realized = numeric(),
-                      stringsAsFactors = FALSE)
+                      income = numeric(), stringsAsFactors = FALSE)
 
-  tr <- gonet_trades[gonet_trades$sym_ibkr != gonet_trades$currency, , drop = FALSE]
+  tr <- gonet_trades[is.na(gonet_trades$sym_ibkr) | is.na(gonet_trades$currency) |
+                       gonet_trades$sym_ibkr != gonet_trades$currency, , drop = FALSE]
   if (nrow(tr) == 0) return(empty)
 
   dates <- as.Date(as.character(tr$orig_date), format = "%d.%m.%Y")
@@ -862,6 +978,10 @@ gonet_lots <- function(gonet_trades, as_of = NULL) {
 
   ord <- order(dates)
   tr  <- tr[ord, , drop = FALSE]
+
+  events <- gonet_cash_events(gonet_trades)
+  if (!is.null(as_of) && nrow(events) > 0)
+    events <- events[!is.na(events$date) & events$date <= as.Date(as_of), , drop = FALSE]
 
   rows <- lapply(unique(tr$sym_yahoo), function(sym) {
     ### The precious-metal row carries a literal "NA" sym_yahoo, and `x == NA`
@@ -885,9 +1005,25 @@ gonet_lots <- function(gonet_trades, as_of = NULL) {
         basis       <- basis - closed_cost
       }
     }
+
+    ### Dividends and other attributed cash events, in the position's currency.
+    pos_ccy <- tr$currency[idx[1]]
+    income  <- 0
+    eidx <- if (nrow(events) == 0) integer(0)
+            else if (is.na(sym)) which(is.na(events$sym_yahoo))
+            else which(!is.na(events$sym_yahoo) & events$sym_yahoo == sym)
+    for (j in eidx) {
+      amt <- events$amount[j]
+      if (!identical(events$currency[j], pos_ccy))
+        amt <- convert_to_base_date(amt, events$currency[j], events$date[j]) /
+               convert_to_base_date(1,   pos_ccy,            events$date[j])
+      income <- income + amt
+    }
+
     data.frame(sym_yahoo = sym, TradeNr = tr$TradeNr[idx[1]],
-               currency = tr$currency[idx[1]], shares = shares,
-               basis = basis, realized = realized, stringsAsFactors = FALSE)
+               currency = pos_ccy, shares = shares,
+               basis = basis, realized = realized + income,
+               income = income, stringsAsFactors = FALSE)
   })
   do.call(rbind, rows)
 }
@@ -900,7 +1036,12 @@ gonet_lots <- function(gonet_trades, as_of = NULL) {
 #'
 #' Once Gonet trades are retrieved from GonetTrades.csv file, it walks each symbol's legs as
 #' average-cost lots (\code{gonet_lots}) to get the \code{basis} still carried by the open shares
-#' and the \code{realized} P&L banked by past sales.
+#' and the \code{realized} P&L banked by past sales and by cash events booked against the trade
+#' (dividends and coupons, recorded as a cash ledger row carrying the trade's \code{TradeNr}).
+#'
+#' Cash positions are rolled forward from the ledger baseline by \code{gonet_cash_balances}:
+#' the balance of each currency is its baseline row plus every cash flow recorded since, so a
+#' sale's proceeds and a dividend land in cash without GonetPos.csv having to be re-edited.
 #'
 #' It then retrieves last available prices (named \code{mktPrice}) from IBKR - or from end-user- and compute \code{mktValue = mktPrice * pos},
 #' \code{unPnL = mktValue - basis}, \code{realizedPnL = realized}, \code{avgCost = basis / pos}
@@ -957,6 +1098,35 @@ getGonet <- function(use_defaults = FALSE) {
   cash_mask <- !is.na(portf$type) & portf$type == "CASH"
   portf_cash <- portf[cash_mask, , drop = FALSE]
   portf <- portf[!cash_mask, , drop = FALSE]
+
+  ### Cash balances come from the ledger, not from GonetPos.csv. Every flow since
+  ### the baseline is already a leg -- sale proceeds, purchases, attributed
+  ### dividends -- so the CSV would have to be re-edited after each one to stay
+  ### right, and while it was stale a sale simply destroyed value in the snapshot
+  ### (stock market value fell, cash did not rise). Its CASH rows still declare
+  ### which currency books exist; the `position` they carry is the baseline value
+  ### and is no longer read.
+  cash_ledger <- gonet_cash_balances(gonet_trades)
+  if (nrow(portf_cash) > 0 && length(cash_ledger) > 0) {
+    unvalued <- setdiff(names(cash_ledger)[abs(cash_ledger) > 0.005], portf_cash$sym_ibkr)
+    if (length(unvalued) > 0)
+      logger::log_warn("Gonet ledger holds cash in {paste(unvalued, collapse=', ')} with no CASH row in GonetPos.csv - that balance is not valued",
+                       namespace = "Tdata")
+    ### gonet_lots drops the cash ledger rows, so the left_join above left every
+    ### cash position with TradeNr NA -- and the Trade tab, which filters on
+    ### !is.na(TradeNr), stopped showing cash at all, taking its realized FX out
+    ### of the tab's TOTAL. Take the TradeNr from the currency's baseline row.
+    is_cash_row  <- !is.na(gonet_trades$sym_ibkr) & !is.na(gonet_trades$currency) &
+                    gonet_trades$sym_ibkr == gonet_trades$currency
+    baseline_row <- is_cash_row & !(gonet_trades$TradeNr %in% gonet_trades$TradeNr[!is_cash_row])
+    for (i in seq_len(nrow(portf_cash))) {
+      ccy <- portf_cash$sym_ibkr[i]
+      if (is.na(ccy)) next
+      if (ccy %in% names(cash_ledger)) portf_cash$position[i] <- cash_ledger[[ccy]]
+      own <- which(baseline_row & gonet_trades$currency == ccy)
+      if (length(own) > 0) portf_cash$TradeNr[i] <- gonet_trades$TradeNr[own[1]]
+    }
+  }
 
   ### GonetPos.csv is authoritative for the share count, but the basis comes from
   ### the GonetTrades.csv legs. If they disagree a leg is missing, and avgCost

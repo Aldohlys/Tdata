@@ -1017,14 +1017,18 @@ test_that("gonet_lots as_of ignores legs after the cutoff", {
   expect_equal(after$shares, 300)
 })
 
-test_that("gonet_lots excludes CASH ledger rows", {
+test_that("gonet_lots excludes unattributed CASH ledger rows", {
+  ### The baseline rows carry TradeNrs of their own (26/27/28) that match no
+  ### trade, which is what keeps them out of any position's P&L.
   legs <- rbind(
     gonet_legs("ABBN.SW", "ABBN", "28.09.2023", 500, -16460),
-    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD"))
+    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L))
   res <- gonet_lots(legs)
 
   expect_equal(nrow(res), 1)
   expect_equal(res$sym_yahoo, "ABBN.SW")
+  expect_equal(res$realized, 0)
+  expect_equal(res$income, 0)
 })
 
 test_that("gonet_lots keeps the basis of the NA-keyed precious-metal row", {
@@ -1043,5 +1047,168 @@ test_that("gonet_lots returns an empty frame when there are no stock legs", {
   res  <- gonet_lots(legs)
 
   expect_equal(nrow(res), 0)
-  expect_true(all(c("sym_yahoo", "shares", "basis", "realized") %in% names(res)))
+  expect_true(all(c("sym_yahoo", "shares", "basis", "realized", "income") %in% names(res)))
+})
+
+### ---------------------------------------------------------------------------
+### gonet_cash_events(): cash rows booked against a trade
+### ---------------------------------------------------------------------------
+
+## Deterministic FX stub: the rate depends only on the date (amount * rate).
+.gonet_fx_stub <- function(rates_by_date) {
+  function(amount, currency, convert_date) {
+    if (identical(currency, "CHF")) return(amount)
+    amount * rates_by_date[[format(convert_date, "%Y%m%d")]]
+  }
+}
+
+test_that("gonet_cash_events picks up a cash row whose TradeNr matches a trade", {
+  legs <- rbind(
+    gonet_legs("TRE7.L", "TRE7", "05.09.2024", 300, -11772.92, "USD", TradeNr = 15L),
+    gonet_legs("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 15L))
+  ev <- gonet_cash_events(legs)
+
+  expect_equal(nrow(ev), 1)
+  expect_equal(ev$sym_yahoo, "TRE7.L")
+  expect_equal(ev$amount, 117.09)
+  expect_equal(ev$pos_currency, "USD")
+})
+
+test_that("gonet_cash_events ignores the baseline rows", {
+  legs <- rbind(
+    gonet_legs("ABBN.SW", "ABBN", "28.09.2023", 500, -16460, TradeNr = 10L),
+    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L))
+
+  expect_equal(nrow(gonet_cash_events(legs)), 0)
+})
+
+test_that("gonet_cash_events books an event dated on the baseline date", {
+  ### The QQQ dividend of 10.07.2026 falls on the day the baseline was struck.
+  ### Attribution is by TradeNr alone, so the date must not exclude it.
+  legs <- rbind(
+    gonet_legs("QQQ", "QQQ", "09.05.2023", 62, -19885.58, "USD", TradeNr = 9L),
+    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L),
+    gonet_legs("USD", "USD", "10.07.2026", 35.3, 35.3, "USD", TradeNr = 9L))
+  ev <- gonet_cash_events(legs)
+
+  expect_equal(nrow(ev), 1)
+  expect_equal(ev$sym_yahoo, "QQQ")
+  expect_equal(ev$amount, 35.3)
+})
+
+test_that("gonet_cash_events books a reused TradeNr against the instrument then held", {
+  ### Gonet TradeNrs are reused across instruments, so the event belongs to the
+  ### leg current on its own date, not to whichever leg happens to come first.
+  legs <- rbind(
+    gonet_legs("OLD.SW", "OLD", c("01.01.2023", "01.06.2024"), c(100, -100),
+               c(-10000, 12000), TradeNr = 21L),
+    gonet_legs("NEW.SW", "NEW", "01.07.2024", 200, -20000, TradeNr = 21L),
+    gonet_legs("CHF", "CHF", "01.03.2023", 50, 50, "CHF", TradeNr = 21L),
+    gonet_legs("CHF", "CHF", "01.09.2024", 80, 80, "CHF", TradeNr = 21L))
+  ev <- gonet_cash_events(legs)
+
+  expect_equal(nrow(ev), 2)
+  expect_equal(ev$sym_yahoo[ev$amount == 50], "OLD.SW")
+  expect_equal(ev$sym_yahoo[ev$amount == 80], "NEW.SW")
+})
+
+test_that("gonet_lots books a dividend as realized income, leaving the basis alone", {
+  legs <- rbind(
+    gonet_legs("TRE7.L", "TRE7", "05.09.2024", 300, -11772.92, "USD", TradeNr = 15L),
+    gonet_legs("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 15L))
+  res <- gonet_lots(legs)
+
+  expect_equal(res$shares, 300)
+  expect_equal(res$basis, 11772.92)          # avgCost untouched: no basis relieved
+  expect_equal(res$income, 117.09)
+  expect_equal(res$realized, 117.09)
+})
+
+test_that("gonet_lots converts an event paid in another currency at the event date", {
+  ### AMRZ is booked in CHF and pays its dividend in USD. The realized figure
+  ### lives in the position's currency, at the rate on the day the cash landed.
+  legs <- rbind(
+    gonet_legs("AMRZ.SW", "AMRZ", "23.06.2025", 260, -6084, "CHF", TradeNr = 19L),
+    gonet_legs("USD", "USD", "26.08.2026", 28.6, 28.6, "USD", TradeNr = 19L))
+
+  with_mocked_bindings(
+    convert_to_base_date = .gonet_fx_stub(list("20260826" = 0.8058)), {
+      res <- gonet_lots(legs)
+      expect_equal(res$income, 28.6 * 0.8058)
+      expect_equal(res$realized, 28.6 * 0.8058)
+      expect_equal(res$basis, 6084)
+    })
+})
+
+test_that("gonet_lots adds income on top of the gain banked by a sale", {
+  legs <- rbind(
+    gonet_legs("ABBN.SW", "ABBN", c("28.09.2023", "03.07.2026"), c(500, -200),
+               c(-16460, 17197.6), TradeNr = 10L),
+    gonet_legs("CHF", "CHF", "01.08.2026", 300, 300, "CHF", TradeNr = 10L))
+  res <- gonet_lots(legs)
+
+  expect_equal(res$basis, 9876)
+  expect_equal(res$realized, 10613.6 + 300)
+})
+
+test_that("gonet_lots as_of excludes a cash event after the cutoff", {
+  legs <- rbind(
+    gonet_legs("TRE7.L", "TRE7", "05.09.2024", 300, -11772.92, "USD", TradeNr = 15L),
+    gonet_legs("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 15L))
+
+  expect_equal(gonet_lots(legs, as_of = "2026-09-16")$realized, 0)
+  expect_equal(gonet_lots(legs, as_of = "2026-09-18")$realized, 117.09)
+})
+
+### ---------------------------------------------------------------------------
+### gonet_cash_balances(): cash rolled forward from the ledger baseline
+### ---------------------------------------------------------------------------
+
+test_that("gonet_cash_balances adds post-baseline sale proceeds to the balance", {
+  ### The hole this closes: without the roll-forward a sale cut stock market
+  ### value while cash stayed at its stale CSV figure, so the snapshot lost the
+  ### proceeds entirely.
+  legs <- rbind(
+    gonet_legs("SLHN.SW", "SLHN", c("27.07.2021", "17.09.2026"), c(38, -12),
+               c(-16115.3, 10816.15), "CHF", TradeNr = 5L),
+    gonet_legs("CHF", "CHF", "10.07.2026", 45643.79, -45643.79, "CHF", TradeNr = 26L))
+
+  expect_equal(gonet_cash_balances(legs)[["CHF"]], 45643.79 + 10816.15)
+})
+
+test_that("gonet_cash_balances leaves legs dated before the baseline alone", {
+  ### They are already inside the balance read off the bank statement.
+  legs <- rbind(
+    gonet_legs("CNYA.SW", "CNYA", "09.07.2026", 2670, -16956.55, "USD", TradeNr = 25L),
+    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L))
+
+  expect_equal(gonet_cash_balances(legs)[["USD"]], 522.42)
+})
+
+test_that("gonet_cash_balances adds attributed cash events, including same-day ones", {
+  legs <- rbind(
+    gonet_legs("QQQ", "QQQ", "09.05.2023", 62, -19885.58, "USD", TradeNr = 9L),
+    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L),
+    gonet_legs("USD", "USD", "10.07.2026", 35.3, 35.3, "USD", TradeNr = 9L),
+    gonet_legs("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 9L))
+
+  expect_equal(gonet_cash_balances(legs)[["USD"]], 522.42 + 35.3 + 117.09)
+})
+
+test_that("gonet_cash_balances as_of rolls the balance forward to a past date", {
+  legs <- rbind(
+    gonet_legs("QQQ", "QQQ", "09.05.2023", 62, -19885.58, "USD", TradeNr = 9L),
+    gonet_legs("USD", "USD", "10.07.2026", 522.42, -522.42, "USD", TradeNr = 27L),
+    gonet_legs("USD", "USD", "17.09.2026", 117.09, 117.09, "USD", TradeNr = 9L))
+
+  expect_equal(gonet_cash_balances(legs, as_of = "2026-08-31")[["USD"]], 522.42)
+  expect_equal(gonet_cash_balances(legs, as_of = "2026-09-30")[["USD"]], 639.51)
+})
+
+test_that("gonet_cash_balances returns nothing when the ledger has no baseline row", {
+  ### The caller then keeps whatever GonetPos.csv declares rather than writing
+  ### a balance built from trade legs alone.
+  legs <- gonet_legs("ABBN.SW", "ABBN", "28.09.2023", 500, -16460)
+
+  expect_equal(length(gonet_cash_balances(legs)), 0)
 })
