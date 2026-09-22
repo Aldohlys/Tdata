@@ -1238,11 +1238,19 @@ test_that("gonet_price_missing treats an unsubscribed 0 as no price", {
   }
 }
 
+.days_ago <- function(n) format(Sys.Date() - n, "%Y%m%d")
+
+### NUCL: the newest good price is a day old and the one before it differs, so
+### the run is short. DTLA: the same 4.4443 across snapshots 1 and 10 days old,
+### a price that has stopped moving. The 0 row is what the missing-price bug
+### used to write, and must not anchor anything.
 .gonet_snap <- data.frame(
-  symbol   = c("NUCL", "NUCL", "NUCL", "DTLA"),
-  mktPrice = c(51.96, 0, 62.93, 4.4443),
-  date     = c("20260921", "20260922", "20260420", "20260921"),
-  heure    = c("17:06:47", "02:25:06", "23:27:00", "17:06:47"),
+  symbol   = c("NUCL", "NUCL", "NUCL", "DTLA", "DTLA", "DTLA"),
+  mktPrice = c(51.96, 0, 62.93, 4.4443, 4.4443, 4.4000),
+  date     = c(.days_ago(1), .days_ago(0), .days_ago(9),
+               .days_ago(1), .days_ago(10), .days_ago(11)),
+  heure    = c("17:06:47", "02:25:06", "23:27:00",
+               "17:06:47", "17:06:47", "17:06:47"),
   stringsAsFactors = FALSE)
 
 test_that("gonet_last_known_price takes the most recent snapshot price", {
@@ -1315,4 +1323,35 @@ test_that("gonet_prices_or_ask takes the carried-forward price when unattended",
   ### Rscript and Shiny, which are the two ways getGonet actually runs.
   expect_false(interactive())
   expect_equal(gonet_prices_or_ask("NUCL", 51.96), 51.96)
+})
+
+test_that("gonet_last_known_price reports how long the price has stood still", {
+  ### The point of the figure: a symbol IBKR has quietly stopped quoting keeps
+  ### being written back at the same number, and nothing else would say so.
+  with_mocked_bindings(
+    safe_db_connect = .gonet_fixture_conn(.gonet_snap),
+    getStoredMetrics = function(sym) data.frame(), {
+      res <- gonet_last_known_price(c("NUCL", "DTLA"))
+
+      ### DTLA has held 4.4443 across snapshots 1 and 10 days old; the 11-day
+      ### row is a different price, so the run stops there.
+      expect_equal(res$unchanged_days[res$sym == "DTLA"], 10L)
+
+      ### NUCL's previous good price differs, so only the newest row counts.
+      expect_equal(res$unchanged_days[res$sym == "NUCL"], 1L)
+    })
+})
+
+test_that("gonet_last_known_price dates a Prices-table fallback by its own entry", {
+  ### One hand-entered row, so there is no run to walk.
+  with_mocked_bindings(
+    safe_db_connect = .gonet_fixture_conn(.gonet_snap),
+    getStoredMetrics = function(sym) data.frame(
+      sym = "CNYA",
+      datetime = paste(format(Sys.Date() - 280, "%Y%m%d"), "18:09"), price = 5.99,
+      stringsAsFactors = FALSE), {
+      res <- gonet_last_known_price("CNYA")
+      expect_equal(res$source, "Prices table")
+      expect_equal(res$unchanged_days, 280L)
+    })
 })

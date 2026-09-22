@@ -867,10 +867,15 @@ gonet_prices_or_ask <- function(syms, defaults, ask = interactive()) {
 ## nothing at all for CNYA. Rows priced at 0 by this very bug are skipped, so a
 ## bad snapshot is not carried forward.
 ##
-## Returns one row per symbol found: sym, price, asof, source.
+## `unchanged_days` says how long that price has stood still, so a symbol IBKR
+## has quietly stopped quoting does not sit at the same number for ever without
+## anyone noticing.
+##
+## Returns one row per symbol found: sym, price, asof, source, unchanged_days.
 gonet_last_known_price <- function(syms) {
   empty <- data.frame(sym = character(), price = numeric(),
                       asof = character(), source = character(),
+                      unchanged_days = integer(),
                       stringsAsFactors = FALSE)
   syms <- unique(syms[!is.na(syms)])
   if (length(syms) == 0) return(empty)
@@ -886,10 +891,23 @@ gonet_last_known_price <- function(syms) {
 
   found <- empty
   if (nrow(snap) > 0) {
-    snap <- snap[!duplicated(snap$sym), , drop = FALSE]   # most recent per symbol
-    found <- data.frame(sym = snap$sym, price = snap$price,
-                        asof = paste(snap$date, snap$heure),
-                        source = "Gonet snapshot", stringsAsFactors = FALSE)
+    ### Rows arrive newest first. Walk back while the price is unchanged and
+    ### date the earliest one: a carried-forward price is written back
+    ### identical, so a long run is the signature of a symbol that has stopped
+    ### being quoted. A genuinely traded instrument can print the same value
+    ### twice, so over a day or two this means little -- over many days it is
+    ### the signal that the carried price is no longer standing in for anything.
+    rows <- lapply(unique(snap$sym), function(s) {
+      d    <- snap[snap$sym == s, , drop = FALSE]
+      same <- abs(d$price - d$price[1]) < 1e-9
+      run  <- if (all(same)) nrow(d) else which(!same)[1] - 1L
+      data.frame(sym = s, price = d$price[1],
+                 asof = paste(d$date[1], d$heure[1]),
+                 source = "Gonet snapshot",
+                 unchanged_days = as.integer(Sys.Date() - as.Date(d$date[run], "%Y%m%d")),
+                 stringsAsFactors = FALSE)
+    })
+    found <- do.call(rbind, rows)
   }
 
   missing <- setdiff(syms, found$sym)
@@ -901,6 +919,10 @@ gonet_last_known_price <- function(syms) {
         found <- rbind(found, data.frame(
           sym = stored$sym, price = stored$price,
           asof = as.character(stored$datetime), source = "Prices table",
+          ### The Prices table keeps one row per hand-entered price, so there is
+          ### no run to walk: the age of that single entry is the age.
+          unchanged_days = as.integer(
+            Sys.Date() - as.Date(substr(as.character(stored$datetime), 1, 8), "%Y%m%d")),
           stringsAsFactors = FALSE))
     }
   }
@@ -1346,7 +1368,7 @@ getGonet <- function(use_defaults = FALSE) {
       row <- known[known$sym == price_user$sym[i], , drop = FALSE]
       if (nrow(row) > 0) {
         default_values[i] <- row$price[1]
-        logger::log_warn("Gonet: no price for {price_user$sym[i]} - carrying forward {row$price[1]} from {row$source[1]} of {row$asof[1]}",
+        logger::log_warn("Gonet: no price for {price_user$sym[i]} - carrying forward {row$price[1]} from {row$source[1]} of {row$asof[1]}, unchanged for {row$unchanged_days[1]} day(s)",
                          namespace = "Tdata")
       } else {
         default_values[i] <- NA

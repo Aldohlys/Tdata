@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.3] - 2026-09-22
+
+### Added
+- **The carry-forward warning now says how long the price has stood still** (`R/account.R`, `gonet_last_known_price()` gains an `unchanged_days` column). A price carried forward is written back identical, so if IBKR quietly stops quoting a symbol altogether the position sits at the same number indefinitely and only a per-run warning names it. The warning now reads `... carrying forward 51.96 from Gonet snapshot of 20260921 17:06:47, unchanged for 4 day(s)`, so a carry that has become permanent is distinguishable from an ordinary one-off.
+  - Computed from the rows the resolver already fetches — no extra query. The symbol's snapshots are walked newest-first while the price is unchanged (tolerance 1e-9), and the earliest row of that run is dated.
+  - Rows priced at 0 by the pre-5.20.1 bug are excluded from the walk, so they cannot anchor a run.
+  - A genuinely traded instrument can of course print the same value twice, so a day or two means little; a long run is the signal. Observed live: on 2026-09-22 the same four LSEETF symbols were unquoted at 02:25 and 09:08 but quoted normally at 10:02 (NUCL 52.43, DTLA 4.4493, TRE7 36.49, CNYA 5.98), which reported `unchanged_days` 0 — the figure stays quiet while prices move.
+  - A `Prices`-table fallback has no run to walk: the age of its single hand-entered row is the age.
+
+### Notes
+- Tests: 2 new in `tests/testthat/test-account.R` — a 10-day run ending at a different price, a short run where the previous price differs, and the `Prices`-table branch dated by its own entry. The shared fixture is now relative to `Sys.Date()` rather than fixed strings, so the ages stay meaningful as the file ages.
+
 ## [5.20.2] - 2026-09-22
 
 ### Fixed
