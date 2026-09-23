@@ -72,3 +72,45 @@ test_that("dividend_target_trade finds a stock transferred to the other account"
 test_that("dividend_target_trade ignores trades opened after the pay date", {
   expect_null(dividend_target_trade(.trades_fixture, "CRST", as.Date("2026-03-01"), "U25343478"))
 })
+
+test_that("planIBKRDividends books against the table it is given and skips what is there", {
+  tr <- .trades_fixture
+  tr$Instrument <- tr$Symbol; tr$Strategy <- "VALUE"; tr$Status <- "Ouvert"
+  tr$TimeZoneSource <- "America/New_York"; tr$Currency <- "EUR"; tr$Total <- 0
+  plan <- planIBKRDividends(.multi_statement(), tr)
+  expect_equal(plan$payments$action, c("insert", "insert", "no trade", "insert"))
+  expect_equal(plan$new_rows$TradeNr, c(702L, 697L, 697L))
+  expect_true(all(plan$new_rows$EventType == "Dividend" & plan$new_rows$Pos == 0))
+  ### Feed the booked rows back: nothing left to insert.
+  tr2 <- dplyr::bind_rows(tr, plan$new_rows)
+  again <- planIBKRDividends(.multi_statement(), tr2)
+  expect_null(again$new_rows)
+  expect_equal(sum(again$payments$action == "exists"), 3)
+})
+
+test_that("saveTrades refuses a snapshot that would drop imported dividend rows", {
+  rows <- data.frame(TradeNr = c(697L, 697L), Account = "U25343478",
+                     TradeDate = c(20260316L, 20260528L), Pos = c(100L, 0L),
+                     Total = c(-1568.25, 72.75), Currency = "EUR",
+                     EventType = c("Open", "Dividend"), stringsAsFactors = FALSE)
+  db <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+  on.exit(DBI::dbDisconnect(db), add = TRUE)
+  DBI::dbWriteTable(db, "Trades", rows)
+  ### A connection wrapper that survives saveTrades' own dbDisconnect.
+  keep <- function() { con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+                       RSQLite::sqliteCopyDatabase(db, con); con }
+  with_mocked_bindings(
+    safe_db_connect = keep,
+    safe_db_write = function(...) stop("must not write"),
+    .package = "Tdata", {
+      expect_null(suppressMessages(saveTrades(rows[1, ])))          # dividend missing -> abort
+    })
+  written <- FALSE
+  with_mocked_bindings(
+    safe_db_connect = keep,
+    safe_db_write = function(...) { written <<- TRUE; invisible(TRUE) },
+    .package = "Tdata", {
+      saveTrades(rows)                                               # dividend kept -> writes
+    })
+  expect_true(written)
+})

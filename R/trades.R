@@ -42,6 +42,26 @@ saveTrades = function(trades, force = FALSE) {
       Tbasics::display_message(msg)
       return(invisible(NULL))
     }
+
+    ### Dividend rows (importIBKRDividends) hang off existing TradeNrs, so the
+    ### check above cannot see them go: a snapshot loaded before an import
+    ### would drop them silently on save. Refuse unless every DB dividend row
+    ### is still in the input.
+    db_div <- DBI::dbGetQuery(conn,
+      "SELECT TradeNr, TradeDate, Currency, Total FROM Trades WHERE EventType = 'Dividend'")
+    if (nrow(db_div) > 0) {
+      in_div <- trades[!is.na(trades$EventType) & trades$EventType == "Dividend", , drop = FALSE]
+      key <- function(d) paste(d$TradeNr, d$TradeDate, d$Currency, round(as.numeric(d$Total), 2))
+      lost <- setdiff(key(db_div), key(in_div))
+      if (length(lost) > 0) {
+        msg <- sprintf(
+          "saveTrades aborted: %d dividend row(s) in DB are absent from input (%s). They were probably imported after you loaded the trades. Reload and retry. If the deletion is intentional, call saveTrades(trades, force = TRUE).",
+          length(lost), paste(utils::head(lost, 5), collapse = "; "))
+        logger::log_error(msg, namespace = "Tdata")
+        Tbasics::display_message(msg)
+        return(invisible(NULL))
+      }
+    }
   }
 
   safe_db_write(conn, "Trades", trades, #### This will overwrite table in DB

@@ -93,37 +93,25 @@ dividend_target_trade <- function(trades, symbol, date, account) {
   leg[nrow(leg), , drop = FALSE]
 }
 
-#'   importIBKRDividends
+#'   planIBKRDividends
 #'
-#' Books the cash dividends of an IBKR Activity Statement CSV into the Trades
-#' table: one row per payment, net of withholding tax, on the trade holding the
-#' stock (EventType "Dividend", Pos 0, Total = net, TradeDate = pay date).
-#' Works on single-account and MULTI statements. Running it again books nothing
-#' twice: a payment already present (same TradeNr, date, currency and net) is
-#' skipped. Unpaid accruals are ignored; they are booked once paid.
+#' Works out which dividend payments of an IBKR Activity Statement CSV are not
+#' yet booked in `trades`, and the Trades rows that would book them: one row per
+#' payment, net of withholding tax, on the trade holding the stock (EventType
+#' "Dividend", Pos 0, Total = net, TradeDate = pay date). Writes nothing, so it
+#' can run against an in-memory table (RReporting) as well as the DB (Tuser).
 #'
-#' @param file path to the Activity Statement CSV.
-#' @param apply FALSE (default) only reports what would be booked.
-#' @returns data.frame of the payments with the trade matched and an `action`
-#'   column: "insert", "exists" or "no trade".
+#' @param file path to the Activity Statement CSV (single account or MULTI).
+#' @param trades the Trades table to match against and de-duplicate on.
+#' @returns list(payments, new_rows). `payments` has one row per payment with
+#'   the trade matched and an `action`: "insert", "exists" or "no trade".
+#'   `new_rows` holds the Trades rows to add (Trades column names).
 #' @export
-#' @examples
-#' \dontrun{
-#' importIBKRDividends("MULTI_20260101_20260921.csv")          # dry run
-#' importIBKRDividends("MULTI_20260101_20260921.csv", apply = TRUE)
-#' }
-importIBKRDividends <- function(file, apply = FALSE) {
+planIBKRDividends <- function(file, trades) {
   divs <- ibkr_statement_dividends(file)
-  if (nrow(divs) == 0) {
-    logger::log_info("No dividend payments in {file}", namespace = "Tdata")
-    return(invisible(divs))
-  }
-
-  conn <- safe_db_connect()
-  on.exit(DBI::dbDisconnect(conn), add = TRUE)
-  trades <- DBI::dbGetQuery(conn, "SELECT * FROM Trades")
-
-  divs$TradeNr <- NA_integer_; divs$booked_account <- NA_character_; divs$action <- NA_character_
+  divs$TradeNr <- rep(NA_integer_, nrow(divs))
+  divs$booked_account <- rep(NA_character_, nrow(divs))
+  divs$action <- rep(NA_character_, nrow(divs))
   new_rows <- list()
   for (i in seq_len(nrow(divs))) {
     p   <- divs[i, ]
@@ -154,11 +142,34 @@ importIBKRDividends <- function(file, apply = FALSE) {
       Currency = p$currency, Notes = note, EventType = "Dividend",
       stringsAsFactors = FALSE)
   }
+  list(payments = divs,
+       new_rows = if (length(new_rows)) do.call(rbind, new_rows) else NULL)
+}
 
-  if (apply && length(new_rows) > 0) {
-    ins <- do.call(rbind, new_rows)
-    DBI::dbAppendTable(conn, "Trades", ins)
-    logger::log_info("Booked {nrow(ins)} dividend row(s) into Trades", namespace = "Tdata")
+#'   importIBKRDividends
+#'
+#' Books the cash dividends of an IBKR Activity Statement CSV straight into the
+#' Trades table of the DB (see \code{planIBKRDividends} for the rows written).
+#' Running it again books nothing twice. Unpaid accruals are ignored; they are
+#' booked once paid.
+#'
+#' @param file path to the Activity Statement CSV.
+#' @param apply FALSE (default) only reports what would be booked.
+#' @returns data.frame of the payments with the trade matched and an `action`
+#'   column: "insert", "exists" or "no trade".
+#' @export
+#' @examples
+#' \dontrun{
+#' importIBKRDividends("MULTI_20260101_20260921.csv")          # dry run
+#' importIBKRDividends("MULTI_20260101_20260921.csv", apply = TRUE)
+#' }
+importIBKRDividends <- function(file, apply = FALSE) {
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  plan <- planIBKRDividends(file, DBI::dbGetQuery(conn, "SELECT * FROM Trades"))
+  if (apply && !is.null(plan$new_rows)) {
+    DBI::dbAppendTable(conn, "Trades", plan$new_rows)
+    logger::log_info("Booked {nrow(plan$new_rows)} dividend row(s) into Trades", namespace = "Tdata")
   }
-  divs
+  plan$payments
 }

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.8] - 2026-09-23
+
+### Added
+- **`planIBKRDividends(file, trades)`** (exported) is the no-write half of the dividend import. It matches the statement's paid dividends against any Trades table and returns `list(payments, new_rows)`. RReporting calls it on its loaded in-memory trades, so the rows reach the DB through its own Save. `importIBKRDividends()` is now plan + `dbAppendTable` on the DB table (Tuser's Trade tab).
+
+### Fixed
+- **`saveTrades` guard covers dividend rows** (`R/trades.R`). The freshness check only looked for TradeNrs missing from the input. Dividend rows hang off existing TradeNrs, so a snapshot loaded before an import (an open RReporting session) would have dropped them silently on Save. It now also aborts when a DB row with EventType `Dividend` (TradeNr, date, currency, amount) is absent from the input. `force = TRUE` still overrides.
+
+### Notes
+- Tests: 2 new in `test-dividend_import.R`: plan against a given table (feeding the booked rows back leaves nothing to insert), and the saveTrades dividend guard (aborts without writing, writes when the rows are kept).
+
 ## [5.20.7] - 2026-09-23
 
 ### Added
