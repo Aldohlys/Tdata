@@ -637,6 +637,41 @@ getIBKR <- function(account = NULL) {
 }
 
 
+## Builds the ConvertToUSD and ConvertToCHF rows from an IBKR forex fetch.
+## `usd_per_unit` is what tdata_py$retrieveCurrencyPairs returns: USD per 1 unit
+## of each currency (price for a direct pair, 1/price for an inverted one).
+## ConvertToUSD stores the pair AS QUOTED (units per USD when `direct` is "No",
+## e.g. JPY ~157), like the Yahoo path; ConvertToCHF stores CHF per 1 unit.
+## Until 5.20.9 the caller inverted the inverted pairs a second time and divided
+## by CHF-per-USD instead of multiplying: GBP/CHF 1.683 (2026-06-13) and 1.671
+## (09-05), JPY/CHF 195.96 (08-09). The branch writes only when Yahoo has no rate
+## for the day yet -- weekends mostly -- hence the sporadic errors.
+ibkr_fx_rows <- function(currencies, usd_per_unit, direct, chf_per_usd, date) {
+  usd <- data.frame(date = date, currency = currencies,
+                    usd_value = round(ifelse(direct == "No", 1 / usd_per_unit, usd_per_unit), 4))
+  chf <- data.frame(date = date, currency = currencies,
+                    chf_value = round(usd_per_unit * chf_per_usd, 6))
+  list(usd = usd[!is.na(usd$usd_value), , drop = FALSE],
+       chf = chf[!is.na(chf$chf_value), , drop = FALSE])
+}
+
+## Drops rows whose rate moved more than `max_jump` (default 5%) from the last
+## stored rate of the same currency, logging each. A daily FX move of that size
+## does not happen between these currencies; a wrong pair, an inversion or a bad
+## data tick does -- ConvertToCHF held GBP 0.577 (a CAD-sized value) on
+## 2026-04-21 from the Yahoo path. Currencies with no stored rate pass.
+fx_drop_implausible <- function(df, value_col, stored_ccy, stored_value,
+                                source = "", max_jump = 0.05) {
+  if (is.null(df) || nrow(df) == 0) return(df)
+  last <- stored_value[match(df$currency, stored_ccy)]
+  ratio <- df[[value_col]] / last
+  bad <- !is.na(ratio) & is.finite(ratio) & abs(ratio - 1) > max_jump
+  for (i in which(bad))
+    logger::log_warn("{source}: {df$currency[i]} rate {df[[value_col]][i]} is {round(100 * (ratio[i] - 1), 1)}% from the last stored {last[i]} - not written",
+                     namespace = "Tdata")
+  df[!bad, , drop = FALSE]
+}
+
 #' getIBKRActiveCurrencyValues
 #'
 #' Retrieves current currency values from IBKR and updates both ConvertToUSD and ConvertToCHF tables
@@ -709,48 +744,22 @@ getIBKRActiveCurrencyValues <- function() {
   ### If any retrieved data is different from NA then build the prices
   if (any(!is.na(currencies_values))) {
 
-    # Create USD data frame
-    ibkr_usd <- data.frame(
-      date = today_date,
-      currency = currencies_list,
-      usd_value = round(currencies_values, 4)
-    )
-    ibkr_usd <- ibkr_usd[!is.na(ibkr_usd$usd_value), ]
-
-    # Get current CHF/USD rate for CHF conversion
-    chf_usd_rate <- getStoredCHFValue("USD")$chf_value
-    if (is.na(chf_usd_rate) || length(chf_usd_rate) == 0) {
-      # Fallback: get from USD table
-      usd_chf_rate <- getStoredUSDValue("CHF")$usd_value
-      chf_usd_rate <- 1 / usd_chf_rate
+    ### Conversion and table conventions: see ibkr_fx_rows.
+    direct <- currency_data$DirectConversion[match(currencies_list, currency_data$Name)]
+    # CHF per 1 USD, from ConvertToCHF; fallback: ConvertToUSD CHF is USD per 1 CHF.
+    chf_per_usd <- getStoredCHFValue("USD")$chf_value
+    if (length(chf_per_usd) == 0 || is.na(chf_per_usd)) {
+      chf_per_usd <- 1 / getStoredUSDValue("CHF")$usd_value
     }
+    rates <- ibkr_fx_rows(currencies_list, currencies_values, direct, chf_per_usd, today_date)
+    ibkr_usd <- rates$usd
+    ibkr_chf <- rates$chf
 
-    # Create CHF data frame - convert USD values to CHF using DirectConversion logic
-    chf_values <- numeric(length(currencies_values))
-
-    for (i in seq_along(currencies_list)) {
-      currency <- currencies_list[i]
-      usd_value <- currencies_values[i]
-      direct_conv <- currency_data$DirectConversion[currency_data$Name == currency]
-
-      # Apply DirectConversion logic (same as Yahoo)
-      if (direct_conv == "No") {
-        # Need to invert: IBKR gives USD-base rate, invert to get foreign-currency-base
-        actual_usd_rate <- 1 / usd_value
-      } else {
-        # Direct foreign-currency-base rate
-        actual_usd_rate <- usd_value
-      }
-
-      chf_values[i] <- actual_usd_rate / chf_usd_rate
-    }
-
-    ibkr_chf <- data.frame(
-      date = today_date,
-      currency = currencies_list,
-      chf_value = round(chf_values, 4)
-    )
-    ibkr_chf <- ibkr_chf[!is.na(ibkr_chf$chf_value), ]
+    ### Never append a rate that jumped more than 5% from the last stored one.
+    ibkr_usd <- fx_drop_implausible(ibkr_usd, "usd_value", stored_usd_values$currency,
+                                    stored_usd_values$usd_value, "ConvertToUSD (IBKR)")
+    ibkr_chf <- fx_drop_implausible(ibkr_chf, "chf_value", stored_chf_values$currency,
+                                    stored_chf_values$chf_value, "ConvertToCHF (IBKR)")
 
     # Process USD updates
     usd_updates_needed <- ibkr_usd |>

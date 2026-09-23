@@ -290,6 +290,9 @@ getLastCHFValue <- function(currency) {
 
       updates_needed <- result_prices |>
         dplyr::filter(date > stored_dates[currency] | is.na(stored_dates[currency]))
+      updates_needed <- fx_drop_implausible(updates_needed, "chf_value",
+                                            stored_values$currency, stored_values$chf_value,
+                                            "ConvertToCHF (Yahoo)")
 
       # Update DB if needed
       if(nrow(updates_needed) > 0) {
@@ -397,6 +400,9 @@ getLastUSDValue = function(currency) {
     dplyr::filter(date > stored_dates[currency] | is.na(stored_dates[currency])) |>
     dplyr::mutate(usd_value = round(Adjusted, 4)) |>
     dplyr::select(date, currency, usd_value)
+  updates_needed <- fx_drop_implausible(updates_needed, "usd_value",
+                                        stored_values$currency, stored_values$usd_value,
+                                        "ConvertToUSD (Yahoo)")
 
   # Insert/update records if any updates needed
   if(nrow(updates_needed) > 0) {

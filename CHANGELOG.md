@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.9] - 2026-09-23
+
+### Fixed
+- **Wrong rates written to ConvertToCHF by the IBKR branch of `getIBKRActiveCurrencyValues()`** (`R/account.R`). `tdata_py$retrieveCurrencyPairs` already returns USD per 1 unit of every currency (1/price for an inverted pair like USDJPY). The R side inverted those pairs a second time and **divided** by CHF-per-USD instead of multiplying. The branch writes only when Yahoo has no rate for the day yet, mostly at weekends, so the damage was sporadic. The logs match each stored value:
+  - 2026-06-13: GBP 1.3404 / 0.7964 = 1.6831
+  - 2026-09-05: GBP 1.3523 → 1.6713
+  - 2026-08-09: JPY 0.0063 → 1/0.0063/0.81 = 195.96
+
+  New internal `ibkr_fx_rows()` computes CHF per unit = USD per unit × CHF per USD. ConvertToUSD rows are stored as quoted (units per USD for DirectConversion "No", e.g. JPY ~157), matching the Yahoo path. This branch had the same inversion bug for ConvertToUSD but had not written a row yet.
+- **Plausibility guard on every FX write**: new internal `fx_drop_implausible()` skips, with a warning, any new rate more than 5% away from the currency's last stored rate. It applies to the IBKR branch (both tables) and the Yahoo paths `getLastCHFValue` / `getLastUSDValue`. The 2026-04-21 GBP/CHF 0.577 came from the Yahoo path (logged "Updated 2 CHF currency rates" at 10:02) with a bad intraday quote that is no longer reproducible; the guard stops that class of error whatever its source.
+- The four bad rows themselves were corrected in the DB on 2026-09-23 from Yahoo closes.
+
+### Notes
+- Tests: new `tests/testthat/test-fx_rates.R` replays the logged 2026-06-13 fetch (GBP, JPY, CAD), covers a missing IBKR price, and checks the jump guard (21 Apr GBP dropped, a normal EUR move kept, a currency without history kept).
+
 ## [5.20.8] - 2026-09-23
 
 ### Added
