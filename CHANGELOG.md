@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.7] - 2026-09-23
+
+### Added
+- **`importIBKRDividends(file, apply = FALSE)`** (new `R/dividend_import.R`, exported) books the cash dividends of an IBKR Activity Statement CSV into the Trades table. It reads single-account and MULTI statements (each account section opens with its Account Information line).
+  - One row per payment, **net of withholding tax**: EventType `Dividend`, Pos 0, Total = net in the dividend currency, TradeDate = pay date, Price = the per-share rate, Risk 0. The gross, the tax and, if different, the paying account go in Notes.
+  - The row is booked on the trade holding the stock on the pay date (`dividend_target_trade`). The paying account's trades are preferred; a stock moved between accounts is found in the other one. Example: CRST paid into U1804173 on 2026-04-24, trade 702 lives in U25343478.
+  - Dividend and tax lines are paired on account, currency, date and description, once "(Ordinary Dividend)" and " - FR Tax" are stripped. A payment reversed inside the statement nets to nothing.
+  - Running it again books nothing twice: a payment already present (same TradeNr, date, currency, net) is reported as `exists`. The default is a dry run.
+  - Accrued-but-unpaid dividends (statement section "Change in Dividend Accruals") are not booked; they are booked once IBKR pays them.
+  - Why a statement: TWS exposes no cash ledger. The dividend tick (456, `getNTMDividend`) gives announced per-share amounts, not what was credited.
+  - First run 2026-09-23 on the 2026 MULTI statement booked 4 rows: CRST GBP 7.20, CA EUR 72.75 and 31.50, MRD CAD 25.50.
+- A Pos-0 dividend row changes no position, cost basis or Risk. Realized P&L picks it up wherever it is computed from the trade's cash: RReporting `compute_open_realized` and closed-trade sum(Total), and the Tuser All view.
+
+### Notes
+- Tests: new `tests/testthat/test-dividend_import.R` (12 checks). It covers dividend/tax pairing per account in a MULTI statement, an in-statement reversal, trade matching including the cross-account case, closed trades, and trades opened after the pay date.
+
 ## [5.20.6] - 2026-09-23
 
 ### Fixed
