@@ -2,6 +2,7 @@
 import socket
 import random
 from ib_async import *
+from ib_async import util, Stock
 from fin_logger import get_logger, DEBUG, INFO
 from tdata_py._core import CONFIG
 
@@ -11,6 +12,10 @@ logger = get_logger()
 # Read IBKR API port from config (default: 7496)
 _ibkr_config = CONFIG.get("ibkr", {})
 DEFAULT_IB_PORT = int(_ibkr_config.get("api_port", 7496)) if isinstance(_ibkr_config, dict) else 7496
+
+# isIBAvailable(): seconds a contract lookup may take before TWS counts as
+# connected-but-not-answering.
+PROBE_TIMEOUT = 5
 
 def is_port_in_use(port):
     """
@@ -103,12 +108,28 @@ def isIBAvailable():
         })
         return False
     
-    # Connection successful
-    logger.info("IB connection available", context={
-        "function": "isIBAvailable", 
-        "status": "connected"
-    })
+    # Connected is not the same as answering. TWS can accept the socket while
+    # every request to IBKR's servers hangs: 2026-09-25 and 2026-09-29 the
+    # option-surface collector connected, then lost ~70 s per symbol to
+    # timeouts. reqCurrentTime still answers in that state (TWS itself replies),
+    # so the probe is a contract lookup, which goes to the servers. A healthy
+    # TWS answers it in a fraction of a second.
+    alive = True
+    try:
+        util.run(ib.qualifyContractsAsync(Stock("SPY", "SMART", "USD")), timeout=PROBE_TIMEOUT)
+    except Exception as e:
+        alive = False
+        logger.warning("IB connected but not answering (contract lookup timed out)", context={
+            "function": "isIBAvailable",
+            "probe_timeout_s": PROBE_TIMEOUT,
+            "exception": type(e).__name__
+        })
+    if alive:
+        logger.info("IB connection available", context={
+            "function": "isIBAvailable",
+            "status": "connected"
+        })
     ib.disconnect()
     ib.sleep(0)
-    return True
+    return alive
 

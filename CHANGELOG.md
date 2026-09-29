@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.10] - 2026-09-29
+
+### Fixed
+- **`isIBAvailable()` reported TRUE on a TWS that accepts connections but does not answer requests** (`inst/python/tdata_py/IB_connection.py`). TWS can end up accepting the socket while every request to IBKR's servers hangs. This happened on 2026-09-25 and 2026-09-29: the 19:30 option-surface collector passed the probe, then lost ~70 s per symbol to timeouts. `reqCurrentTime` still answers in that state because TWS replies to it itself. The probe now also resolves a contract (`qualifyContractsAsync(Stock("SPY", "SMART", "USD"))`), which goes to the servers, with a `PROBE_TIMEOUT` of 5 s. On timeout it logs a warning and returns FALSE.
+  - TWS stuck in that state: FALSE in 15 s (10 s connect + 5 s probe). Before: TRUE, then one timeout per request.
+  - Healthy TWS: TRUE in 2.2 s, the same as before. The connect dominates, and the contract lookup adds a few hundredths of a second.
+  - Call sites checked: all 18 probe once per run or per button click; none probes inside a per-symbol loop.
+
 ## [5.20.9] - 2026-09-23
 
 ### Fixed
