@@ -847,6 +847,48 @@ gonet_price_missing <- function(price) {
   !is.finite(price) | price <= 0
 }
 
+## One IBKR price request for a group of Gonet symbols, returned as one row per
+## requested symbol (sym, datetime, price) whatever happened.
+##
+## getValue answers a whole batch with a bare -1 when any one contract fails
+## (0 when the connection fails). On 2026-10-05 06:16 DSPF had no Tickers row
+## yet, the USD default contract was rejected (Error 200), and the -1 reached
+## getGonet as a single row named "-1": the 12 good symbols of that batch never
+## reached the Yahoo / last-known fallback, were stored with a NULL price, and
+## getAccountGonet wrote no Account row. A failed batch is now retried one
+## symbol at a time, so one bad contract costs only its own price, and any
+## symbol still without a row gets NaN, which gonet_price_missing sends to the
+## fallback.
+gonet_fetch_prices <- function(syms, reqType, fetch) {
+  now <- format(Sys.time(), "%Y%m%d %H:%M")
+  as_rows <- function(res) {
+    if (!is.data.frame(res) || !all(c("sym", "price") %in% names(res))) return(NULL)
+    if (!"datetime" %in% names(res)) res$datetime <- now
+    data.frame(sym = as.character(res$sym), datetime = as.character(res$datetime),
+               price = suppressWarnings(as.numeric(res$price)), stringsAsFactors = FALSE)
+  }
+  try_fetch <- function(s) tryCatch(as_rows(fetch(s, reqType)), error = function(e) {
+    logger::log_warn("Gonet: getValue error for {paste(s, collapse=', ')}: {conditionMessage(e)}", namespace = "Tdata")
+    NULL
+  })
+
+  out <- try_fetch(syms)
+  if (is.null(out) && length(syms) > 1) {
+    logger::log_warn("Gonet: IBKR price request failed for the batch {paste(syms, collapse=', ')} - retrying one symbol at a time",
+                     namespace = "Tdata")
+    out <- do.call(rbind, lapply(syms, try_fetch))
+  }
+  if (is.null(out)) out <- data.frame(sym = character(), datetime = character(), price = numeric(), stringsAsFactors = FALSE)
+  out <- out[out$sym %in% syms, , drop = FALSE]
+
+  missing <- setdiff(syms, out$sym)
+  if (length(missing) > 0) {
+    logger::log_warn("Gonet: no IBKR answer for {paste(missing, collapse=', ')} - sent to the fallback", namespace = "Tdata")
+    out <- rbind(out, data.frame(sym = missing, datetime = now, price = NaN, stringsAsFactors = FALSE))
+  }
+  out
+}
+
 ## The price to use for each symbol whose fetch returned nothing: the operator's
 ## if there is an operator to ask, otherwise the carried-forward default.
 ##
@@ -1535,14 +1577,15 @@ getGonet <- function(use_defaults = FALSE) {
   }
 
   # Call getValue() separately for each group
+  fetch <- function(syms, reqType) tdata_py$getValue(list_sym = syms, ib = NULL, reqType = reqType)
   last_price_list <- list()
 
   if (length(symbols_delayed) > 0) {
-    last_price_list[[1]] <- tdata_py$getValue(list_sym=symbols_delayed, ib=NULL, reqType=4)
+    last_price_list[[1]] <- gonet_fetch_prices(symbols_delayed, 4, fetch)
   }
 
   if (length(symbols_regular) > 0) {
-    last_price_list[[2]] <- tdata_py$getValue(list_sym=symbols_regular, ib=NULL, reqType=2)
+    last_price_list[[2]] <- gonet_fetch_prices(symbols_regular, 2, fetch)
   }
 
   # Combine results

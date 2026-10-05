@@ -1228,6 +1228,43 @@ test_that("gonet_price_missing treats an unsubscribed 0 as no price", {
   expect_equal(gonet_price_missing(c(0, NaN, 36.51, NA)), c(TRUE, TRUE, FALSE, TRUE))
 })
 
+### gonet_fetch_prices(): one bad contract must not cost the whole batch
+
+test_that("gonet_fetch_prices retries a failed batch one symbol at a time", {
+  ### The defect (2026-10-05 06:16): DSPF had no Tickers row, getValue answered
+  ### the whole batch with -1, and the good symbols got no price at all.
+  calls <- list()
+  fetch <- function(s, reqType) {
+    calls[[length(calls) + 1]] <<- s
+    if ("DSPF" %in% s) return(-1L)
+    data.frame(datetime = "20261005 06:16", sym = s, price = c(HOLN = 64.66, SDZ = 68.52)[s])
+  }
+  out <- gonet_fetch_prices(c("HOLN", "DSPF", "SDZ"), 2, fetch)
+
+  expect_equal(out$sym, c("HOLN", "SDZ", "DSPF"))
+  expect_equal(out$price[1:2], c(64.66, 68.52))
+  expect_true(gonet_price_missing(out$price[3]))
+  expect_length(calls, 4)                     # the batch, then each symbol
+})
+
+test_that("gonet_fetch_prices sends every symbol to the fallback when nothing answers", {
+  out <- gonet_fetch_prices(c("AI", "TTE"), 2, function(s, reqType) 0L)
+  expect_equal(out$sym, c("AI", "TTE"))
+  expect_true(all(gonet_price_missing(out$price)))
+
+  out <- gonet_fetch_prices("AI", 2, function(s, reqType) stop("TWS gone"))
+  expect_equal(out$sym, "AI")
+  expect_true(gonet_price_missing(out$price))
+})
+
+test_that("gonet_fetch_prices adds a NaN row for a symbol missing from the answer", {
+  fetch <- function(s, reqType) data.frame(datetime = "x", sym = "AI", price = 170.33)
+  out <- gonet_fetch_prices(c("AI", "TTE"), 2, fetch)
+  expect_equal(out$sym, c("AI", "TTE"))
+  expect_equal(out$price[1], 170.33)
+  expect_true(gonet_price_missing(out$price[2]))
+})
+
 ## A fresh in-memory Gonet table per call: the helper disconnects on exit, which
 ## would destroy a shared one.
 .gonet_fixture_conn <- function(rows) {

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.12] - 2026-10-05
+
+### Fixed
+- **One bad contract left a whole Gonet price batch unpriced, and no Account row was written** (`R/account.R`, `getGonet`, new `gonet_fetch_prices`). `getValue()` answers the entire batch with a bare `-1` when any single contract fails, and `0` when the connection fails. `getGonet` took that `-1` as one row named "-1", so the real symbols never reached the Yahoo / last-known-price fallback. At 2026-10-05 06:16, DSPF had no Tickers row yet, its USD default contract was rejected (Error 200), and 13 lines were stored with a NULL price. `getAccountGonet` then skipped the Account row.
+  - A failed batch is now retried one symbol at a time, so a bad contract costs only its own price.
+  - Any requested symbol still without a row gets NaN and goes through `gonet_price_missing` to the fallback.
+  - Live check: the batch HOLN / NOSUCHSYM / SDZ returns 64.66 and 68.52 from IBKR, and NaN for NOSUCHSYM. The retry adds about 15 s per symbol, and only when a batch fails.
+  - `getValue()` itself is unchanged; it has other callers.
+- The 06:16 run also sent DSPF and CSBGU0 to real-time data. It ran on 5.20.10: 5.20.11 was installed at 06:30. Under 5.20.11 both go to the delayed batch, verified live: DSPF 159.20, CSBGU0 147.96.
+
 ## [5.20.11] - 2026-10-05
 
 ### Fixed
