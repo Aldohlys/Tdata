@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.11] - 2026-10-05
+
+### Fixed
+- **Gonet symbols that need delayed data but must keep SMART in Tickers got no price** (`R/account.R`, `getPortfolioGonet`). The choice between real-time (reqType 2) and delayed (reqType 4) data was taken only from `Tickers.Exchange`, the same field that `getValue()` sends to IBKR as the contract's exchange. Dominicé Swiss Property Fund (DSPF, conId 390160297, primary EBS, bought 25.09.2026) has no real-time subscription and returns a delayed quote only when requested through SMART:
+  - Tickers SMART: routed to real-time → Error 10168 "not subscribed", NaN.
+  - Tickers EBS: routed to delayed, but IBKR returns NaN for the EBS contract.
+  - SMART contract + delayed request: 159.40 (Gonet statement: 159.60).
+
+  The `exchange` column of GonetPos.csv now also routes a symbol to delayed data when it is LSEETF, EBS or ALLFUNDS. Tickers keeps the TWS contract definition. Of the current holdings, only CSBGU0 (Tickers SMART, GonetPos EBS) changes route; its delayed quote, 147.96, matches the statement.
+
 ## [5.20.10] - 2026-09-29
 
 ### Fixed

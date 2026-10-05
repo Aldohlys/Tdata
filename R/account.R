@@ -1512,6 +1512,12 @@ getGonet <- function(use_defaults = FALSE) {
   symbols_regular <- character()
   quote_ccy <- character()          # currency IBKR quotes each symbol in
 
+  ### GonetPos.csv `exchange` also routes a symbol to delayed data. The Tickers
+  ### row describes the contract IBKR is asked for and must stay on SMART for
+  ### some listings: DSPF (EBS-primary, no real-time subscription) returns a
+  ### delayed quote only through SMART, and nothing at all with exchange EBS.
+  pos_exchange <- stats::setNames(portf$exchange, portf$sym_ibkr)
+
   for (s in portf$sym_ibkr) {
     ### Skip precious metals - they have web-based pricing
     if (!is.na(s) && grepl("^PM_", s)) {
@@ -1520,7 +1526,8 @@ getGonet <- function(use_defaults = FALSE) {
 
     ticker <- getTicker(s)
     if (nrow(ticker) > 0 && !is.na(ticker$Currency)) quote_ccy[s] <- ticker$Currency
-    if (nrow(ticker) > 0 && !is.na(ticker$Exchange) && ticker$Exchange %in% delayed_exchanges) {
+    if ((nrow(ticker) > 0 && !is.na(ticker$Exchange) && ticker$Exchange %in% delayed_exchanges) ||
+        isTRUE(unname(pos_exchange[s]) %in% delayed_exchanges)) {
       symbols_delayed <- c(symbols_delayed, s)
     } else {
       symbols_regular <- c(symbols_regular, s)
