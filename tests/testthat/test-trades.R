@@ -125,7 +125,7 @@ test_that("Retrieve trade number status for numerous trades including non existi
 
 test_that("It is possible to retrieve a trade number for a single instrument", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr("NEM 19APR24 30 P",account_type="U1804173")
       expect_true(trade_nr == 394)
     })
@@ -133,7 +133,7 @@ test_that("It is possible to retrieve a trade number for a single instrument", {
 
 test_that("It is possible to retrieve a trade number for a single instrument", {
     with_mocked_bindings(
-      getAllTrades = getTestTrades, {
+      readTradesTable = getTestTrades, {
         trade_nr=getTradeNr("TLT 15MAR24 92 P",account_type="U1804173")
         expect_true(trade_nr == 380)
       })
@@ -141,7 +141,7 @@ test_that("It is possible to retrieve a trade number for a single instrument", {
 
 test_that("Error displayed if no trade for these instrument", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr(c("STOCKALEX 15MAR24 92 P","YVESSTARTUP 32FEB24 100 C"),account_type="U1804173")
       expect_true(is.na(trade_nr))
     })
@@ -150,7 +150,7 @@ test_that("Error displayed if no trade for these instrument", {
 
 test_that("It is possible to retrieve a trade number for a single instrument without specifying account type", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades,  {
+    readTradesTable = getTestTrades,  {
       trade_nr=getTradeNr("TLT 15MAR24 92 P")
       expect_true(trade_nr == 380)
     })
@@ -159,7 +159,7 @@ test_that("It is possible to retrieve a trade number for a single instrument wit
 
 test_that("It is possible to retrieve a trade number for a single instrument with account type=NA", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr("TLT 15MAR24 92 P",NA)
       expect_true(trade_nr == 380)
     })
@@ -167,7 +167,7 @@ test_that("It is possible to retrieve a trade number for a single instrument wit
 
 test_that("It is possible to retrieve a trade number for a trade with multiple instruments", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr("GLD 09FEB24 189 P",account_type="DU5221795")
       expect_true(trade_nr == 383)
     })
@@ -176,7 +176,7 @@ test_that("It is possible to retrieve a trade number for a trade with multiple i
 
 test_that("It is possible to retrieve a trade number for a trade with multiple instruments, using multiple inputs", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr(sort(c("GLD 09FEB24 189 P","GLD 16FEB24 187.5 P")), account_type="DU5221795")
       expect_true(trade_nr == 383)
     })
@@ -184,7 +184,7 @@ test_that("It is possible to retrieve a trade number for a trade with multiple i
 
 test_that("It is possible to retrieve trade numbers for 2 trades with multiple instruments, using one input per trade", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr(sort(c("GOLD 19APR24 17 C","NEM 20SEP24 35 P")), account_type="U1804173")
       expect_true(all(trade_nr == c(395,394)))
     })
@@ -192,7 +192,7 @@ test_that("It is possible to retrieve trade numbers for 2 trades with multiple i
 
 test_that("It is possible to retrieve a trade number for 2 trades with multiple instruments, using multiple inputs per trade", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr(sort(c("INTC","GLD 23FEB24 184 P","AAPL Vertical Spread 04.11.2022 140/145 P/P")),
                           account_type="DU5221795")
       expect_true(all(compareNA(trade_nr,c(NA,383,390))))
@@ -201,7 +201,7 @@ test_that("It is possible to retrieve a trade number for 2 trades with multiple 
 
 test_that("It is possible to retrieve a trade number for 3 trades with multiple instruments, using multiple inputs per trade", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr(sort(c("SMH 19APR24 240 C","ESTX50 21JUN24 4125 P","ESTX50 21JUN24 4525 P","AMGN 19APR24 290 C")),
                           account_type="U1804173")
       expect_true(all(trade_nr == c(400,396,398)))
@@ -210,7 +210,7 @@ test_that("It is possible to retrieve a trade number for 3 trades with multiple 
 
 test_that("It is possible to retrieve trade numbers for 3 trades with multiple instruments, using multiple inputs per trade but with repeated trade numbers for each instrument", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr(sort(c("SMH 19APR24 240 C","ESTX50 21JUN24 4125 P","ESTX50 21JUN24 4525 P","AMGN 19APR24 290 C")),
                           account_type="U1804173", unique= FALSE)
       expect_true(all(trade_nr == c(400,396,396,398)))
@@ -219,7 +219,7 @@ test_that("It is possible to retrieve trade numbers for 3 trades with multiple i
 
 test_that("It is possible to retrieve a trade number providing also data for closed trades", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr(sort(c("VALE SPY 21JUN24 525 P","CVS 19APR24 75 P")), account_type="U1804173")
       expect_true(all(trade_nr == 399,na.rm=TRUE))
     })
@@ -227,7 +227,7 @@ test_that("It is possible to retrieve a trade number providing also data for clo
 
 test_that("If no trade or closed trade then returns NA", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr(sort(c("VALE 19JAN24 13 P","STOCK")), account_type="U1804173")
       expect_true(all(trade_nr == 367,na.rm=TRUE))
     })
@@ -235,7 +235,7 @@ test_that("If no trade or closed trade then returns NA", {
 
 test_that("If no trade at all then returns NA", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr(sort(c("SPY 19JAN24 500 P","STOCK")), account_type="U1804173")
       expect_true(is.na(trade_nr))
     })
@@ -244,7 +244,7 @@ test_that("If no trade at all then returns NA", {
 
 test_that("If no trade at all then returns NA without account type specified", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr(sort(c("SPY 19JAN24 500 P","STOCK")))
       expect_true(is.na(trade_nr))
     })
@@ -253,7 +253,7 @@ test_that("If no trade at all then returns NA without account type specified", {
 
 test_that("If no trade at all then returns NA with account type equals to NA", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr(sort(c("SPY 19JAN24 500 P","STOCK")),NA)
       expect_true(is.na(trade_nr))
     })
@@ -261,7 +261,7 @@ test_that("If no trade at all then returns NA with account type equals to NA", {
 
 test_that("Test a trade from Simu account with account type equals to NA", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr("MCL MAY24",NA)
       expect_true(trade_nr == 347)
     })
@@ -270,7 +270,7 @@ test_that("Test a trade from Simu account with account type equals to NA", {
 
 test_that("Test a trade from DU5221795 account with account type equals to DU5221795", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr("MCL MAY24","DU5221795")
       expect_true(trade_nr == 347)
     })
@@ -279,7 +279,7 @@ test_that("Test a trade from DU5221795 account with account type equals to DU522
 
 test_that("Test a trade from DU5221795 account NA with account type equals to U1804173", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, {
+    readTradesTable = getTestTrades, {
       trade_nr=getTradeNr("MCL MAY24","U1804173")
       expect_true(is.na(trade_nr))
     })
@@ -287,7 +287,7 @@ test_that("Test a trade from DU5221795 account NA with account type equals to U1
 
 test_that("getTradeDates works with a closed trade", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades,
+    readTradesTable = getTestTrades,
     getToday = function()(as.Date("2024-04-04")), {
         expect_equal(as.data.frame(getTradeDates(300)),
              data.frame(TradeNr=300,strategy="BOT",
@@ -303,7 +303,7 @@ test_that("getTradeDates works with a closed trade", {
 
 test_that("getTradeDates returns NULL with a closed trade without expiring closing trade recorded", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades, getToday = function()(as.Date("2024-04-04")),{
+    readTradesTable = getTestTrades, getToday = function()(as.Date("2024-04-04")),{
       expect_true(is.null(getTradeDates(316)))
     })
 })
@@ -311,7 +311,7 @@ test_that("getTradeDates returns NULL with a closed trade without expiring closi
 
 test_that("getTradeDates works with a opened trade", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades,
+    readTradesTable = getTestTrades,
     getToday = function()(as.Date("2024-04-04")), {
       print(getTradeDates(399))
       expect_equal(as.data.frame(getTradeDates(399)),
@@ -328,7 +328,7 @@ test_that("getTradeDates works with a opened trade", {
 
 test_that("getTradeDates works with opened and closed trades, opened trade with multiple expiration dates",{
   with_mocked_bindings(
-    getAllTrades = getTestTrades,getToday = function()(as.Date("2024-04-04")), {
+    readTradesTable = getTestTrades,getToday = function()(as.Date("2024-04-04")), {
       print(getTradeDates(c(367,370,392)))
       expect_equal(as.data.frame(getTradeDates(c(367,370,392))),
                    data.frame(TradeNr=c(367,370,392),strategy=c("OFI","BPT","OFI"),
@@ -344,7 +344,7 @@ test_that("getTradeDates works with opened and closed trades, opened trade with 
 
 test_that("getRnR works with one simple trade",{
   with_mocked_bindings(
-    getAllTrades = getTestTrades,  {
+    readTradesTable = getTestTrades,  {
       expect_equal(as.data.frame(getRnR(392)),
                    data.frame(TradeNr = 392, risk = 500, reward = 700))
   })
@@ -352,7 +352,7 @@ test_that("getRnR works with one simple trade",{
 
 test_that("getRnR works with one simple trade with reward/risks on multiple lines",{
   with_mocked_bindings(
-    getAllTrades = getTestTrades,  {
+    readTradesTable = getTestTrades,  {
       expect_equal(as.data.frame(getRnR(395)),
                    data.frame(TradeNr = 395, risk = 215, reward = 700))
       expect_equal(as.data.frame(getRnR(c(395, 395))),
@@ -363,7 +363,7 @@ test_that("getRnR works with one simple trade with reward/risks on multiple line
 
 test_that("getRnR works with multiple trades",{
   with_mocked_bindings(
-    getAllTrades = getTestTrades,  {
+    readTradesTable = getTestTrades,  {
       expect_equal(as.data.frame(getRnR(c(392, 380))),
                    data.frame(TradeNr = c(392, 380), risk = c(500, 800), reward = c(700, 897)))
     })
@@ -383,7 +383,7 @@ test_that("getActiveTrades returns correct trades", {
 
 test_that("getClosedTrades does not return trades whose trade dates are across window date", {
   with_mocked_bindings(
-    getAllTrades = getTestTrades,
+    readTradesTable = getTestTrades,
     getClosedRecentTradeQuery = getClosedRecentTestTradeQuery,
     getToday = function()(as.Date("2024-04-04")), {
       closed_trades <- getClosedTrades(account = "U1804173", windowDate = as.Date("20240201", "%Y%m%d"))

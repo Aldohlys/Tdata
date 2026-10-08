@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - After a successful write the copy is refreshed, so repeated saves from one session keep working. `saveTrades` now returns `invisible(TRUE)` on success (it returned the `dbWriteTable` result).
   - `getTradeNr`, `getTradeDates` and `getRnR` read through the new internal `readTradesTable()`. They run in the middle of an RReporting session, and refreshing the copy there would let a stale table through.
   - New `tests/testthat/test-savetrades_freshness.R`: a SQL change blocks the save and is named; repeated saves work; internal reads don't refresh the copy; `force` and the no-Load case.
+  - `tests/testthat/test-trades.R` now mocks `readTradesTable` instead of `getAllTrades` (10 tests failed in the 5.20.14 build run; the code under test was correct). Committed after the build.
 
 ## [5.20.13] - 2026-10-08
 
