@@ -426,6 +426,70 @@ def get_historical_bars(sym, duration="400 D", bar_size="15 mins", secType=None,
     return df
 
 
+def get_price_at(sym, when_utc, secType=None, currency=None, exchange=None,
+                 expiration_future=None, conId=None, timeout=60):
+    """
+    Last traded price of a symbol at a past moment, from 1-minute RTH bars.
+
+    Args:
+        sym: Symbol (resolved through the Tickers table like get_historical_bars)
+        when_utc: 'YYYY-MM-DD HH:MM:SS' in UTC
+        secType, currency, exchange, expiration_future, conId: overrides of
+            the Tickers row
+        timeout: seconds before the request is abandoned
+
+    Returns:
+        dict(price, bar_time) with bar_time the UTC start of the bar used --
+        the last bar starting at or before when_utc, so a moment outside
+        trading hours gets the session's last price. None on failure.
+    """
+    ib = safe_ib_connect()
+    if not ib.isConnected():
+        logger.error(f"Failed to connect to IBKR for {sym}")
+        return None
+
+    info = ticker_db.get_ticker_info(sym)
+    if info is None:
+        info = {}
+    secType = secType or info.get('Type', 'STK')
+    currency = currency or info.get('Currency', 'USD')
+    exchange = exchange or info.get('Exchange', 'SMART')
+    if secType == "FUT":
+        expiration_future = expiration_future or _safe_int(info.get('Expiration'))
+        conId = conId or _safe_int(info.get('ConId'))
+
+    contract = _create_contract(sym, secType, currency, exchange, expiration_future, conId)
+    if contract is None:
+        logger.error(f"Unsupported security type: {secType}")
+        ib.disconnect()
+        return None
+
+    result = None
+    try:
+        ib.qualifyContracts(contract)
+        when = pd.Timestamp(when_utc, tz='UTC')
+        end = (when + pd.Timedelta(minutes=1)).strftime('%Y%m%d-%H:%M:%S')
+        bars = ib.reqHistoricalData(contract, endDateTime=end, durationStr='2 D',
+                                    barSizeSetting='1 min', whatToShow='TRADES',
+                                    useRTH=True, formatDate=2, timeout=timeout)
+        if bars:
+            df = util.df(bars)
+            df['date'] = pd.to_datetime(df['date'], utc=True)
+            df = df[df['date'] <= when]
+            if not df.empty:
+                last = df.iloc[-1]
+                result = {'price': float(last['close']),
+                          'bar_time': last['date'].strftime('%Y-%m-%d %H:%M:%S')}
+        if result is None:
+            logger.warning(f"No bar for {sym} at or before {when_utc}")
+    except Exception as e:
+        logger.error(f"Error retrieving price of {sym} at {when_utc}: {e}")
+    finally:
+        ib.sleep(0.5)
+        ib.disconnect()
+    return result
+
+
 def get_iv_percentile_levels(sym, secType=None, currency=None, exchange=None,
                              expiration_future=None, conId=None, lookback_days=252,
                              levels=[10, 25, 50, 75, 90]):

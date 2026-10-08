@@ -9,7 +9,7 @@
 #'
 #' To be sure that correct data types will be used, it converts field types to the target fields, i.e.
 #' * Integer for \code{TradeNr} and \code{Pos}
-#' * Real (double) for \code{Price, Commission, Total, Risk, Reward, PnL}
+#' * Real (double) for \code{Price, Commission, Total, Risk, Reward, PnL, UnderlyingPrice}
 #'
 #' Concurrency safety: the write replaces the whole table, so a stale in-memory
 #' copy (a second RReporting session, a direct SQL fix, a Tuser dividend import
@@ -88,17 +88,21 @@ saveTrades = function(trades, force = FALSE) {
     }
   }
 
+  ### UnderlyingPrice is NULL on most rows: without a declared type an
+  ### all-NA column would be recreated with whatever type R infers.
+  field_types <- c("TradeNr"=	"INTEGER","TradeDate"	= "INTEGER",
+                   "DateTime" = "TEXT",
+                   "TimeZoneSource" = "TEXT",
+                   "Pos"	= "INTEGER",
+                   "Price" =	"REAL",
+                   "Commission" =	"REAL",
+                   "Total"	= "REAL",
+                   "Risk"=	"REAL",
+                   "Reward"=	"REAL",
+                   "PnL"= "REAL",
+                   "UnderlyingPrice" = "REAL")
   safe_db_write(conn, "Trades", trades, #### This will overwrite table in DB
-                    field.types=c("TradeNr"=	"INTEGER","TradeDate"	= "INTEGER",
-                                  "DateTime" = "TEXT",
-                                  "TimeZoneSource" = "TEXT",
-                                  "Pos"	= "INTEGER",
-                                  "Price" =	"REAL",
-                                  "Commission" =	"REAL",
-                                  "Total"	= "REAL",
-                                  "Risk"=	"REAL",
-                                  "Reward"=	"REAL",
-                                  "PnL"= "REAL" ))
+                    field.types = field_types[names(field_types) %in% names(trades)])
   ### safe_db_write raises on failure: reaching here means the table was
   ### replaced. The DB now holds this session's version - track it.
   remember_loaded_trades(DBI::dbReadTable(conn, "Trades"))

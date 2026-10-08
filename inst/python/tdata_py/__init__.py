@@ -268,6 +268,7 @@ try:
     from .impliedvol import (
         get_volatility_metrics,
         get_historical_bars,
+        get_price_at,
         get_iv_percentile_levels
     )
 except ImportError as e:
@@ -275,6 +276,8 @@ except ImportError as e:
     def get_volatility_metrics(*args, **kwargs):
         return None
     def get_historical_bars(*args, **kwargs):
+        return None
+    def get_price_at(*args, **kwargs):
         return None
 
 # Spread analysis functions
@@ -358,6 +361,7 @@ __all__ = [
     # === SPECIALIZED UTILITIES ===
     'get_volatility_metrics',
     'get_historical_bars',
+    'get_price_at',
     'get_iv_percentile_levels',
 
     # === SPREAD ANALYSIS ===

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.21.0] - 2026-10-08
+
+### Added
+- **P&L attribution of a multi-day trade** (`R/pnl_attribution.R`, TODO #106). `getTradePnLAttribution(trade_nr, account, as_of)` splits a trade's P&L day by day into delta, gamma, vega, theta, residual and execution, from the daily portfolio snapshots (`U1804173`, `U25343478`, `DU5221795`) and the trade's fills. The pure function `attributePnL(snaps, fills, rate, div_yield, as_of)` does the work; `getTradeSnapshots()` and `getTradeFills()` are its two queries, separate so tests mock them.
+  - Per leg and interval between two daily snapshots, Greeks at the start: delta = q·Δ·dS, gamma = ½q·Γ·dS², vega = q·ν·dIV·100, theta = q·Θ·days (IBKR units). Stock, CFD, future, T-bill and cash legs carry delta only. Residual = actual − Greek terms − execution.
+  - Execution: fill vs first mark for a leg opened in the interval (incl. commissions), commissions at the exit. Residual then measures model error only.
+  - Exit after the last snapshot: the move to `Trades.UnderlyingPrice` (new column, stored by RReporting) or to the stock / future leg's fill price; exit IV implied from the leg's fill price. Without a price the exit interval is all execution, flagged `noS`.
+  - Data guards found on 386 closed trades: Greeks missing (NA, IBKR's −2, or an all-zero row) are recomputed with `Tbasics::getBSOptGreeks` when IV and `uPrice` are present (flag `BS`); per date the last snapshot in which every leg is usable is kept; |dS|/S > 25% (unadjusted `uPrice` across a split) goes to residual (flag `split`); snapshot legs no fill names (stale TradeNr) and snapshots after a closed trade's last fill are ignored; date-only fills (00:00:00) are placed before or after the day's snapshot by whether its position already holds them; `Trades.DateTime` is read as UTC. Every closed trade of 2025-2026 in U1804173 reconciles to its `Trades` total except one (fills and snapshots name the CL futures option differently); BOT median |residual| 14.8% of the first-to-last-mark P&L (S-1: 11.7%).
+- **`getUnderlyingPriceAt(symbol, datetime_utc, day_close = FALSE)`** (`R/pnl_attribution.R`) and Python **`get_price_at`** (`tdata_py/impliedvol.py`): last traded price at a past moment from IBKR 1-minute RTH bars (`formatDate=2`, UTC). A date-only DateTime or `day_close = TRUE` (expiry rows, whose 16:00:00 is New York time) takes the day's last bar. NA when IBKR has no bar.
+
+### Changed
+- **saveTrades** (`R/trades.R`): `UnderlyingPrice` declared `REAL` in `field.types`, so the drop-and-recreate keeps the type of a mostly-NULL column; `field.types` is restricted to the columns present.
+
 ## [5.20.14] - 2026-10-08
 
 ### Fixed
