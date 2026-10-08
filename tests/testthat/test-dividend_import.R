@@ -114,3 +114,44 @@ test_that("saveTrades refuses a snapshot that would drop imported dividend rows"
     })
   expect_true(written)
 })
+
+.flex_cash <- function() {
+  f <- tempfile(fileext = ".csv")
+  writeLines(c(
+    '"Date/Time","ClientAccountID","Type","AssetClass","DividendType","Symbol","Description","Amount","CurrencyPrimary","FXRateToBase","IssuerCountryCode","ExDate"',
+    '"20260929;202000","U25343478","Withholding Tax","STK","","MRD","MRD(CA5854671032) CASH DIVIDEND CAD 0.15 PER SHARE - CA TAX","-4.5","CAD","0.58768","CA",""',
+    '"20260928;202000","U25343478","Withholding Tax","STK","","9273.T","9273.T(JP3283420002) CASH DIVIDEND JPY 18 PER SHARE - JP TAX","-1097","JPY","0.0052867","JP",""',
+    '"20260929;202000","U25343478","Dividends","STK","Ordinary Dividend","MRD","MRD(CA5854671032) CASH DIVIDEND CAD 0.15 PER SHARE (Ordinary Dividend)","30","CAD","0.58768","CA","20260915"',
+    '"20260928;202000","U25343478","Dividends","STK","Ordinary Dividend","9273.T","9273.T(JP3283420002) CASH DIVIDEND JPY 18 PER SHARE (Ordinary Dividend)","7164","JPY","0.0052867","JP","20260629"',
+    '"20260928;202000","U25343478","Payment In Lieu Of Dividends","STK","Ordinary Dividend","9273.T","9273.T(JP3283420002) PAYMENT IN LIEU OF DIVIDEND (Ordinary Dividend)","36","JPY","0.0052867","JP","20260629"',
+    '"20260626","U25343478","Other Fees","","","","KRW CUSTODY FEE ON STK FOR 2026-06-25 FOR JUN 2026","-1.5","KRW","0.00052752","",""',
+    '"Date","ClientAccountID","AssetClass","Symbol","Description","NetAmount","GrossAmount","GrossRate","Fee","Tax","Quantity","PayDate","ExDate","IssuerCountryCode","FXRateToBase","CurrencyPrimary","ToAcct","FromAcct"',
+    '"20260914","U25343478","STK","MRD","MELCOR DEVELOPMENTS LTD","25.5","30","0.15","0","4.5","200","20260929","20260915","CA","0.58821","CAD","",""'
+  ), f)
+  f
+}
+
+test_that("a Flex cash-transaction CSV parses like a statement; fees and accruals are ignored", {
+  d <- ibkr_statement_dividends(.flex_cash())
+  expect_equal(d$symbol, c("9273", "9273", "MRD"))
+  expect_equal(d$date, as.Date(c("2026-09-28", "2026-09-28", "2026-09-29")))
+  ### Tax pairs with the cash dividend, the payment in lieu stands alone.
+  expect_equal(d$net, c(6067, 36, 25.5))
+  expect_equal(sum(d$net[d$symbol == "9273"]), 6103)
+  expect_equal(d$rate, c(18, NA, 0.15))
+})
+
+test_that("Flex and statement rows of the same payment are the same booking", {
+  st <- tempfile(fileext = ".csv")
+  writeLines(c(
+    "Account Information,Data,Account,U25343478",
+    "Dividends,Data,CAD,2026-09-29,MRD(CA5854671032) Cash Dividend CAD 0.15 per Share (Ordinary Dividend),30",
+    "Withholding Tax,Data,CAD,2026-09-29,MRD(CA5854671032) Cash Dividend CAD 0.15 per Share - CA Tax,-4.5,"
+  ), st)
+  a <- ibkr_statement_dividends(st)
+  b <- ibkr_statement_dividends(.flex_cash())
+  b <- b[b$symbol == "MRD", ]
+  expect_equal(b[, c("account", "currency", "date", "symbol", "rate", "net")],
+               a[, c("account", "currency", "date", "symbol", "rate", "net")],
+               ignore_attr = TRUE)
+})

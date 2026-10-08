@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.13] - 2026-10-08
+
+### Added
+- **Dividend import reads IBKR Flex Query CSVs** (`R/dividend_import.R`, `ibkr_statement_dividends`, new `statement_dividend_lines` / `flex_dividend_lines`). The "Import dividends" button in RReporting and Tuser accepted only an Activity Statement CSV, where every line starts with its section name (`Dividends,Data,...`). A Flex Query cash-transactions export starts each block with its own header row (`"Date/Time","ClientAccountID","Type",...`), so it matched nothing and showed "No dividend payments in this statement".
+  - The format is detected from the second column of a line being `ClientAccountID`. Each format is reduced to the same rows (account, currency, date, description, gross or tax, amount). Pairing, net of tax, symbol, rate and de-duplication are shared, so one payment books as the same Trades row from either file, and importing both formats does not double-book.
+  - Flex: only blocks with `Type` and `Amount` columns are read, and only the types Dividends, Withholding Tax and Payment In Lieu Of Dividends. Fees, interest and the "Change in Dividend Accruals" block are skipped. `Date/Time` ("20260928;202000") is the pay date.
+  - Flex writes descriptions in capitals ("PER SHARE - JP TAX"), so the tax-suffix strip and the per-share rate are now matched case-insensitively.
+  - Checked on `Dividends (4).csv` (U25343478, 2026-05-05 to 2026-10-05): the three dividends booked on 2026-09-23 read as "exists". Three new payments plan as inserts: 9273 JPY 6,067 + 36 (payment in lieu) on trade 685, and MRD CAD 25.50 on trade 730.
+
 ## [5.20.12] - 2026-10-05
 
 ### Fixed
