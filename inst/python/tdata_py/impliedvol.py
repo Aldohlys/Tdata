@@ -435,7 +435,8 @@ def get_price_at(sym, when_utc, secType=None, currency=None, exchange=None,
         sym: Symbol (resolved through the Tickers table like get_historical_bars)
         when_utc: 'YYYY-MM-DD HH:MM:SS' in UTC
         secType, currency, exchange, expiration_future, conId: overrides of
-            the Tickers row
+            the Tickers row. A futures underlying (secType FUT) needs conId,
+            the contract of the option's own month: none is sent without it.
         timeout: seconds before the request is abandoned
 
     Returns:
@@ -443,25 +444,28 @@ def get_price_at(sym, when_utc, secType=None, currency=None, exchange=None,
         the last bar starting at or before when_utc, so a moment outside
         trading hours gets the session's last price. None on failure.
     """
-    ib = safe_ib_connect()
-    if not ib.isConnected():
-        logger.error(f"Failed to connect to IBKR for {sym}")
-        return None
-
     info = ticker_db.get_ticker_info(sym)
     if info is None:
         info = {}
     secType = secType or info.get('Type', 'STK')
     currency = currency or info.get('Currency', 'USD')
     exchange = exchange or info.get('Exchange', 'SMART')
-    if secType == "FUT":
-        expiration_future = expiration_future or _safe_int(info.get('Expiration'))
-        conId = conId or _safe_int(info.get('ConId'))
+    # A futures option's underlying is one contract month. The Tickers row's
+    # ConId is whatever month it holds today, so it is not used: without the
+    # caller's conId no request is sent (a None conId makes TWS reject the
+    # request with Error 320 and drop the whole connection).
+    if secType == "FUT" and not conId:
+        logger.warning(f"{sym}: futures underlying without a contract conId, no request sent")
+        return None
 
     contract = _create_contract(sym, secType, currency, exchange, expiration_future, conId)
     if contract is None:
         logger.error(f"Unsupported security type: {secType}")
-        ib.disconnect()
+        return None
+
+    ib = safe_ib_connect()
+    if not ib.isConnected():
+        logger.error(f"Failed to connect to IBKR for {sym}")
         return None
 
     result = None

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.21.1] - 2026-10-08
+
+### Fixed
+- **get_price_at sent malformed futures requests** (`inst/python/tdata_py/impliedvol.py`). For a futures underlying (SOFR3, CHF) whose Tickers row has no ConId, the contract went out with `conId=None`: TWS answered Error 320 and closed the whole client connection (7 fills of the 2026-10-08 `UnderlyingPrice` backfill). A futures option's underlying is one contract month, and the Tickers ConId is whatever month that row holds today, so it is no longer used either: without a `conId` from the caller the function returns `None` before connecting. The contract is also validated before the connection is opened.
+
 ## [5.21.0] - 2026-10-08
 
 ### Added
