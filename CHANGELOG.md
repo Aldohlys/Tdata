@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.21.2] - 2026-10-08
+
+### Fixed
+- **attributePnL: overstated IBKR theta pushed thousands into theta and the opposite into residual** (`R/pnl_attribution.R`, `.prepare_snapshots`). Some snapshots store a theta 10-25x the model's while delta and vega agree: on trade 706 (ESTX50 put, snapshots after the Eurex close) −25.3 a day against a Black-Scholes −0.98. An interval charges theta per calendar day, so the 03.04 → 14.04 interval over Easter carried −2,736 of theta and +2,600 of residual; the trade's split read theta −6,336 / residual +5,173 for an actual −2,495. When IBKR's theta exceeds 3x the Black-Scholes theta from the same snapshot's IV and uPrice, the model's value is used and the row is flagged `theta`. Trade 706 now: theta −1,106, residual −58. Only overstatement is corrected — on 2025-2026 option snapshots it affects 1.35% of rows (39 of 43 ESTX50); the 16% where IBKR's theta is far *below* Black-Scholes are SOFR3 futures options, where Black-Scholes is the wrong model. BOT trades unchanged (median residual 11.7%).
+- Test fixtures expire 17.12.2026 instead of 2099, so their theta is plausible against Black-Scholes.
+
 ## [5.21.1] - 2026-10-08
 
 ### Fixed

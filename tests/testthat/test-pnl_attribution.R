@@ -1,8 +1,8 @@
 ## attributePnL: inline snapshots and fills, no DB.
 
 snap <- function(date, heure, Instrument, pos, mktPrice, uPrice = 100, IV = 0.30,
-                 delta = 0.5, gamma = 0.02, vega = 0.10, theta = -0.05,
-                 type = "Call", strike = 100, expdate = 20991217,
+                 delta = 0.5, gamma = 0.02, vega = 0.10, theta = -0.02,
+                 type = "Call", strike = 100, expdate = 20261217,
                  symbol = "XYZ", multiplier = 100) {
   data.frame(date = as.integer(date), heure = heure, symbol = symbol, type = type,
              Instrument = Instrument, strike = strike, expdate = as.integer(expdate),
@@ -23,7 +23,7 @@ fill <- function(TradeDate, time, Instrument, Pos, Price, Commission = 1,
              UnderlyingPrice = UnderlyingPrice, stringsAsFactors = FALSE)
 }
 
-C100 <- "XYZ 17DEC99 100 C"
+C100 <- "XYZ 17DEC26 100 C"
 ALL <- as.Date("2099-01-01")
 
 test_that("stock: every move is delta, residual is zero, total reconciles", {
@@ -50,7 +50,7 @@ test_that("option: Greek terms from the start-of-interval Greeks", {
   expect_equal(r$delta[2], q * 0.5 * 2)
   expect_equal(r$gamma[2], q * 0.5 * 0.02 * 4)
   expect_equal(r$vega[2], q * 0.10 * 0.02 * 100)
-  expect_equal(r$theta[2], q * -0.05 * 2)                 # two calendar days
+  expect_equal(r$theta[2], q * -0.02 * 2)                 # two calendar days
   expect_equal(r$actual[2], q * (6 - 5))
   expect_equal(r$residual[2], r$actual[2] - r$delta[2] - r$gamma[2] - r$vega[2] - r$theta[2])
   expect_equal(r$dS[2], 2)
@@ -62,10 +62,26 @@ test_that("missing Greeks (IBKR -2 / NA) are recomputed with Black-Scholes", {
   f <- fill(20260105, "15:00:00", C100, 1, 5)
   r <- attributePnL(s, f, rate = 0.04, as_of = ALL)
   g <- Tbasics::getBSOptGreeks(type = "Call", S = 100, K = 100,
-                               DTE = as.numeric(as.Date("2099-12-17") - as.Date("2026-01-05")),
+                               DTE = as.numeric(as.Date("2026-12-17") - as.Date("2026-01-05")),
                                sig = 0.30, r = 0.04, div = 0)
   expect_equal(r$delta[2], 100 * g$delta * 1)
   expect_match(r$flag[2], "BS")
+})
+
+test_that("an IBKR theta far above the model's is replaced by the Black-Scholes theta", {
+  s <- rbind(snap(20260402, "22:00:00", C100, 1, 5, theta = -25),
+             snap(20260414, "22:00:00", C100, 1, 4.5))
+  r <- attributePnL(s, fill(20260402, "15:00:00", C100, 1, 5), rate = 0.03, as_of = ALL)
+  g <- Tbasics::getBSOptGreeks(type = "Call", S = 100, K = 100,
+                               DTE = as.numeric(as.Date("2026-12-17") - as.Date("2026-04-02")),
+                               sig = 0.30, r = 0.03, div = 0)
+  expect_equal(r$theta[2], 100 * g$theta * 12)
+  expect_match(r$flag[2], "theta")
+  ## A plausible IBKR theta is kept as is.
+  s$theta[1] <- g$theta * 1.5
+  r <- attributePnL(s, fill(20260402, "15:00:00", C100, 1, 5), rate = 0.03, as_of = ALL)
+  expect_equal(r$theta[2], 100 * g$theta * 1.5 * 12)
+  expect_false(grepl("theta", r$flag[2]))
 })
 
 test_that("a snapshot without IV or underlying is skipped, not used", {
@@ -170,9 +186,9 @@ test_that("cash-only trades and single-day trades give NULL", {
 
 test_that("snapshot legs no fill names (stale TradeNr) are ignored", {
   s <- rbind(snap(20260105, "22:00:00", C100, 1, 5),
-             snap(20260105, "22:00:00", "XYZ 17DEC99 90 P", -1, 2, type = "Put", strike = 90),
+             snap(20260105, "22:00:00", "XYZ 17DEC26 90 P", -1, 2, type = "Put", strike = 90),
              snap(20260106, "22:00:00", C100, 1, 5.5, uPrice = 101),
-             snap(20260106, "22:00:00", "XYZ 17DEC99 90 P", -1, 1, type = "Put", strike = 90))
+             snap(20260106, "22:00:00", "XYZ 17DEC26 90 P", -1, 1, type = "Put", strike = 90))
   r <- attributePnL(s, fill(20260105, "15:00:00", C100, 1, 5), as_of = ALL)
   expect_equal(r$actual[2], 50)
 })
@@ -229,7 +245,7 @@ test_that("getUnderlyingPriceAt: day close for date-only and expiry rows, NA on 
 })
 
 test_that("an underlying price typed on one leg serves every leg closed with it", {
-  P95 <- "XYZ 17DEC99 95 C"
+  P95 <- "XYZ 17DEC26 95 C"
   s <- rbind(snap(20260105, "22:00:00", C100, -1, 5), snap(20260105, "22:00:00", P95, 1, 8, strike = 95),
              snap(20260106, "22:00:00", C100, -1, 5.5, uPrice = 101), snap(20260106, "22:00:00", P95, 1, 8.7, uPrice = 101, strike = 95))
   f <- rbind(fill(20260105, "15:00:00", C100, -1, 5), fill(20260105, "15:00:00", P95, 1, 8, Strike = 95),

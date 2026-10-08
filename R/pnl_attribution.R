@@ -73,6 +73,24 @@ getTradeFills <- function(trade_nr, account) {
     s[fixable, c("delta", "gamma", "vega", "theta")] <- g[, c("delta", "gamma", "vega", "theta")]
     s$flag[fixable] <- "BS"
   }
+  ## IBKR's theta is sometimes 10-25x the model's (ESTX50 snapshots taken
+  ## after the Eurex close: -25.3 vs -0.98 a day on trade 706), and an interval
+  ## charges it per calendar day, so one such snapshot before a long weekend
+  ## puts thousands into theta and the opposite into residual. Above 3x the
+  ## Black-Scholes theta from the same IV and uPrice, the model's value is used.
+  ## Only overstatement is corrected: for futures options Black-Scholes is the
+  ## wrong model and comes out higher than IBKR, not lower.
+  check <- !s$linear & !missing & !is.na(s$IV) & s$IV > 0 & !is.na(s$uPrice) & s$uPrice > 0
+  if (any(check)) {
+    dte <- as.numeric(as.Date(as.character(s$expdate[check]), "%Y%m%d") - s$day[check])
+    bs <- Tbasics::getBSOptGreeks(type = s$type[check], S = s$uPrice[check],
+                                  K = s$strike[check], DTE = dte, sig = s$IV[check],
+                                  r = rate, div = div_yield)$theta
+    over <- !is.na(bs) & abs(bs) > 1e-6 & abs(s$theta[check]) > 3 * abs(bs)
+    idx <- which(check)[over]
+    s$theta[idx] <- bs[over]
+    s$flag[idx] <- trimws(paste(s$flag[idx], "theta"))
+  }
   s$S <- ifelse(s$linear, s$mktPrice, s$uPrice)
   s$usable <- !is.na(s$mktPrice) & !is.na(s$S) & s$S > 0 &
     (s$linear | (!(missing & !fixable) & !is.na(s$IV) & s$IV > 0))
@@ -205,7 +223,8 @@ getTradeFills <- function(trade_nr, account) {
 #'   \code{entry} for the first row (fills against the first marks),
 #'   \code{exit} for the last one when the trade was closed after its last
 #'   snapshot (it can share its date with that snapshot), \code{day}
-#'   otherwise. Flags: \code{BS} Greeks recomputed, \code{split}
+#'   otherwise. Flags: \code{BS} Greeks recomputed, \code{theta} IBKR
+#'   theta above 3x the Black-Scholes value replaced by it, \code{split}
 #'   underlying move > 25\% (all to residual), \code{noS} no underlying price
 #'   at the exit (all to execution), \code{gap} leg gone without a fill.
 #'   NULL for a cash-only trade or fewer than two usable snapshot days.
