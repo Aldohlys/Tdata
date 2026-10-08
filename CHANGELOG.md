@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.21.3] - 2026-10-08
+
+### Fixed
+- **attributePnL: snapshots with a frozen underlying price next to live marks** (`R/pnl_attribution.R`, new `.drop_stale_underlying`). A pre-market snapshot, or an intraday one fed a stale quote, carries the previous `uPrice` while the option marks move: trade 753 (USO 161/166 call spread) had 02.10 18:26 at uPrice 150.1, the same as 10:01, with marks −32%, and 08.10 10:01 at 144.0, the same as the night before, with marks +50%. dS was wrong, so the move landed in residual (−58.8, +49.5, +52.8) and the path ended on pre-market marks; residual read 58% of the P&L. A snapshot whose option legs carry exactly the last usable snapshot's uPrice while their marks moved more than 5% is now dropped. Trade 753: residual 9% (12.3 of −140.8, the value at the 07.10 close). Closed BOT trades: median residual unchanged (12.2%), p90 60.4% → 59.4%. A snapshot-after-the-close rule was tested and rejected: it kept 4 of 9 days on 753 and doubled the BOT median (32%).
+
 ## [5.21.2] - 2026-10-08
 
 ### Fixed

@@ -51,8 +51,9 @@ getTradeFills <- function(trade_nr, account) {
 ## Snapshot rows -> one row per leg per kept snapshot. Missing Greeks (NA, or
 ## IBKR's -2 placeholder, recognisable as a negative vega; or the all-zero row
 ## IBKR writes when it has no model) are recomputed from IV and uPrice when
-## both are there. Per date, the last snapshot in which every leg is usable is
-## kept.
+## both are there. Snapshots with a frozen uPrice next to moving marks are
+## dropped (.drop_stale_underlying). Per date, the last snapshot in which every
+## leg is usable is kept.
 .prepare_snapshots <- function(snaps, rate, div_yield) {
   s <- snaps
   s$ts <- as.POSIXct(paste(s$date, s$heure), format = "%Y%m%d %H:%M:%S", tz = "Europe/Zurich")
@@ -97,11 +98,41 @@ getTradeFills <- function(trade_nr, account) {
 
   ok_ts <- tapply(s$usable, s$ts, all)
   s <- s[s$ts %in% as.POSIXct(names(ok_ts)[ok_ts], tz = "Europe/Zurich"), ]
+  s <- .drop_stale_underlying(s)
   last_ts <- tapply(s$ts, s$day, max)
   s <- s[s$ts %in% as.POSIXct(last_ts, origin = "1970-01-01", tz = "Europe/Zurich"), ]
   s <- s[!duplicated(s[c("ts", "key")]), ]
   s$value <- s$pos * s$multiplier * s$mktPrice
   s[order(s$ts, s$key), ]
+}
+
+## A snapshot whose option legs carry exactly the uPrice of the last usable
+## snapshot while their marks moved more than 5% holds a frozen underlying
+## price next to live marks: the pre-market snapshot (trade 753, 08.10 10:01:
+## marks +50%, uPrice unchanged) or an intraday one fed a stale quote (02.10
+## 18:26: marks -32%). Its dS is wrong, so the move lands in residual and
+## comes back reversed the next day. Such snapshots are dropped.
+.stale_mark_move <- 0.05
+.drop_stale_underlying <- function(s) {
+  stamps <- sort(unique(s$ts))
+  keep <- rep(TRUE, length(stamps))
+  ref <- NULL
+  for (i in seq_along(stamps)) {
+    cur <- s[s$ts == stamps[i] & !s$linear, c("key", "uPrice", "mktPrice")]
+    if (nrow(cur) == 0) next
+    if (!is.null(ref)) {
+      m <- merge(ref, cur, by = "key")
+      if (nrow(m) && all(m$uPrice.x == m$uPrice.y)) {
+        move <- sum(abs(m$mktPrice.y - m$mktPrice.x)) / max(sum(abs(m$mktPrice.x)), 1e-9)
+        if (move > .stale_mark_move) {
+          keep[i] <- FALSE
+          next
+        }
+      }
+    }
+    ref <- cur
+  }
+  s[s$ts %in% stamps[keep], ]
 }
 
 ## Fill timestamps in Europe/Zurich, the snapshot clock. Trades.DateTime is

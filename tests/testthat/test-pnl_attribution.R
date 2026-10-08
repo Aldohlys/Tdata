@@ -70,7 +70,7 @@ test_that("missing Greeks (IBKR -2 / NA) are recomputed with Black-Scholes", {
 
 test_that("an IBKR theta far above the model's is replaced by the Black-Scholes theta", {
   s <- rbind(snap(20260402, "22:00:00", C100, 1, 5, theta = -25),
-             snap(20260414, "22:00:00", C100, 1, 4.5))
+             snap(20260414, "22:00:00", C100, 1, 4.5, uPrice = 99))
   r <- attributePnL(s, fill(20260402, "15:00:00", C100, 1, 5), rate = 0.03, as_of = ALL)
   g <- Tbasics::getBSOptGreeks(type = "Call", S = 100, K = 100,
                                DTE = as.numeric(as.Date("2026-12-17") - as.Date("2026-04-02")),
@@ -93,6 +93,24 @@ test_that("a snapshot without IV or underlying is skipped, not used", {
   r <- attributePnL(s, f, as_of = ALL)
   expect_equal(r$S, c(100, 100.5, 101))                  # 23:00 row dropped, 21:00 kept
   expect_equal(r$actual[2], 100 * 0.2)
+})
+
+test_that("a snapshot with a frozen uPrice next to moving marks is dropped", {
+  s <- rbind(snap(20260105, "22:00:00", C100, 1, 5.00, uPrice = 100),
+             snap(20260106, "22:00:00", C100, 1, 5.50, uPrice = 101),
+             snap(20260107, "10:00:00", C100, 1, 7.00, uPrice = 101),   # pre-market: marks +27%, uPrice frozen
+             snap(20260107, "22:00:00", C100, 1, 5.60, uPrice = 101.2))
+  r <- attributePnL(s, fill(20260105, "15:00:00", C100, 1, 5), as_of = ALL)
+  expect_equal(r$S, c(100, 101, 101.2))
+  expect_equal(r$actual[3], 100 * (5.60 - 5.50))
+  ## Today's pre-market snapshot is dropped too: the path ends at the last
+  ## consistent one.
+  r <- attributePnL(s[1:3, ], fill(20260105, "15:00:00", C100, 1, 5), as_of = ALL)
+  expect_equal(max(r$date), as.Date("2026-01-06"))
+  ## Same uPrice with a small mark change (decay, IV) is kept.
+  s$mktPrice[3] <- 5.52
+  r <- attributePnL(s[1:3, ], fill(20260105, "15:00:00", C100, 1, 5), as_of = ALL)
+  expect_equal(max(r$date), as.Date("2026-01-07"))
 })
 
 test_that("several snapshots in a day: the last usable one is kept", {
