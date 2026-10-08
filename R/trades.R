@@ -11,16 +11,21 @@
 #' * Integer for \code{TradeNr} and \code{Pos}
 #' * Real (double) for \code{Price, Commission, Total, Risk, Reward, PnL}
 #'
-#' Concurrency safety: aborts when the DB has TradeNrs that are absent from `trades`.
-#' Without this guard a stale in-memory snapshot (e.g. a second RReporting session,
-#' or any other writer that touched Trades after Load) would silently destroy the
-#' newer rows on overwrite. Pass `force = TRUE` to skip the check when the deletion
-#' is genuinely intended.
+#' Concurrency safety: the write replaces the whole table, so a stale in-memory
+#' copy (a second RReporting session, a direct SQL fix, a Tuser dividend import
+#' made after Load) would silently undo every newer change. Three checks refuse it:
+#' * the DB differs in any value from the copy \code{getAllTrades()} last returned
+#'   in this R session (skipped when this session never called it);
+#' * the DB has TradeNrs absent from `trades`;
+#' * the DB has dividend rows absent from `trades`.
+#' Pass `force = TRUE` to skip them when overwriting is genuinely intended.
+#' After a successful write the stored copy is refreshed, so repeated saves from
+#' the same session keep working.
 #'@param trades data frame with the following fields:
 #'\code{TradeNr, Account, TradeDate, DateTime, TimeZoneSource, Strategy, Instrument, Symbol, Pos, Price,
 #'Commission, Total, Exp.Date, Risk, Reward, PnL, Status, Currency}
 #'@param force logical, default FALSE. Bypass the freshness check and overwrite unconditionally.
-#'@return No value or Error code from dbWriteTable
+#'@return invisible(TRUE) when written, invisible(NULL) when a check refused the save
 #'@export
 saveTrades = function(trades, force = FALSE) {
 
@@ -28,6 +33,25 @@ saveTrades = function(trades, force = FALSE) {
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   if (!isTRUE(force)) {
+    ### Any change made to the DB since this session loaded the trades - even a
+    ### single Risk value fixed by SQL - would be reverted by the overwrite.
+    loaded <- .trades_state$loaded
+    if (!is.null(loaded)) {
+      current <- DBI::dbReadTable(conn, "Trades")
+      if (!identical(rlang::hash(current), rlang::hash(loaded))) {
+        changed <- changed_tradenrs(loaded, current)
+        msg <- sprintf(
+          "saveTrades aborted: the Trades table changed in the DB after it was loaded at %s (TradeNr %s). Saving would revert those changes. Reload, redo your edits and save again. To overwrite anyway, call saveTrades(trades, force = TRUE).",
+          format(.trades_state$loaded_at, "%H:%M:%S"),
+          if (length(changed) == 0) "unknown"
+          else paste0(paste(utils::head(sort(changed), 20), collapse = ", "),
+                      if (length(changed) > 20) ", ..." else ""))
+        logger::log_error(msg, namespace = "Tdata")
+        Tbasics::display_message(msg)
+        return(invisible(NULL))
+      }
+    }
+
     db_tradenrs <- DBI::dbGetQuery(conn, "SELECT DISTINCT TradeNr FROM Trades")$TradeNr
     input_tradenrs <- unique(trades$TradeNr)
     missing <- setdiff(db_tradenrs, input_tradenrs)
@@ -75,12 +99,53 @@ saveTrades = function(trades, force = FALSE) {
                                   "Risk"=	"REAL",
                                   "Reward"=	"REAL",
                                   "PnL"= "REAL" ))
+  ### safe_db_write raises on failure: reaching here means the table was
+  ### replaced. The DB now holds this session's version - track it.
+  remember_loaded_trades(DBI::dbReadTable(conn, "Trades"))
+  invisible(TRUE)
+}
+
+### Copy of the Trades table as last returned by getAllTrades() (or written by
+### saveTrades) in this R session; saveTrades compares the DB against it.
+.trades_state <- new.env(parent = emptyenv())
+
+remember_loaded_trades <- function(trades) {
+  .trades_state$loaded <- trades
+  .trades_state$loaded_at <- Sys.time()
+  invisible(trades)
+}
+
+### Not exported - for tests: forget the loaded copy.
+reset_loaded_trades <- function() {
+  rm(list = ls(.trades_state), envir = .trades_state)
+}
+
+### TradeNrs whose rows differ between two versions of the Trades table:
+### rows added, removed or with any field changed.
+changed_tradenrs <- function(old, new) {
+  common <- intersect(names(old), names(new))
+  key <- function(d) do.call(paste, c(lapply(d[common], as.character), sep = "\r"))
+  k_old <- key(old); k_new <- key(new)
+  unique(c(old$TradeNr[!k_old %in% k_new], new$TradeNr[!k_new %in% k_old]))
+}
+
+### Not exported - reads the Trades table without touching the loaded copy.
+### Internal helpers (getTradeNr, getTradeDates, getRnR) use it: they run in the
+### middle of an RReporting session, and refreshing the copy there would let a
+### stale in-memory table pass the saveTrades check.
+readTradesTable <- function() {
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  DBI::dbReadTable(conn, "Trades")
 }
 
 #' getAllTrades
 #'
 #' This function works only for IBKR accounts not for Gonet account
-#' This function is used by other Tdata functions but also for RReporting directly.
+#' This is the loading entry point for apps that later call \code{saveTrades}
+#' (RReporting's Load button). The table returned is remembered for this R
+#' session: \code{saveTrades} refuses to overwrite a DB that has changed since.
+#' Tdata's own helpers read the table without touching that copy.
 #' No argument - takes its source from config::get()
 #'
 #' It verifies that \code{TradeNr,TradeDate,Pos,Price, Commission, Total, Risk, Reward, PnL} are all numeric,
@@ -90,10 +155,8 @@ saveTrades = function(trades, force = FALSE) {
 #'Commission, Total, Exp.Date, Risk, Reward, PnL, Status, Currency}
 #'@export
 getAllTrades = function() {
-  ### Read all trades from DB
-  conn <- safe_db_connect()
-  alltrades = DBI::dbReadTable(conn, "Trades")
-  DBI::dbDisconnect(conn)
+  ### Read all trades from DB, and keep the copy saveTrades checks the DB against
+  alltrades = remember_loaded_trades(readTradesTable())
 
   if (any(with(alltrades, !is.numeric(c(TradeNr,TradeDate,Pos,Price, Commission, Total, Risk, Reward,PnL))))) {
     Tbasics::display_message("Trades input data had to be converted!")
@@ -431,7 +494,7 @@ getTradeNr = function(v_instrument,account_type=NA,unique=T) {
   if (is.unsorted(v_instrument)) stop("Instrument must be sorted - prog. error")
   ### Read Trades.csv file and extract open/adjusted trades, to select all instruments present in dt argument
   ### Only opened trades can be retrieved
-  trades = getAllTrades()
+  trades = readTradesTable()
   trades = dplyr::filter(trades, Status=="Ouvert" | Status=="Ajust\u00e9")
   if (!is.na(account_type)) trades = dplyr::filter(trades, Account == account_type)
   trades = dplyr::select(trades, Instrument,TradeNr)
@@ -492,7 +555,7 @@ getTradeDates = function(trade_nr) {
     return(NULL)
   }
   logger::log_debug("getTradeDates arguments: {paste(trade_nr, collapse=', ')}", namespace = "Tdata")
-  trades=getAllTrades()
+  trades=readTradesTable()
   missing_trades = trade_nr[!trade_nr %in% unique(trades$TradeNr)]
 
   if (length(missing_trades) != 0) {
@@ -603,7 +666,7 @@ getRnR = function(trade_nr) {
     Tbasics::display_error_message("trade_nr must be a numeric")
   }
 
-  trades <- getAllTrades()
+  trades <- readTradesTable()
 
   ### Retrieve only trades that have TradeNr within trade_nr input data
   trades <- dplyr::filter(trades, TradeNr %in% trade_nr)

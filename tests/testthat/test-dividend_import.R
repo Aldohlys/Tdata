@@ -89,6 +89,7 @@ test_that("planIBKRDividends books against the table it is given and skips what 
 })
 
 test_that("saveTrades refuses a snapshot that would drop imported dividend rows", {
+  reset_loaded_trades()          # isolate from the freshness check
   rows <- data.frame(TradeNr = c(697L, 697L), Account = "U25343478",
                      TradeDate = c(20260316L, 20260528L), Pos = c(100L, 0L),
                      Total = c(-1568.25, 72.75), Currency = "EUR",

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.14] - 2026-10-08
+
+### Fixed
+- **saveTrades silently reverted DB changes made after RReporting's Load** (`R/trades.R`, `saveTrades`, `getAllTrades`). The save replaces the whole Trades table with the app's in-memory copy. The existing guards only caught missing TradeNrs and missing dividend rows, so a changed value went unnoticed. On 2026-10-08, trade 758's Risk was corrected by SQL from 585.99 to 85.38 at about 09:50; a save at 10:06 from a session loaded earlier put 585.99 back.
+  - `getAllTrades()` now remembers the table it returns, for this R session (`.trades_state`). Before writing, `saveTrades()` compares the DB with that copy (`rlang::hash`). On any difference it refuses and names the changed TradeNrs (`changed_tradenrs`): "Reload, redo your edits and save again". `force = TRUE` still overrides. With no `getAllTrades()` call in the session, the check is skipped and the older guards still apply.
+  - After a successful write the copy is refreshed, so repeated saves from one session keep working. `saveTrades` now returns `invisible(TRUE)` on success (it returned the `dbWriteTable` result).
+  - `getTradeNr`, `getTradeDates` and `getRnR` read through the new internal `readTradesTable()`. They run in the middle of an RReporting session, and refreshing the copy there would let a stale table through.
+  - New `tests/testthat/test-savetrades_freshness.R`: a SQL change blocks the save and is named; repeated saves work; internal reads don't refresh the copy; `force` and the no-Load case.
+
 ## [5.20.13] - 2026-10-08
 
 ### Added
