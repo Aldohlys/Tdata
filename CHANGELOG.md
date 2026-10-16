@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.21.5] - 2026-10-16
+
+### Fixed
+- **getYahooData: FX (=X) bars dated one day early during UK summer time** (`R/prices.R`, new internal `redate_fx_london`). Yahoo stamps FX daily bars at London midnight, 23:00 UTC the day before under BST, and quantmod dates bars by their UTC day. Every summer FX series came out one day early (Sunday rows, no Friday rows), and today's unfinished bar, with an empty close, was dated yesterday and survived the trim to completed sessions: macro_context showed "no close from Yahoo" for all 13 FX pairs on every run. EURUSD=X on 16.10 17:13 UTC: the 15.10 close 1.11951 was stored under 14.10 and 15.10 was empty. =X rows are now re-dated to London: rows dated today or later in UTC (the live quote, or a bar already stamped today) take London's current date, earlier rows move one day forward when the next London midnight is in summer time, and same-date rows keep the last one with a close. Winter dates are unchanged. Tests: `test-redate-fx.R` (summer, winter, after London midnight, clock change 25.10).
+- Rows already stored by date are not rewritten: `ConvertToCHF` rows written by `update_currency_rates.R` or `set_CHF_in_DB.R` during summer time sit one day early. `getLastRate`-style callers (`include_today = TRUE`, latest row) are unaffected.
+
 ## [5.21.4] - 2026-10-16
 
 ### Fixed

@@ -603,6 +603,35 @@ getStoredMetrics = function(name) {
   return(prices)
 }
 
+#' Re-date Yahoo FX (=X) daily bars to their London date
+#'
+#' Yahoo stamps FX daily bars at London midnight. During UK summer time that is
+#' 23:00 UTC on the previous day, and quantmod dates bars by their UTC day, so every
+#' summer FX bar came out one day early (Sunday rows, no Friday rows) and today's
+#' unfinished bar, empty close, was dated yesterday and survived the trim to completed
+#' sessions (macro_context "no close" banner on every run, 2026-10-16: EURUSD=X bar
+#' 2026-10-15 23:00 UTC = the 10-16 session). Rows dated today or later in UTC are the
+#' live quote (or a bar already stamped today) and take London's current date; earlier
+#' rows move one day forward when the next London midnight falls in summer time.
+#' Same-date rows then keep the last one with a close.
+#' @param x xts from quantmod::getSymbols for an =X ticker (Date index, UTC days)
+#' @param now Current time, for tests
+#' @return xts with London dates, one row per date
+#' @keywords internal
+redate_fx_london <- function(x, now = Sys.time()) {
+  d <- zoo::index(x)
+  today_utc <- as.Date(now, tz = "UTC")
+  bst <- as.POSIXlt(as.POSIXct(paste(d + 1, "00:00:00"), tz = "Europe/London"))$isdst == 1
+  nd <- ifelse(d >= today_utc, as.Date(now, tz = "Europe/London"), d + bst)
+  nd <- as.Date(nd, origin = "1970-01-01")
+  cl <- zoo::coredata(x)[, 4]
+  dup <- duplicated(nd) | duplicated(nd, fromLast = TRUE)
+  keep <- !(dup & is.na(cl))
+  keep[!keep & !(nd %in% nd[keep])] <- TRUE   # every row of a date empty: keep them for the step below
+  x <- xts::xts(zoo::coredata(x)[keep, , drop = FALSE], order.by = nd[keep])
+  x[!duplicated(zoo::index(x), fromLast = TRUE), ]
+}
+
 #' Ultra-robust Yahoo Finance data retrieval for problematic tickers
 #'
 #' @param tickers Data frame from getTickers() or character vector
@@ -771,6 +800,9 @@ getYahooData <- function(tickers, from_date = Sys.Date() - 5, to_date = Sys.Date
                                               to = as.Date(to_date) + QUERY_PAD_DAYS,
                                               auto.assign = FALSE,
                                               warnings = TRUE)
+          # FX bars are stamped at London midnight; quantmod dates them in UTC.
+          if (!is.null(ticker_data) && nrow(ticker_data) > 0 && grepl("=X$", ticker))
+            ticker_data <- redate_fx_london(ticker_data)
           # Trim back. By default the cut is the day BEFORE today, which is what
           # the un-padded request delivered for every ticker without a null
           # session: completed sessions only, no live partial bar. FX callers
