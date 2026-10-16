@@ -156,3 +156,67 @@ test_that("Flex and statement rows of the same payment are the same booking", {
                a[, c("account", "currency", "date", "symbol", "rate", "net")],
                ignore_attr = TRUE)
 })
+
+### 3440.T: 400 shares bought 03.03, sold 01.10, ex-date 28.08, paid after the sale.
+.closed_fixture <- data.frame(
+  TradeNr = c(695L, 695L, 695L, 695L),
+  Account = "U25343478",
+  TradeDate = c(20260303L, 20260303L, 20260303L, 20261001L),
+  DateTime = c("2026-03-03 00:00:20", "2026-03-03 00:03:53", "2026-03-03 00:08:55",
+               "2026-10-01 00:00:00"),
+  Symbol = "3440", Pos = c(200L, 100L, 100L, -400L),
+  EventType = c("Open", "Open", "Open", "Close"), stringsAsFactors = FALSE)
+
+test_that("a dividend paid after the trade was closed goes to that trade", {
+  leg <- dividend_target_trade(.closed_fixture, "3440", as.Date("2026-11-20"), "U25343478")
+  expect_equal(leg$TradeNr, 695L)
+  expect_equal(attr(leg, "match"), "closed")
+  ### Too long after the close: not that trade's dividend.
+  expect_null(dividend_target_trade(.closed_fixture, "3440", as.Date("2027-06-01"), "U25343478"))
+})
+
+test_that("with an ex-date, the trade holding on the ex-date wins over a later one", {
+  tr <- rbind(.closed_fixture,
+              data.frame(TradeNr = 900L, Account = "U25343478", TradeDate = 20261101L,
+                         DateTime = "2026-11-01 00:00:00", Symbol = "3440", Pos = 200L,
+                         EventType = "Open", stringsAsFactors = FALSE))
+  leg <- dividend_target_trade(tr, "3440", as.Date("2026-11-20"), "U25343478",
+                               ex_date = as.Date("2026-08-28"))
+  expect_equal(leg$TradeNr, 695L)
+  expect_equal(attr(leg, "match"), "ex-date")
+  ### Without the ex-date (Activity Statement) the trade open on the pay date is taken.
+  leg <- dividend_target_trade(tr, "3440", as.Date("2026-11-20"), "U25343478")
+  expect_equal(leg$TradeNr, 900L)
+  expect_equal(attr(leg, "match"), "held")
+})
+
+test_that("a trade opened after the ex-date and closed before payment is not entitled", {
+  tr <- .closed_fixture
+  tr$TradeDate[1:3] <- 20260901L
+  expect_null(dividend_target_trade(tr, "3440", as.Date("2026-11-20"), "U25343478",
+                                    ex_date = as.Date("2026-08-28")))
+})
+
+test_that("planIBKRDividends books a post-close dividend and says so", {
+  st <- tempfile(fileext = ".csv")
+  writeLines(c(
+    "Account Information,Data,Account,U25343478",
+    "Dividends,Data,JPY,2026-11-20,3440.T(JP3678900006) Cash Dividend JPY 42 per Share (Ordinary Dividend),16800",
+    "Withholding Tax,Data,JPY,2026-11-20,3440.T(JP3678900006) Cash Dividend JPY 42 per Share - JP Tax,-2573,"
+  ), st)
+  tr <- .closed_fixture
+  tr$Instrument <- "NISSO GROUP CO LTD"; tr$Strategy <- "VALUE"; tr$Status <- "Fermé"
+  tr$TimeZoneSource <- "America/New_York"; tr$Currency <- "JPY"; tr$Total <- 0
+  plan <- planIBKRDividends(st, tr)
+  expect_equal(plan$payments$action, "insert")
+  expect_equal(plan$payments$match, "closed")
+  expect_equal(plan$new_rows$TradeNr, 695L)
+  expect_equal(plan$new_rows$Total, 14227)
+  expect_match(plan$new_rows$Notes, "paid after the trade was closed")
+})
+
+test_that("Flex rows carry the ex-date of the dividend line; statements carry NA", {
+  d <- ibkr_statement_dividends(.flex_cash())
+  expect_equal(d$ex_date, as.Date(c("2026-06-29", "2026-06-29", "2026-09-15")))
+  expect_true(all(is.na(ibkr_statement_dividends(.multi_statement())$ex_date)))
+})

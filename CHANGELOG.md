@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.21.4] - 2026-10-16
+
+### Fixed
+- **Dividend import skipped dividends paid after the position was closed** (`R/dividend_import.R`, `dividend_target_trade`). The trade was matched on a positive position at the pay date, so a stock sold between ex-date and payment found no trade ("no trade") and its dividend was never booked. Japanese dividends are paid 2-3 months after the ex-date: 3440.T (trade 695, ex 28.08, sold 01.10, JPY 14,227 net) would have been lost. The match now runs in order: (1) with an ex-date (Flex `ExDate`), the trade holding the stock on the ex-date, closed since or not; (2) the trade holding it on the pay date (previous rule); (3) a trade that held shares and was closed at most 183 days before the pay date (and, with an ex-date, opened before it). With an ex-date, a trade reopened after the sale no longer takes the old trade's dividend.
+- `ibkr_statement_dividends` returns an `ex_date` column (Flex only; NA from an Activity Statement). `planIBKRDividends` payments carry `match` ("ex-date", "held", "closed"); a post-close booking adds ", paid after the trade was closed" to the row's Notes. `action` values are unchanged, so the Tuser and RReporting previews work as before.
+
 ## [5.21.3] - 2026-10-08
 
 ### Fixed

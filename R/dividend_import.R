@@ -7,8 +7,10 @@
 ## cash-transaction section of a Flex Query CSV.
 ##
 ## Each payment becomes ONE Trades row, net of withholding tax, booked on the
-## trade that holds the stock: EventType "Dividend", Pos 0, Total = net amount
-## in the dividend currency, TradeDate = pay date. Accrued-but-unpaid dividends
+## trade that held the stock (see dividend_target_trade): EventType "Dividend",
+## Pos 0, Total = net amount in the dividend currency, TradeDate = pay date.
+## That trade may be closed by then: Japanese dividends are paid 2-3 months
+## after the ex-date, often after the position was sold. Accrued-but-unpaid dividends
 ## (the statement's "Change in Dividend Accruals") are not booked: a dividend
 ## enters Trades when IBKR pays it.
 ##
@@ -20,12 +22,14 @@
 ## account or MULTI) or a Flex Query export whose cash-transaction section
 ## carries "Type" and "Amount" columns.
 ## Returns one row per payment: account, currency, date (Date), symbol, desc,
-## rate, gross, tax, net. Reversals inside the file net out per payment.
+## rate, gross, tax, net, ex_date (Date; Flex only, NA from a statement).
+## Reversals inside the file net out per payment.
 ibkr_statement_dividends <- function(file) {
   empty <- data.frame(account = character(), currency = character(),
                       date = as.Date(character()), symbol = character(),
                       desc = character(), rate = numeric(), gross = numeric(),
-                      tax = numeric(), net = numeric(), stringsAsFactors = FALSE)
+                      tax = numeric(), net = numeric(), ex_date = as.Date(character()),
+                      stringsAsFactors = FALSE)
   lines <- readLines(file, encoding = "UTF-8", warn = FALSE)
   lines <- sub("^\ufeff", "", lines)
 
@@ -45,13 +49,16 @@ ibkr_statement_dividends <- function(file) {
     gross <- sum(d$amount[d$kind == "gross"])
     tax   <- sum(d$amount[d$kind == "tax"])
     desc  <- d$desc[1]
+    ### Flex writes the ex-date on the dividend line, not on its tax line.
+    ex    <- d$ex_date[!is.na(d$ex_date)]
     data.frame(account = d$account[1], currency = d$currency[1], date = d$date[1],
                symbol = sub("\\.[A-Z]+$", "", sub("\\(.*$", "", desc)),
                desc = desc,
                rate = suppressWarnings(as.numeric(
                  sub(".* ([0-9.]+) per Share.*", "\\1", desc, ignore.case = TRUE))),
                gross = round(gross, 2), tax = round(tax, 2),
-               net = round(gross + tax, 2), stringsAsFactors = FALSE)
+               net = round(gross + tax, 2),
+               ex_date = if (length(ex)) ex[1] else as.Date(NA), stringsAsFactors = FALSE)
   })
   out <- do.call(rbind, out)
   out <- out[abs(out$gross) > 0.005, , drop = FALSE]   # fully reversed payments
@@ -77,7 +84,8 @@ statement_dividend_lines <- function(lines) {
     rows[[length(rows) + 1]] <- data.frame(
       account = account, currency = ccy, date = as.Date(f$V4), desc = f$V5,
       kind = if (f$V1 == "Withholding Tax") "tax" else "gross",
-      amount = as.numeric(gsub(",", "", f$V6)), stringsAsFactors = FALSE)
+      amount = as.numeric(gsub(",", "", f$V6)), ex_date = as.Date(NA),
+      stringsAsFactors = FALSE)
   }
   if (length(rows) == 0) NULL else do.call(rbind, rows)
 }
@@ -101,36 +109,81 @@ flex_dividend_lines <- function(lines) {
            drop = FALSE]
     if (nrow(x) == 0) next
     when <- if ("Date/Time" %in% names(x)) x[["Date/Time"]] else x[[1]]
+    ex   <- if ("ExDate" %in% names(x)) x$ExDate else rep("", nrow(x))
     rows[[length(rows) + 1]] <- data.frame(
       account = x$ClientAccountID, currency = x$CurrencyPrimary,
       date = as.Date(substr(when, 1, 8), format = "%Y%m%d"), desc = x$Description,
       kind = ifelse(x$Type == "Withholding Tax", "tax", "gross"),
-      amount = as.numeric(gsub(",", "", x$Amount)), stringsAsFactors = FALSE)
+      amount = as.numeric(gsub(",", "", x$Amount)),
+      ex_date = as.Date(substr(ex, 1, 8), format = "%Y%m%d"), stringsAsFactors = FALSE)
   }
   if (length(rows) == 0) NULL else do.call(rbind, rows)
 }
 
-## The trade holding `symbol` on `date`: the TradeNr whose stock legs dated on
-## or before `date` leave a positive position. The paying account's trades are
-## preferred; a stock moved between accounts (CRST, U1804173 -> U25343478) is
-## found in the other one. Returns a one-row data.frame of that trade's last
-## stock leg, or NULL.
-dividend_target_trade <- function(trades, symbol, date, account) {
+## How far back from the pay date a closed trade can still own a dividend
+## (statement path, no ex-date). Japanese pay dates run 2-3 months after the
+## ex-date; six months leaves room without reaching the previous year's payout.
+DIVIDEND_CLOSED_WINDOW_DAYS <- 183
+
+## The trade entitled to a dividend on `symbol` paid on `date`. Tried in order,
+## the first hit wins; attr(leg, "match") says which:
+##   "ex-date" -- `ex_date` known (Flex): the trade whose legs dated before the
+##               ex-date leave a positive position, closed since or not.
+##   "held"    -- the trade whose legs dated on or before the pay date leave a
+##               positive position.
+##   "closed"  -- the trade that held shares, is back to zero by the pay date,
+##               and whose last leg is at most DIVIDEND_CLOSED_WINDOW_DAYS
+##               before it (sold between ex-date and payment). With an ex-date,
+##               it must also have opened before it.
+## The paying account's trades are preferred; a stock moved between accounts
+## (CRST, U1804173 -> U25343478) is found in the other one. Returns a one-row
+## data.frame of that trade's last stock leg up to the pay date, or NULL.
+dividend_target_trade <- function(trades, symbol, date, account, ex_date = as.Date(NA)) {
   d <- as.integer(format(date, "%Y%m%d"))
   t <- trades[!is.na(trades$Symbol) & trades$Symbol == symbol &
               (is.na(trades$EventType) | trades$EventType != "Dividend") &
               trades$TradeDate <= d, , drop = FALSE]
   if (nrow(t) == 0) return(NULL)
-  held <- stats::aggregate(t$Pos, by = list(TradeNr = t$TradeNr), FUN = sum)
-  held <- held[held$x > 0, , drop = FALSE]
-  if (nrow(held) == 0) return(NULL)
-  cand <- t[t$TradeNr %in% held$TradeNr, , drop = FALSE]
-  own  <- cand[cand$Account == account, , drop = FALSE]
-  if (nrow(own) > 0) cand <- own
-  cand <- cand[order(cand$TradeDate, cand$DateTime), , drop = FALSE]
-  last_nr <- cand$TradeNr[nrow(cand)]
-  leg <- cand[cand$TradeNr == last_nr, , drop = FALSE]
-  leg[nrow(leg), , drop = FALSE]
+
+  ### Latest trade among `nrs`, own account first; its last leg, tagged.
+  pick <- function(nrs, how) {
+    cand <- t[t$TradeNr %in% nrs, , drop = FALSE]
+    own  <- cand[cand$Account == account, , drop = FALSE]
+    if (nrow(own) > 0) cand <- own
+    cand <- cand[order(cand$TradeDate, cand$DateTime), , drop = FALSE]
+    last_nr <- cand$TradeNr[nrow(cand)]
+    leg <- cand[cand$TradeNr == last_nr, , drop = FALSE]
+    leg <- leg[nrow(leg), , drop = FALSE]
+    attr(leg, "match") <- how
+    leg
+  }
+  net_pos <- function(rows) {
+    if (nrow(rows) == 0) return(data.frame(TradeNr = integer(), x = numeric()))
+    stats::aggregate(rows$Pos, by = list(TradeNr = rows$TradeNr), FUN = sum)
+  }
+
+  ex <- if (is.na(ex_date)) NA_integer_ else as.integer(format(ex_date, "%Y%m%d"))
+  if (!is.na(ex)) {
+    at_ex <- net_pos(t[t$TradeDate < ex, , drop = FALSE])
+    nrs <- at_ex$TradeNr[at_ex$x > 0]
+    if (length(nrs)) return(pick(nrs, "ex-date"))
+  }
+
+  now <- net_pos(t)
+  nrs <- now$TradeNr[now$x > 0]
+  if (length(nrs)) return(pick(nrs, "held"))
+
+  ### Closed by the pay date: bought shares, net zero, last leg inside the window.
+  span <- stats::aggregate(t$TradeDate, by = list(TradeNr = t$TradeNr),
+                           FUN = function(v) c(first = min(v), last = max(v)))
+  span <- data.frame(TradeNr = span$TradeNr, first = span$x[, "first"], last = span$x[, "last"])
+  bought <- unique(t$TradeNr[t$Pos > 0])
+  from <- as.integer(format(date - DIVIDEND_CLOSED_WINDOW_DAYS, "%Y%m%d"))
+  ok <- span$TradeNr %in% intersect(now$TradeNr[now$x == 0], bought) & span$last >= from
+  if (!is.na(ex)) ok <- ok & span$first < ex
+  nrs <- span$TradeNr[ok]
+  if (length(nrs)) return(pick(nrs, "closed"))
+  NULL
 }
 
 #'   planIBKRDividends
@@ -145,7 +198,9 @@ dividend_target_trade <- function(trades, symbol, date, account) {
 #'   or a Flex Query CSV with a cash-transaction section (Type, Amount columns).
 #' @param trades the Trades table to match against and de-duplicate on.
 #' @returns list(payments, new_rows). `payments` has one row per payment with
-#'   the trade matched and an `action`: "insert", "exists" or "no trade".
+#'   the trade matched, an `action` ("insert", "exists" or "no trade") and a
+#'   `match` saying how the trade was found: "ex-date", "held" or "closed"
+#'   (closed before the pay date; see \code{dividend_target_trade}).
 #'   `new_rows` holds the Trades rows to add (Trades column names).
 #' @export
 planIBKRDividends <- function(file, trades) {
@@ -153,17 +208,19 @@ planIBKRDividends <- function(file, trades) {
   divs$TradeNr <- rep(NA_integer_, nrow(divs))
   divs$booked_account <- rep(NA_character_, nrow(divs))
   divs$action <- rep(NA_character_, nrow(divs))
+  divs$match <- rep(NA_character_, nrow(divs))
   new_rows <- list()
   for (i in seq_len(nrow(divs))) {
     p   <- divs[i, ]
-    leg <- dividend_target_trade(trades, p$symbol, p$date, p$account)
+    leg <- dividend_target_trade(trades, p$symbol, p$date, p$account, p$ex_date)
     if (is.null(leg)) {
       divs$action[i] <- "no trade"
-      logger::log_warn("Dividend {p$desc} of {p$date} ({p$account}): no open trade holds {p$symbol}",
+      logger::log_warn("Dividend {p$desc} of {p$date} ({p$account}): no trade held {p$symbol}",
                        namespace = "Tdata")
       next
     }
     divs$TradeNr[i] <- leg$TradeNr; divs$booked_account[i] <- leg$Account
+    divs$match[i] <- attr(leg, "match")
     d <- as.integer(format(p$date, "%Y%m%d"))
     dup <- trades[!is.na(trades$EventType) & trades$EventType == "Dividend" &
                   trades$TradeNr == leg$TradeNr & trades$TradeDate == d &
@@ -171,8 +228,9 @@ planIBKRDividends <- function(file, trades) {
     if (nrow(dup) > 0) { divs$action[i] <- "exists"; next }
     divs$action[i] <- "insert"
 
-    note <- sprintf("Dividend %s: gross %.2f, tax %.2f %s%s", p$desc, p$gross, p$tax, p$currency,
-                    if (p$account != leg$Account) paste0(", paid into ", p$account) else "")
+    note <- sprintf("Dividend %s: gross %.2f, tax %.2f %s%s%s", p$desc, p$gross, p$tax, p$currency,
+                    if (p$account != leg$Account) paste0(", paid into ", p$account) else "",
+                    if (attr(leg, "match") == "closed") ", paid after the trade was closed" else "")
     new_rows[[length(new_rows) + 1]] <- data.frame(
       TradeNr = leg$TradeNr, Account = leg$Account, TradeDate = d,
       DateTime = paste(format(p$date, "%Y-%m-%d"), "00:00:00"),
