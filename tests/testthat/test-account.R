@@ -212,6 +212,29 @@ test_that("Account rows append with or without a Notes column", {
   expect_equal(got$Notes, c("Deposit", NA))
 })
 
+test_that("Account rows append with or without an AccruedDividend column", {
+  ### getIBKR snapshots carry IBKR's AccruedDividend (NA when TWS delivered
+  ### none); Gonet, Live and cash-flow rows have no such column. All must fit
+  ### the live Account schema. In-memory copy of that schema only.
+  conn <- safe_db_connect()
+  schema <- DBI::dbGetQuery(conn, "SELECT sql FROM sqlite_master WHERE name = 'Account'")$sql
+  DBI::dbDisconnect(conn)
+  expect_true(grepl("AccruedDividend", schema, fixed = TRUE))
+
+  mem <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+  on.exit(DBI::dbDisconnect(mem), add = TRUE)
+  DBI::dbExecute(mem, schema)
+
+  base <- data.frame(account = "U25343478", date = 20261022L, NetLiquidation = 1000,
+                     CashFlow = 0, Currency = "CHF")
+  safe_db_append(mem, "Account", cbind(base, heure = "10:00:00", AccruedDividend = 203.12))
+  safe_db_append(mem, "Account", cbind(base, heure = "11:00:00", AccruedDividend = NA_real_))
+  safe_db_append(mem, "Account", cbind(base, heure = "12:00:00"))
+
+  got <- DBI::dbGetQuery(mem, "SELECT heure, AccruedDividend FROM Account ORDER BY heure")
+  expect_equal(got$AccruedDividend, c(203.12, NA, NA))
+})
+
 test_that("readAccount with mocked view returns 0 rows for unknown account", {
   with_mocked_bindings(
     get_account_view_name = function() "TestAccountWithConversionRate", {
@@ -601,6 +624,29 @@ test_that("getIBKR returns 1 when account is stored but portfolio is empty", {
   expect_true("Account" %in% names(appended))
   expect_equal(appended$Account$Currency, "USD")
   expect_equal(appended$Account$account, "TestU1804173")
+})
+
+# ----- AccruedDividend from Python reaches the Account row unchanged -------
+test_that("getIBKR writes the AccruedDividend it receives", {
+  appended <- list()
+  local_mock_tdata_py(list(
+    getIBKRData = function(account) {
+      list(cbind(make_fake_account("U25343478"), AccruedDividend = 203.12),
+           data.frame(), data.frame())
+    }))
+
+  with_mocked_bindings(
+    isIBAvailable = function() TRUE,
+    safe_db_connect = function(...) DBI::dbConnect(RSQLite::SQLite(), ":memory:"),
+    safe_db_append = function(conn, table, df, ...) {
+      appended[[table]] <<- df
+      nrow(df)
+    },
+    getParam = function(name, ...) if (name == "BaseCurrency") "CHF" else NULL, {
+      expect_equal(getIBKR(), 1)
+    })
+
+  expect_equal(appended$Account$AccruedDividend, 203.12)
 })
 
 # ----- exit 2: full path, stocks + options, no margin ---------------------

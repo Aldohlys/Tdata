@@ -397,6 +397,15 @@ def getIBKRData(account=None):
     ### broken down by currency under 'All' (master-level aggregate, NOT per sub-account),
     ### which wrongly attributes master cash to every sub-account.
     ### accountValues(account) gives the sub-account's own cash split after reqAccountUpdates.
+    ### Dividends past their ex-date but not yet paid. IBKR counts them in
+    ### NetLiquidation although they are neither a position value nor cash, so
+    ### NLV - stock - options - cash leaves them over (CHF 200+ on U25343478
+    ### between Japanese ex-dates and pay dates). Account-level tag in the base
+    ### currency; the -C / -S segment variants are skipped. None when the
+    ### subscription delivered nothing.
+    accrued = [v for v in ib.accountValues(account) if v.tag == 'AccruedDividend']
+    account_data['AccruedDividend'] = round(float(accrued[0].value), 2) if accrued else None
+
     print("\n#####  Extracting currency balances...\n")
 
     cash_rows = [

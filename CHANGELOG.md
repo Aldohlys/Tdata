@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.22.0] - 2026-10-22
+
+### Added
+- **Account.AccruedDividend: IBKR's accrued dividends on every getIBKR snapshot** (`inst/python/tdata_py/account.py`, `getIBKRData`). IBKR counts dividends past their ex-date but not yet paid in NetLiquidation, while they are neither a position value nor cash. On U25343478, Japanese dividends with August and September ex-dates are paid 2-3 months later, so NLV − stock − options − cash left 100-280 CHF over from late August, and `scripts/check_data_integrity.R` (account_identity) flagged 08.10 00:11 (279.8 CHF; the statement's accrual on 06.10 was 203.12). `getIBKRData` now reads the account-level `AccruedDividend` tag from `ib.accountValues(account)` after `reqAccountUpdates` and returns it in the account row (None when the subscription delivered nothing); `getIBKR` appends it unchanged. Gonet, Live and cash-flow rows leave it NULL.
+- The column is added to the `Account` table with `ALTER TABLE` (no code migrates it). Rows written before it are NULL; `scripts/backfill_accrued_dividend.R` fills them from an IBKR Activity Statement. Tests: Account rows append with or without the column; getIBKR writes the value it receives.
+
 ## [5.21.5] - 2026-10-16
 
 ### Fixed
