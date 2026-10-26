@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.23.0] - 2026-10-26
+
+### Added
+- **Condition alerts: an alert can fire when a price condition is met, not only on its date** (`R/alert.R`, TODO #65). Until now `check_alerts.R` e-mailed only the alerts whose `AlertDate` was today or tomorrow; price triggers written in `Description` (SPY ≤ 705, ESTX50 ≤ 5430, CA < 14) sat unread until a hand-picked date. The `Alerts` table gets two columns: `TriggerType` (`Date`, the default and the value of every existing row; `Condition`; `Both`) and `Condition`, a JSON condition. Grammar: price `{"yahoo": "NUCL.L", "close_lte": 41.9}` and/or `"close_gte"`, date `{"date_gte": "2026-07-21"}`, composed with `{"all_of": [...]}` / `{"any_of": [...]}`.
+- New exported `getTriggeredAlerts()`: evaluates every active `Condition`/`Both` alert against the last Yahoo daily close (one fetch per symbol, no TWS needed; at 07:30 this is the previous session's close) and returns the alerts that are met, with a `ConditionDetail` column ("NUCL.L close 41.5 (20261027) <= 41.9: TRUE"). Alerts that cannot be evaluated (Yahoo returned nothing, invalid JSON) are returned in the `"unevaluated"` attribute rather than dropped. `all_of` is FALSE as soon as one leaf is FALSE even if another has no price; `any_of` is TRUE as soon as one leaf is TRUE.
+- `addAlert()` takes `trigger_type` and `condition` (R list or JSON string). The condition is checked when the alert is written (unknown keys, missing `yahoo`, non-numeric levels, empty `all_of`/`any_of`, invalid dates are refused) and stored as compact JSON.
+
+### Changed
+- `addAlert()` accepts the themes already in the table (Breakout, Covenant, Event, Momentum, Pyramid, Roll, Stop, Thesis, Volatility) besides Earnings/Macro/Expiration/Technical; the list is `ALERT_THEMES`. Scripts that inserted those themes by SQL can use `addAlert()`.
+- `getUpcomingAlerts()` leaves out `Condition` alerts (their `AlertDate` is a reference); `Date`, `Both` and rows with no TriggerType are returned as before.
+- `createAlertTable()`, `addAlert()`, `getUpcomingAlerts()` and `getTriggeredAlerts()` add the two columns to an Alerts table that lacks them (`ALTER TABLE`), so no separate migration is run.
+- Not covered: conditions on option own-IV (TODO #65 alerts 60/61), which need TWS.
+
 ## [5.22.1] - 2026-10-26
 
 ### Fixed

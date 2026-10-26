@@ -49,7 +49,27 @@ test_that("createAlertTable creates the table when it does not exist", {
   expect_true("Alerts" %in% DBI::dbListTables(conn))
   expect_setequal(
     DBI::dbListFields(conn, "Alerts"),
-    c("id", "Theme", "Asset", "AlertDate", "Description", "Active", "CreatedAt"))
+    c("id", "Theme", "Asset", "AlertDate", "Description", "Active", "CreatedAt",
+      "TriggerType", "Condition"))
+})
+
+test_that("createAlertTable adds TriggerType and Condition to an older table", {
+  db_path <- local_alert_db()   # the 7-column table written before condition alerts
+  conn <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  DBI::dbExecute(conn, "INSERT INTO Alerts (Theme, Asset, AlertDate, Active, CreatedAt)
+                        VALUES ('Earnings', 'AAPL', '2026-06-15', 1, '2026-05-01')")
+  DBI::dbDisconnect(conn)
+
+  with_mocked_bindings(
+    safe_db_connect = mock_connect(db_path), {
+      createAlertTable()
+    })
+
+  conn <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  on.exit(DBI::dbDisconnect(conn))
+  row <- DBI::dbGetQuery(conn, "SELECT TriggerType, Condition FROM Alerts")
+  expect_equal(row$TriggerType, "Date")   # existing rows read as date alerts
+  expect_true(is.na(row$Condition))
 })
 
 test_that("createAlertTable is idempotent", {
@@ -89,13 +109,13 @@ test_that("addAlert inserts a row with valid theme and returns the data frame", 
   expect_equal(rows$Asset, "AAPL")
 })
 
-test_that("addAlert accepts all four valid themes", {
+test_that("addAlert accepts every theme of ALERT_THEMES", {
   db_path <- local_alert_db()
 
   with_mocked_bindings(
     safe_db_connect = mock_connect(db_path),
     safe_db_append = mock_append, {
-      for (theme in c("Earnings", "Macro", "Expiration", "Technical")) {
+      for (theme in ALERT_THEMES) {
         expect_no_error(addAlert(theme, "X", "2026-06-01", "test"))
       }
     })
@@ -103,7 +123,56 @@ test_that("addAlert accepts all four valid themes", {
   conn <- DBI::dbConnect(RSQLite::SQLite(), db_path)
   on.exit(DBI::dbDisconnect(conn))
   themes <- DBI::dbGetQuery(conn, "SELECT Theme FROM Alerts ORDER BY Theme")$Theme
-  expect_setequal(themes, c("Earnings", "Macro", "Expiration", "Technical"))
+  expect_setequal(themes, ALERT_THEMES)
+  expect_true(all(c("Stop", "Momentum", "Volatility") %in% ALERT_THEMES))
+})
+
+test_that("addAlert stores a condition alert with its JSON condition", {
+  db_path <- local_alert_db()
+
+  with_mocked_bindings(
+    safe_db_connect = mock_connect(db_path),
+    safe_db_append = mock_append, {
+      df <- addAlert("Stop", "NUCL", "2026-10-26", "close below 41.90",
+                     trigger_type = "Condition",
+                     condition = list(yahoo = "NUCL.L", close_lte = 41.9))
+      expect_equal(df$TriggerType, "Condition")
+      expect_equal(df$Condition, '{"yahoo":"NUCL.L","close_lte":41.9}')
+      ## A JSON string is accepted as well and stored the same way.
+      df2 <- addAlert("Stop", "NUCL", "2026-10-26", trigger_type = "Both",
+                      condition = '{"yahoo": "NUCL.L", "close_lte": 41.9}')
+      expect_equal(df2$Condition, df$Condition)
+    })
+
+  conn <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  on.exit(DBI::dbDisconnect(conn))
+  rows <- DBI::dbGetQuery(conn, "SELECT TriggerType, Condition FROM Alerts ORDER BY id")
+  expect_equal(rows$TriggerType, c("Condition", "Both"))
+})
+
+test_that("addAlert refuses inconsistent trigger_type / condition and bad conditions", {
+  db_path <- local_alert_db()
+
+  with_mocked_bindings(
+    safe_db_connect = mock_connect(db_path),
+    safe_db_append = mock_append, {
+      expect_error(addAlert("Stop", "X", "2026-06-01", trigger_type = "Price"), "Invalid trigger_type")
+      expect_error(addAlert("Stop", "X", "2026-06-01", trigger_type = "Condition"), "needs a condition")
+      expect_error(addAlert("Stop", "X", "2026-06-01",
+                            condition = list(yahoo = "X", close_lte = 1)), "Date alert")
+      bad <- function(cond) addAlert("Stop", "X", "2026-06-01", trigger_type = "Condition", condition = cond)
+      expect_error(bad(list(yahoo = "X", close_below = 1)), "unknown key")
+      expect_error(bad(list(yahoo = "X")), "close_lte and/or close_gte")
+      expect_error(bad(list(close_lte = 1)), "needs 'yahoo'")
+      expect_error(bad(list(yahoo = "X", close_lte = "41.9")), "must be one number")
+      expect_error(bad(list(any_of = list())), "non-empty list")
+      expect_error(bad(list(date_gte = "not a date")), "invalid date_gte")
+      expect_error(bad("{not json"))
+    })
+
+  conn <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  on.exit(DBI::dbDisconnect(conn))
+  expect_equal(DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM Alerts")$n, 0L)
 })
 
 test_that("addAlert rejects invalid theme", {
@@ -301,4 +370,124 @@ test_that("getUpcomingAlerts excludes inactive (Active=0) alerts", {
       df <- getUpcomingAlerts()
       expect_equal(nrow(df), 0)
     })
+})
+
+test_that("getUpcomingAlerts leaves out Condition alerts but keeps Both", {
+  db_path <- local_alert_db()
+  today <- as.character(Sys.Date())
+  conn <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  DBI::dbExecute(conn, "ALTER TABLE Alerts ADD COLUMN TriggerType TEXT DEFAULT 'Date'")
+  DBI::dbExecute(conn, "ALTER TABLE Alerts ADD COLUMN Condition TEXT")
+  DBI::dbExecute(conn, sprintf("
+    INSERT INTO Alerts (Theme, Asset, AlertDate, Active, CreatedAt, TriggerType, Condition) VALUES
+      ('Earnings', 'D', '%s', 1, '2026-05-01', 'Date', NULL),
+      ('Stop',     'C', '%s', 1, '2026-05-01', 'Condition', '{\"yahoo\":\"C\",\"close_lte\":1}'),
+      ('Stop',     'B', '%s', 1, '2026-05-01', 'Both', '{\"yahoo\":\"B\",\"close_lte\":1}'),
+      ('Earnings', 'N', '%s', 1, '2026-05-01', NULL, NULL)",
+    today, today, today, today))
+  DBI::dbDisconnect(conn)
+
+  with_mocked_bindings(
+    safe_db_connect = mock_connect(db_path), {
+      expect_setequal(getUpcomingAlerts()$Asset, c("D", "B", "N"))
+    })
+})
+
+# ---------------------------------------------------------------------------
+# getTriggeredAlerts
+# ---------------------------------------------------------------------------
+seed_condition_alerts <- function(db_path, rows) {
+  conn <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  on.exit(DBI::dbDisconnect(conn))
+  DBI::dbExecute(conn, "ALTER TABLE Alerts ADD COLUMN TriggerType TEXT DEFAULT 'Date'")
+  DBI::dbExecute(conn, "ALTER TABLE Alerts ADD COLUMN Condition TEXT")
+  for (r in rows)
+    DBI::dbExecute(conn,
+      "INSERT INTO Alerts (Theme, Asset, AlertDate, Active, CreatedAt, TriggerType, Condition)
+       VALUES ('Stop', ?, '2026-10-26', ?, '2026-10-26', ?, ?)",
+      params = list(r$asset, if (is.null(r$active)) 1L else r$active, r$type, r$cond))
+}
+
+fake_closes <- function(prices) {
+  calls <- new.env(); calls$n <- 0
+  f <- function(sym) {
+    calls$n <- calls$n + 1
+    if (is.na(prices[sym])) NULL else list(price = unname(prices[sym]), asof = "20261026")
+  }
+  attr(f, "calls") <- calls
+  f
+}
+
+test_that("getTriggeredAlerts returns the alerts whose price condition is met", {
+  db_path <- local_alert_db()
+  seed_condition_alerts(db_path, list(
+    list(asset = "NUCL", type = "Condition", cond = '{"yahoo":"NUCL.L","close_lte":41.9}'),
+    list(asset = "QQQ",  type = "Condition", cond = '{"yahoo":"QQQ","close_gte":800}'),
+    list(asset = "SPY",  type = "Both",      cond = '{"yahoo":"SPY","close_lte":705}'),
+    list(asset = "OLD",  type = "Condition", cond = '{"yahoo":"NUCL.L","close_lte":99}', active = 0L),
+    list(asset = "DATE", type = "Date",      cond = NA)))
+
+  fetch <- fake_closes(c(NUCL.L = 41.5, QQQ = 713.4, SPY = 700))
+  with_mocked_bindings(
+    safe_db_connect = mock_connect(db_path), {
+      out <- getTriggeredAlerts(fetch = fetch)
+    })
+
+  expect_equal(out$Asset, c("NUCL", "SPY"))
+  expect_equal(out$ConditionDetail[1], "NUCL.L close 41.5 (20261026) <= 41.9: TRUE")
+  expect_equal(nrow(attr(out, "unevaluated")), 0)
+  expect_equal(attr(fetch, "calls")$n, 3)   # one fetch per symbol, inactive rows not read
+})
+
+test_that("getTriggeredAlerts reports conditions it cannot evaluate instead of dropping them", {
+  db_path <- local_alert_db()
+  seed_condition_alerts(db_path, list(
+    list(asset = "NUCL", type = "Condition", cond = '{"yahoo":"NUCL.L","close_lte":41.9}'),
+    list(asset = "BAD",  type = "Condition", cond = '{"yahoo":"X","close_under":1}')))
+
+  with_mocked_bindings(
+    safe_db_connect = mock_connect(db_path), {
+      out <- getTriggeredAlerts(fetch = function(sym) stop("Yahoo down"))
+    })
+
+  expect_equal(nrow(out), 0)
+  unev <- attr(out, "unevaluated")
+  expect_equal(unev$Asset, c("NUCL", "BAD"))
+  expect_equal(unev$ConditionDetail, c("NUCL.L: no Yahoo close", "invalid Condition JSON"))
+})
+
+test_that("getTriggeredAlerts on a table without condition alerts returns an empty frame", {
+  db_path <- local_alert_db()   # old schema: the columns are added on the fly
+
+  with_mocked_bindings(
+    safe_db_connect = mock_connect(db_path), {
+      out <- getTriggeredAlerts(fetch = function(sym) stop("not called"))
+    })
+  expect_equal(nrow(out), 0)
+  expect_equal(nrow(attr(out, "unevaluated")), 0)
+})
+
+test_that("alert_condition_eval composes all_of / any_of with dates and missing prices", {
+  closes <- list(CA.PA = list(price = 13.5, asof = "20261026"), VIX = NULL)
+  today <- as.Date("2026-07-01")
+  ev <- function(json) alert_condition_eval(alert_condition_parse(json), closes, today)
+
+  ## id=63 shape: earnings date OR price break
+  expect_true(ev('{"any_of":[{"date_gte":"2026-07-21"},{"yahoo":"CA.PA","close_lte":14}]}')$met)
+  expect_false(ev('{"any_of":[{"date_gte":"2026-07-21"},{"yahoo":"CA.PA","close_lte":13}]}')$met)
+  expect_true(ev('{"date_gte":"2026-07-01"}')$met)
+
+  ## both bounds in one leaf must hold
+  expect_true(ev('{"yahoo":"CA.PA","close_gte":13,"close_lte":14}')$met)
+  expect_false(ev('{"yahoo":"CA.PA","close_gte":13.6,"close_lte":14}')$met)
+
+  ## missing price: all_of is FALSE if another leaf is FALSE, NA otherwise;
+  ## any_of is TRUE if another leaf is TRUE
+  expect_false(ev('{"all_of":[{"yahoo":"CA.PA","close_lte":13},{"yahoo":"VIX","close_gte":30}]}')$met)
+  expect_true(is.na(ev('{"all_of":[{"yahoo":"CA.PA","close_lte":14},{"yahoo":"VIX","close_gte":30}]}')$met))
+  expect_true(ev('{"any_of":[{"yahoo":"CA.PA","close_lte":14},{"yahoo":"VIX","close_gte":30}]}')$met)
+
+  expect_setequal(alert_condition_symbols(alert_condition_parse(
+    '{"all_of":[{"yahoo":"SPY","close_lte":625},{"any_of":[{"yahoo":"^VIX","close_gte":30},{"date_gte":"2026-09-18"}]}]}')),
+    c("SPY", "^VIX"))
 })
