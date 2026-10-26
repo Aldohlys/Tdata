@@ -532,6 +532,38 @@ test_that("alert_gonet_weights converts each line to base and divides by the sna
   expect_equal(sum(g$w), 1)
 })
 
+test_that("relative-to-index condition separates a market fall from a stock-specific lag", {
+  rel <- '{"yahoo":"SLHN.SW","base":100,"index":"^SSMI","index_base":1000,"beta":1.5,"rel_lte":-5}'
+  ev <- function(s, i) alert_condition_eval(alert_condition_parse(rel),
+                                            list(SLHN.SW = list(price = s, asof = "x"),
+                                                 `^SSMI` = list(price = i, asof = "x")))
+  ## market -10%, stock -15% = exactly beta 1.5 -> residual 0, not met
+  expect_false(ev(85, 900)$met)
+  ## market -10%, stock -21% -> residual -6 pts, met
+  expect_true(ev(79, 900)$met)
+  ## market flat, stock -6% -> met
+  expect_true(ev(94, 1000)$met)
+  expect_equal(ev(94, 1000)$detail, "SLHN.SW -6.0% vs ^SSMI +0.0% x beta 1.50 = -6.0 pts (<= -5): TRUE")
+  ## index missing -> not evaluable
+  expect_true(is.na(alert_condition_eval(alert_condition_parse(rel),
+                                         list(SLHN.SW = list(price = 94, asof = "x")))$met))
+  ## beta defaults to 1
+  expect_false(alert_condition_eval(alert_condition_parse(
+    '{"yahoo":"A","base":100,"index":"I","index_base":100,"rel_lte":-5}'),
+    list(A = list(price = 90, asof = "x"), I = list(price = 90, asof = "x")))$met)
+
+  ## combined with the price level, as the core exit alerts use it
+  comb <- alert_condition_parse(paste0('{"all_of":[{"yahoo":"SLHN.SW","close_lte":87},', rel, ']}'))
+  expect_setequal(alert_condition_symbols(comb), c("SLHN.SW", "^SSMI"))
+  closes <- function(s, i) list(SLHN.SW = list(price = s, asof = "x"), `^SSMI` = list(price = i, asof = "x"))
+  expect_false(alert_condition_eval(comb, closes(85, 900))$met)    # below level, but only the market
+  expect_true(alert_condition_eval(comb, closes(79, 900))$met)     # below level and lagging
+
+  expect_error(alert_condition_parse('{"yahoo":"A","base":100,"index":"I","index_base":100}'), "rel_lte")
+  expect_error(alert_condition_parse('{"yahoo":"A","base":-1,"index":"I","index_base":100,"rel_lte":-5}'), "positive")
+  expect_error(alert_condition_parse('{"yahoo":"A","base":1,"index":"I","index_base":1,"rel_lte":-5,"x":1}'), "unknown key")
+})
+
 test_that("alert_condition_eval composes all_of / any_of with dates and missing prices", {
   closes <- list(CA.PA = list(price = 13.5, asof = "20261026"), VIX = NULL)
   today <- as.Date("2026-07-01")

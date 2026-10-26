@@ -103,6 +103,11 @@ getAllAlerts <- function(active_only = TRUE) {
 #'   \item Gonet weight: \code{{"gonet_weight": "PM_15606539", "weight_lte": 0.09}} and/or
 #'     \code{"weight_gte"}: the symbol's share of the Gonet NLV in the last Gonet snapshot,
 #'     as a fraction.
+#'   \item relative to an index: \code{{"yahoo": "SLHN.SW", "base": 929.6, "index": "^SSMI",
+#'     "index_base": 12500, "beta": 1.47, "rel_lte": -5}}. The stock's return since \code{base}
+#'     minus \code{beta} times the index's return since \code{index_base}, in percentage points;
+#'     \code{beta} defaults to 1. Bases are the closes on the day the alert is set, so a
+#'     market-wide fall leaves it false and only a stock-specific lag makes it true.
 #'   \item composition: \code{{"all_of": [...]}} or \code{{"any_of": [...]}} over any of the above.
 #' }
 #'
@@ -380,6 +385,24 @@ alert_condition_check <- function(node) {
     return(invisible(TRUE))
   }
 
+  if ("index" %in% keys) {
+    one_num <- function(v) is.numeric(v) && length(v) == 1 && is.finite(v)
+    for (k in c("yahoo", "index"))
+      if (!is.character(node[[k]]) || length(node[[k]]) != 1 || !nzchar(node[[k]]))
+        stop(paste("Alert condition: a relative condition needs", k, "as a Yahoo symbol"))
+    for (k in c("base", "index_base"))
+      if (!one_num(node[[k]]) || node[[k]] <= 0)
+        stop(paste("Alert condition:", k, "must be one positive price"))
+    if (!is.null(node$beta) && !one_num(node$beta))
+      stop("Alert condition: beta must be one number")
+    if (!one_num(node$rel_lte))
+      stop("Alert condition: a relative condition needs rel_lte, in percentage points")
+    unknown <- setdiff(keys, c("yahoo", "base", "index", "index_base", "beta", "rel_lte"))
+    if (length(unknown) > 0)
+      stop(paste("Alert condition: unknown key(s)", paste(unknown, collapse = ", ")))
+    return(invisible(TRUE))
+  }
+
   if (!"yahoo" %in% keys || !is.character(node$yahoo) || length(node$yahoo) != 1 || !nzchar(node$yahoo))
     stop("Alert condition: a price condition needs 'yahoo', the Yahoo symbol")
   tests <- setdiff(keys, "yahoo")
@@ -400,8 +423,7 @@ alert_condition_check <- function(node) {
 alert_condition_symbols <- function(node) {
   kids <- if (!is.null(node$all_of)) node$all_of else node$any_of
   if (!is.null(kids)) return(unique(unlist(lapply(kids, alert_condition_symbols))))
-  if (!is.null(node$yahoo)) return(node$yahoo)
-  character()
+  c(node$yahoo, node$index)
 }
 
 ## TRUE when a parsed condition has a Gonet-weight leaf.
@@ -466,6 +488,20 @@ alert_condition_eval <- function(node, closes, today = Sys.Date(), gonet = NULL)
   q <- closes[[node$yahoo]]
   if (is.null(q) || length(q$price) != 1 || !is.finite(q$price))
     return(list(met = NA, detail = sprintf("%s: no Yahoo close", node$yahoo)))
+
+  if (!is.null(node$index)) {
+    iq <- closes[[node$index]]
+    if (is.null(iq) || length(iq$price) != 1 || !is.finite(iq$price))
+      return(list(met = NA, detail = sprintf("%s: no Yahoo close", node$index)))
+    beta <- if (is.null(node$beta)) 1 else node$beta
+    s_ret <- 100 * (q$price / node$base - 1)
+    i_ret <- 100 * (iq$price / node$index_base - 1)
+    rel <- s_ret - beta * i_ret
+    res <- rel <= node$rel_lte
+    return(list(met = res, detail = sprintf(
+      "%s %+.1f%% vs %s %+.1f%% x beta %.2f = %+.1f pts (<= %s): %s",
+      node$yahoo, s_ret, node$index, i_ret, beta, rel, node$rel_lte, res)))
+  }
   checks <- character(); res <- TRUE
   if (!is.null(node$close_lte)) {
     checks <- c(checks, sprintf("<= %s", node$close_lte)); res <- res && q$price <= node$close_lte

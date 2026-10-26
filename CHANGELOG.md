@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.25.0] - 2026-10-26
+
+### Added
+- **Alert condition relative to an index** (`R/alert.R`). New leaf `{"yahoo": "SLHN.SW", "base": 929.6, "index": "^SSMI", "index_base": 12500, "beta": 1.47, "rel_lte": -5}`: the stock's return since `base` minus `beta` times the index's return since `index_base`, in percentage points (`beta` defaults to 1). Both symbols come from the same Yahoo fetch as the price leaves, one call per symbol. A missing index close makes the leaf NA.
+- Use: the Gonet core exits become `all_of [close ≤ level, relative ≤ −5]`. A market-wide fall, the light correction that is not traded, no longer sells them; only a stock that breaks its level **and** lags its market beyond its beta does. On the 26.10 book, a −10% market fall fired 11 of 13 absolute exits.
+
 ## [5.24.0] - 2026-10-26
 
 ### Added
