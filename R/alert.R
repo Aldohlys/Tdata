@@ -5,7 +5,8 @@
 ## Themes accepted by addAlert: the original four plus every theme the table
 ## already held when the whitelist was last reviewed (2026-10-26).
 ALERT_THEMES <- c("Earnings", "Macro", "Expiration", "Technical", "Breakout", "Covenant",
-                  "Event", "Momentum", "Pyramid", "Roll", "Stop", "Thesis", "Volatility")
+                  "Event", "Momentum", "Pyramid", "Roll", "Stop", "Thesis", "Volatility",
+                  "Allocation")
 
 ## How an alert fires. Date: when AlertDate is near (getUpcomingAlerts).
 ## Condition: when its Condition is met (getTriggeredAlerts), AlertDate is only a
@@ -99,6 +100,9 @@ getAllAlerts <- function(active_only = TRUE) {
 #'   \item price: \code{{"yahoo": "NUCL.L", "close_lte": 41.9}} and/or \code{"close_gte"};
 #'     both keys in one node must both hold.
 #'   \item date: \code{{"date_gte": "2026-07-21"}}, met from that date on.
+#'   \item Gonet weight: \code{{"gonet_weight": "PM_15606539", "weight_lte": 0.09}} and/or
+#'     \code{"weight_gte"}: the symbol's share of the Gonet NLV in the last Gonet snapshot,
+#'     as a fraction.
 #'   \item composition: \code{{"all_of": [...]}} or \code{{"any_of": [...]}} over any of the above.
 #' }
 #'
@@ -245,7 +249,8 @@ getUpcomingAlerts <- function(days_ahead = 1) {
 #' Evaluates the condition of every active "Condition" or "Both" alert and returns
 #' those whose condition is met now. Prices are the last daily close from Yahoo,
 #' fetched once per symbol, so the check needs no TWS connection; at the 07:30 run
-#' this is the previous session's close.
+#' this is the previous session's close. Gonet weights come from the last Gonet
+#' snapshot, read once and only when an alert uses them.
 #'
 #' A condition that cannot be evaluated (Yahoo returned nothing, invalid JSON) is
 #' neither met nor dropped silently: those alerts are returned in the
@@ -256,6 +261,8 @@ getUpcomingAlerts <- function(days_ahead = 1) {
 #'@param fetch Function taking a Yahoo symbol and returning \code{list(price, asof)}
 #'  or NULL. Default: last non-missing Yahoo close of the past 14 days.
 #'@param today Date used by \code{date_gte} conditions. Default \code{Sys.Date()}.
+#'@param weights Function returning \code{list(w, asof)}, \code{w} the NLV share of each
+#'  symbol of the last Gonet snapshot, or NULL. Default \code{alert_gonet_weights}.
 #'@return A data frame of the triggered alerts with an added \code{ConditionDetail}
 #'  column (one clause per condition leaf, e.g. "NUCL.L close 41.5 (20261027) <= 41.9: TRUE"),
 #'  and attribute \code{"unevaluated"} holding the alerts that could not be evaluated.
@@ -265,7 +272,8 @@ getUpcomingAlerts <- function(days_ahead = 1) {
 #'attr(getTriggeredAlerts(), "unevaluated")
 #'}
 #'@export
-getTriggeredAlerts <- function(fetch = gonet_fetch_yahoo_close, today = Sys.Date()) {
+getTriggeredAlerts <- function(fetch = gonet_fetch_yahoo_close, today = Sys.Date(),
+                               weights = alert_gonet_weights) {
   conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
   alert_ensure_columns(conn)
@@ -292,13 +300,21 @@ getTriggeredAlerts <- function(fetch = gonet_fetch_yahoo_close, today = Sys.Date
     NULL
   })), syms)
 
+  gonet <- NULL
+  if (any(vapply(Filter(Negate(is.null), conds), alert_condition_uses_gonet, logical(1)))) {
+    gonet <- tryCatch(weights(), error = function(e) {
+      logger::log_warn("Alert condition: Gonet weights not read: {conditionMessage(e)}", namespace = "Tdata")
+      NULL
+    })
+  }
+
   met <- rep(NA, nrow(alerts))
   for (i in seq_len(nrow(alerts))) {
     if (is.null(conds[[i]])) {
       alerts$ConditionDetail[i] <- "invalid Condition JSON"
       next
     }
-    ev <- alert_condition_eval(conds[[i]], closes, today)
+    ev <- alert_condition_eval(conds[[i]], closes, today, gonet)
     met[i] <- ev$met
     alerts$ConditionDetail[i] <- paste(ev$detail, collapse = "; ")
   }
@@ -347,6 +363,23 @@ alert_condition_check <- function(node) {
     return(invisible(TRUE))
   }
 
+  if ("gonet_weight" %in% keys) {
+    if (!is.character(node$gonet_weight) || length(node$gonet_weight) != 1 || !nzchar(node$gonet_weight))
+      stop("Alert condition: gonet_weight must be the Gonet symbol")
+    tests <- setdiff(keys, "gonet_weight")
+    unknown <- setdiff(tests, c("weight_lte", "weight_gte"))
+    if (length(unknown) > 0)
+      stop(paste("Alert condition: unknown key(s)", paste(unknown, collapse = ", ")))
+    if (length(tests) == 0)
+      stop("Alert condition: a weight condition needs weight_lte and/or weight_gte")
+    for (k in tests) {
+      v <- node[[k]]
+      if (!is.numeric(v) || length(v) != 1 || !is.finite(v) || v < 0 || v > 1)
+        stop(paste("Alert condition:", k, "must be one fraction between 0 and 1"))
+    }
+    return(invisible(TRUE))
+  }
+
   if (!"yahoo" %in% keys || !is.character(node$yahoo) || length(node$yahoo) != 1 || !nzchar(node$yahoo))
     stop("Alert condition: a price condition needs 'yahoo', the Yahoo symbol")
   tests <- setdiff(keys, "yahoo")
@@ -371,13 +404,37 @@ alert_condition_symbols <- function(node) {
   character()
 }
 
+## TRUE when a parsed condition has a Gonet-weight leaf.
+alert_condition_uses_gonet <- function(node) {
+  kids <- if (!is.null(node$all_of)) node$all_of else node$any_of
+  if (!is.null(kids)) return(any(vapply(kids, alert_condition_uses_gonet, logical(1))))
+  !is.null(node$gonet_weight)
+}
+
+## Share of the Gonet NLV held by each symbol in the last Gonet snapshot:
+## list(w = named fractions, asof = "date heure"), or NULL when there is no
+## snapshot or a line has no value. mktValue is in each line's own currency
+## (cash rows already in base), so every line is converted before summing.
+alert_gonet_weights <- function() {
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  last <- DBI::dbGetQuery(conn, "SELECT date, heure FROM Gonet ORDER BY date DESC, heure DESC LIMIT 1")
+  if (nrow(last) == 0) return(NULL)
+  rows <- DBI::dbGetQuery(conn, "SELECT symbol, mktValue, currency FROM Gonet WHERE date = ? AND heure = ?",
+                          params = list(last$date, last$heure))
+  base <- convert_to_base_date(rows$mktValue, rows$currency, Sys.Date())
+  if (any(is.na(base)) || sum(base) <= 0) return(NULL)
+  list(w = stats::setNames(base / sum(base), rows$symbol), asof = paste(last$date, last$heure))
+}
+
 ## Evaluates a parsed condition. `closes` is a list named by Yahoo symbol of
-## list(price, asof), NULL where the fetch failed. Returns list(met, detail):
-## met is TRUE, FALSE or NA (not evaluable), detail one string per leaf.
-alert_condition_eval <- function(node, closes, today = Sys.Date()) {
+## list(price, asof), NULL where the fetch failed; `gonet` is the result of
+## alert_gonet_weights (NULL when not read). Returns list(met, detail): met is
+## TRUE, FALSE or NA (not evaluable), detail one string per leaf.
+alert_condition_eval <- function(node, closes, today = Sys.Date(), gonet = NULL) {
   kids <- if (!is.null(node$all_of)) node$all_of else node$any_of
   if (!is.null(kids)) {
-    ev  <- lapply(kids, alert_condition_eval, closes = closes, today = today)
+    ev  <- lapply(kids, alert_condition_eval, closes = closes, today = today, gonet = gonet)
     met <- vapply(ev, function(e) e$met, logical(1))
     ## all()/any() on TRUE/FALSE/NA give the three-valued result wanted here.
     res <- if (!is.null(node$all_of)) all(met) else any(met)
@@ -388,6 +445,22 @@ alert_condition_eval <- function(node, closes, today = Sys.Date()) {
     d   <- as.Date(node$date_gte)
     res <- as.Date(today) >= d
     return(list(met = res, detail = sprintf("date %s >= %s: %s", as.Date(today), d, res)))
+  }
+
+  if (!is.null(node$gonet_weight)) {
+    s <- node$gonet_weight
+    w <- if (is.null(gonet)) NA_real_ else unname(gonet$w[s])
+    if (length(w) != 1 || is.na(w))
+      return(list(met = NA, detail = sprintf("Gonet weight %s: not in the last snapshot", s)))
+    checks <- character(); res <- TRUE
+    if (!is.null(node$weight_lte)) {
+      checks <- c(checks, sprintf("<= %.1f%%", 100 * node$weight_lte)); res <- res && w <= node$weight_lte
+    }
+    if (!is.null(node$weight_gte)) {
+      checks <- c(checks, sprintf(">= %.1f%%", 100 * node$weight_gte)); res <- res && w >= node$weight_gte
+    }
+    return(list(met = res, detail = sprintf("Gonet weight %s %.1f%% (%s) %s: %s", s, 100 * w, gonet$asof,
+                                            paste(checks, collapse = " and "), res)))
   }
 
   q <- closes[[node$yahoo]]

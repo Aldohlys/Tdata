@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.24.0] - 2026-10-26
+
+### Added
+- **Alert condition on a Gonet line's share of NLV** (`R/alert.R`). New condition leaf `{"gonet_weight": "PM_15606539", "weight_lte": 0.09}` (and/or `weight_gte`, fractions 0-1), composable with `all_of`/`any_of` like the price leaves. The weight is the line's base-currency value over the total of the last Gonet snapshot (every line converted with `convert_to_base_date`, cash rows included). New internal `alert_gonet_weights()` reads the snapshot once per `getTriggeredAlerts()` call, and only when an active alert uses a weight leaf. `getTriggeredAlerts()` takes it as argument `weights`. A symbol missing from the snapshot, or a snapshot with an unpriced line, makes the leaf NA, so the alert lands in the "not evaluated" section. First use: gold coins below 9% of Gonet NLV → top back up to 10% (rebalance rule, not a price call).
+- Theme `Allocation` added to `ALERT_THEMES`.
+
 ## [5.23.0] - 2026-10-26
 
 ### Added

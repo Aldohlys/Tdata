@@ -467,6 +467,71 @@ test_that("getTriggeredAlerts on a table without condition alerts returns an emp
   expect_equal(nrow(attr(out, "unevaluated")), 0)
 })
 
+test_that("Gonet weight conditions are validated and evaluated against the snapshot weights", {
+  gonet <- list(w = c(PM_15606539 = 0.105, QQQ = 0.092), asof = "20261026 16:52:29")
+  ev <- function(json, g = gonet) alert_condition_eval(alert_condition_parse(json), list(), Sys.Date(), g)
+
+  expect_false(ev('{"gonet_weight":"PM_15606539","weight_lte":0.09}')$met)
+  expect_true(ev('{"gonet_weight":"PM_15606539","weight_lte":0.11}')$met)
+  expect_equal(ev('{"gonet_weight":"PM_15606539","weight_lte":0.09}')$detail,
+               "Gonet weight PM_15606539 10.5% (20261026 16:52:29) <= 9.0%: FALSE")
+  expect_true(ev('{"gonet_weight":"QQQ","weight_gte":0.09,"weight_lte":0.12}')$met)
+  ## symbol missing from the snapshot, or weights not read -> not evaluable
+  expect_true(is.na(ev('{"gonet_weight":"XXX","weight_lte":0.09}')$met))
+  expect_true(is.na(ev('{"gonet_weight":"QQQ","weight_lte":0.09}', NULL)$met))
+
+  expect_error(alert_condition_parse('{"gonet_weight":"PM_15606539","weight_lte":9}'), "fraction")
+  expect_error(alert_condition_parse('{"gonet_weight":"PM_15606539"}'), "weight_lte and/or weight_gte")
+  expect_error(alert_condition_parse('{"gonet_weight":"PM_15606539","close_lte":1}'), "unknown key")
+  expect_true(alert_condition_uses_gonet(alert_condition_parse(
+    '{"any_of":[{"yahoo":"X","close_lte":1},{"gonet_weight":"PM_15606539","weight_lte":0.09}]}')))
+  expect_false(alert_condition_uses_gonet(alert_condition_parse('{"yahoo":"X","close_lte":1}')))
+})
+
+test_that("getTriggeredAlerts reads Gonet weights only when a condition needs them", {
+  db_path <- local_alert_db()
+  seed_condition_alerts(db_path, list(
+    list(asset = "GOLD", type = "Condition", cond = '{"gonet_weight":"PM_15606539","weight_lte":0.09}'),
+    list(asset = "NUCL", type = "Condition", cond = '{"yahoo":"NUCL.L","close_lte":41.9}')))
+  calls <- new.env(); calls$n <- 0
+  w <- function() { calls$n <- calls$n + 1; list(w = c(PM_15606539 = 0.085), asof = "20261101 17:00:00") }
+
+  with_mocked_bindings(
+    safe_db_connect = mock_connect(db_path), {
+      out <- getTriggeredAlerts(fetch = fake_closes(c(NUCL.L = 43)), weights = w)
+    })
+  expect_equal(out$Asset, "GOLD")
+  expect_equal(calls$n, 1)
+
+  db2 <- local_alert_db()
+  seed_condition_alerts(db2, list(
+    list(asset = "NUCL", type = "Condition", cond = '{"yahoo":"NUCL.L","close_lte":41.9}')))
+  with_mocked_bindings(
+    safe_db_connect = mock_connect(db2), {
+      getTriggeredAlerts(fetch = fake_closes(c(NUCL.L = 43)), weights = function() stop("not needed"))
+    })
+  succeed()
+})
+
+test_that("alert_gonet_weights converts each line to base and divides by the snapshot total", {
+  tmp <- tempfile(fileext = ".db"); withr::defer(unlink(tmp))
+  conn <- DBI::dbConnect(RSQLite::SQLite(), tmp)
+  DBI::dbWriteTable(conn, "Gonet", data.frame(
+    date = c(20261025, 20261026, 20261026, 20261026), heure = c("17:00:00", "16:52:29", "16:52:29", "16:52:29"),
+    symbol = c("PM_15606539", "PM_15606539", "QQQ", "CHF"), mktValue = c(1, 600, 500, 100),
+    currency = c("CHF", "CHF", "USD", "CHF")))
+  DBI::dbDisconnect(conn)
+
+  with_mocked_bindings(
+    safe_db_connect = mock_connect(tmp),
+    convert_to_base_date = function(x, ccy, d) x * ifelse(ccy == "USD", 0.8, 1), {
+      g <- alert_gonet_weights()
+    })
+  expect_equal(g$asof, "20261026 16:52:29")
+  expect_equal(unname(g$w["PM_15606539"]), 600 / 1100)   # 600 + 500*0.8 + 100
+  expect_equal(sum(g$w), 1)
+})
+
 test_that("alert_condition_eval composes all_of / any_of with dates and missing prices", {
   closes <- list(CA.PA = list(price = 13.5, asof = "20261026"), VIX = NULL)
   today <- as.Date("2026-07-01")
