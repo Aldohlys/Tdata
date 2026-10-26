@@ -423,6 +423,9 @@ greeksNet = function(portf) {
 #' \item{2 = portfolio and account data retrieved from IBKR and stored in data}
 #' \item{3 = margin, portfolio and account data retrieved from IBKR and stored in data}
 #' }
+#' Raises an error, storing nothing, when IBKR returns no positions although
+#' NetLiquidation is not explained by cash and accrued dividends (an incomplete
+#' account subscription).
 #'@examples
 #'\dontrun{
 #'getIBKR()
@@ -448,6 +451,38 @@ getIBKR <- function(account = NULL) {
 
   ### There should be exactly 1 line retrieved for one account
   if (nrow(account_data) != 1) return(exit_code)
+
+  ### reqAccountUpdates can time out with NLV and cash delivered but no positions
+  ### yet (2026-10-22 10:01 and 10:19 on U25343478): StockMarketValue stays 0 and
+  ### the row reads as a 22.7k CHF drop. An empty portfolio is only believable
+  ### when NLV is cash and accruals (everything sold, dividend still pending).
+  ### Otherwise retry once; still missing, store nothing and fail, so the caller
+  ### reports the run and the next one takes a complete snapshot.
+  ### Tolerance as in check_data_integrity.R (account_identity).
+  unexplained <- function(l) {
+    if (NROW(l[[2]]) > 0) return(NA_real_)
+    a <- l[[1]]
+    resid <- a$NetLiquidation - a$StockMarketValue - dplyr::coalesce(a$OptionMarketValue, 0) -
+      a$TotalCashBalance - dplyr::coalesce(a[["AccruedDividend"]], 0)
+    if (isTRUE(abs(resid) > max(100, 0.01 * abs(a$NetLiquidation)))) resid else NA_real_
+  }
+  resid <- unexplained(l)
+  if (!is.na(resid)) {
+    logger::log_warn("{account_data$account}: IBKR returned no positions, {round(resid)} of NLV unexplained - retrying once",
+                     namespace = "Tdata")
+    l2 <- tdata_py$getIBKRData(account)
+    resid <- if (typeof(l2) == "list" && nrow(l2[[1]]) == 1) unexplained(l2) else resid
+    if (!is.na(resid)) {
+      a <- if (typeof(l2) == "list" && nrow(l2[[1]]) == 1) l2[[1]] else account_data
+      msg <- sprintf("%s: IBKR returned no positions twice; NLV %.0f - stock %.0f - options %.0f - cash %.0f leaves %.0f unexplained - snapshot not stored",
+                     a$account, a$NetLiquidation, a$StockMarketValue, dplyr::coalesce(a$OptionMarketValue, 0),
+                     a$TotalCashBalance, resid)
+      logger::log_error(msg, namespace = "Tdata")
+      stop(msg, call. = FALSE)
+    }
+    l <- l2
+    account_data <- l[[1]]
+  }
 
   ### Open connection to user DB and prepare for exit properly
   conn <- safe_db_connect()

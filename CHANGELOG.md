@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.22.1] - 2026-10-26
+
+### Fixed
+- **getIBKR no longer stores an account snapshot without its positions** (`R/account.R`, `getIBKR`). When `reqAccountUpdates` times out (60 s), `ib.portfolio(account)` can come back empty while NetLiquidation, cash and AccruedDividend have arrived; `getIBKRData` then leaves StockMarketValue and UnrealizedPnL at 0. On 2026-10-22 at 10:01:21 and 10:19:00 this wrote two U25343478 Account rows with stock 0 against NLV 27368 (22.7k CHF unexplained), flagged by `scripts/check_data_integrity.R` (account_identity). With an empty portfolio, getIBKR now checks NLV − stock − options − cash − accrued dividends against the integrity check's tolerance (max(100, 1% of NLV)); above it, it logs a WARN and calls `getIBKRData` once more. If the retry still has no positions and the residual is still above tolerance, it logs an ERROR, stores nothing and raises an error, so `daily_portfolio_update.R` and `scripts/RGetIBKR.R` list the account as a failed step; otherwise the retry's snapshot is stored. An account with no positions whose NLV is cash plus accruals (everything sold, dividend pending) is stored on the first call. Tests: two incomplete answers raise and append nothing; a complete retry is stored; an all-cash account is written.
+
 ## [5.22.0] - 2026-10-22
 
 ### Added

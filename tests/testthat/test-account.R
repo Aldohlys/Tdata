@@ -649,6 +649,86 @@ test_that("getIBKR writes the AccruedDividend it receives", {
   expect_equal(appended$Account$AccruedDividend, 203.12)
 })
 
+# ----- incomplete subscription: no positions, NLV not explained by cash -----
+# 2026-10-22 10:01:21 on U25343478: reqAccountUpdates timed out, NLV and cash
+# arrived, the positions did not.
+make_incomplete_account <- function() {
+  acc <- make_fake_account("U25343478")
+  acc$NetLiquidation <- 27367.57; acc$StockMarketValue <- 0; acc$OptionMarketValue <- 0
+  acc$TotalCashBalance <- 4426.85
+  acc$AccruedDividend <- 201.61
+  acc
+}
+
+test_that("getIBKR retries once, then stores nothing and fails when positions stay missing", {
+  appended <- list()
+  calls <- 0
+  local_mock_tdata_py(list(getIBKRData = function(account) {
+    calls <<- calls + 1
+    list(make_incomplete_account(), data.frame(), data.frame())
+  }))
+
+  with_mocked_bindings(
+    isIBAvailable = function() TRUE,
+    safe_db_connect = function(...) DBI::dbConnect(RSQLite::SQLite(), ":memory:"),
+    safe_db_append = function(conn, table, df, ...) {
+      appended[[table]] <<- df
+      nrow(df)
+    },
+    getParam = function(name, ...) if (name == "BaseCurrency") "CHF" else NULL, {
+      expect_error(getIBKR("U25343478"), "no positions twice.*22739 unexplained")
+    })
+
+  expect_equal(calls, 2)
+  expect_length(appended, 0)
+})
+
+test_that("getIBKR stores the retry's snapshot when it adds up", {
+  appended <- list()
+  calls <- 0
+  sold <- make_incomplete_account()          # all sold: NLV = cash + accrual
+  sold$TotalCashBalance <- 27165.96
+  local_mock_tdata_py(list(getIBKRData = function(account) {
+    calls <<- calls + 1
+    list(if (calls == 1) make_incomplete_account() else sold, data.frame(), data.frame())
+  }))
+
+  with_mocked_bindings(
+    isIBAvailable = function() TRUE,
+    safe_db_connect = function(...) DBI::dbConnect(RSQLite::SQLite(), ":memory:"),
+    safe_db_append = function(conn, table, df, ...) {
+      appended[[table]] <<- df
+      nrow(df)
+    },
+    getParam = function(name, ...) if (name == "BaseCurrency") "CHF" else NULL, {
+      expect_equal(getIBKR("U25343478"), 1)
+    })
+
+  expect_equal(calls, 2)
+  expect_equal(appended$Account$TotalCashBalance, 27165.96)
+})
+
+test_that("getIBKR stores an all-cash account with no positions", {
+  appended <- list()
+  acc <- make_fake_account()
+  acc$NetLiquidation <- 45050; acc$StockMarketValue <- 0; acc$OptionMarketValue <- 0
+  acc$TotalCashBalance <- 45000          # 50 residual: under the 100 floor
+  local_mock_tdata_py(list(getIBKRData = function(account) list(acc, data.frame(), data.frame())))
+
+  with_mocked_bindings(
+    isIBAvailable = function() TRUE,
+    safe_db_connect = function(...) DBI::dbConnect(RSQLite::SQLite(), ":memory:"),
+    safe_db_append = function(conn, table, df, ...) {
+      appended[[table]] <<- df
+      nrow(df)
+    },
+    getParam = function(name, ...) if (name == "BaseCurrency") "USD" else NULL, {
+      expect_equal(getIBKR(), 1)
+    })
+
+  expect_equal(appended$Account$NetLiquidation, 45050)
+})
+
 # ----- exit 2: full path, stocks + options, no margin ---------------------
 test_that("getIBKR returns 2 on full path (stocks + options, no margin)", {
   appended <- list()
