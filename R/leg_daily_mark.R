@@ -78,9 +78,37 @@ writeLegMarks <- function(marks) {
   as.Date(sprintf("20%s-%02d-%s", yy, match(mon, toupper(month.abb)), dd))
 }
 
+## A traded symbol with no Tickers row is taken for a stock in its fills' currency:
+## many one-off trades have none (3110, TEVA, MRNA). Not a cash fill (the Instrument is
+## a currency code) nor a future (a fill without a strike that has an expiry). Marked
+## Assumed: it must prove itself against the trade's recorded prices (.closes_checked).
+.assume_stocks <- function(tickers, fills) {
+  opt <- .is_option_fill(fills)
+  for (sym in setdiff(unique(fills$Symbol), tickers$Name)) {
+    mine <- fills$Symbol == sym
+    cash <- any(mine & !opt & grepl("^[A-Z]{3}$", fills$Instrument))
+    fut <- any(mine & !opt & !is.na(fills$ExpDate) & nzchar(fills$ExpDate) & fills$ExpDate != "NA")
+    ccy <- fills$Currency[mine][1]
+    if (cash || fut || is.na(ccy)) next
+    tickers <- rbind(tickers[c("Name", "Type", "Currency", "Multiplier", "OptExchange")],
+                     data.frame(Name = sym, Type = "STK", Currency = ccy, Multiplier = NA_real_,
+                                OptExchange = NA_character_, stringsAsFactors = FALSE))
+    attr(tickers, "assumed") <- c(attr(tickers, "assumed"), sym)
+  }
+  tickers
+}
+
+## Yahoo's name of a stock with no Tickers row: its exchange suffix by currency.
+.guess_yahoo_name <- function(symbol, currency) {
+  suffix <- c(USD = "", HKD = ".HK", JPY = ".T", CHF = ".SW", GBP = ".L", AUD = ".AX")[currency]
+  if (is.na(suffix)) return(NA_character_)
+  if (currency == "HKD" && grepl("^[0-9]+$", symbol)) symbol <- sprintf("%04d", as.integer(symbol))
+  paste0(symbol, suffix)
+}
+
 ## One row per leg the fills name: key (as in attributePnL), symbol, type, strike,
 ## expiry (Date, NA for stock), multiplier, currency. NULL when the trade cannot be
-## completed: a legacy combo row, a futures leg, a cash trade, a symbol not in Tickers.
+## completed: a legacy combo row, a futures leg, a cash trade, a symbol not in `tickers`.
 .trade_legs <- function(snaps, fills, tickers) {
   opt <- .is_option_fill(fills)
   if (any(opt & !grepl(.leg_regex, fills$Instrument))) return(NULL)
@@ -155,6 +183,17 @@ writeLegMarks <- function(marks) {
   TRUE
 }
 
+## Is any close of an assumed symbol compared with a price of this trade? A stock
+## fill or a snapshot on a session, or an option fill with its underlying price.
+.closes_checked <- function(sym, closes, s, fills) {
+  days <- closes$date[closes$leg == sym]
+  f <- fills[fills$Symbol == sym, ]
+  f_days <- as.Date(as.character(f$TradeDate), "%Y%m%d")
+  any(s$symbol == sym & s$day %in% days) ||
+    any(!.is_option_fill(f) & f_days %in% days) ||
+    any(.is_option_fill(f) & !is.na(f$UnderlyingPrice) & f_days %in% days)
+}
+
 ## Model marks of one option leg on `days`, at the IV interpolated between its real
 ## marks and held flat beyond the first and the last. Real marks are its bars, its
 ## snapshots, and its fills against the underlying of that day. `bracketed`: real
@@ -195,9 +234,11 @@ writeLegMarks <- function(marks) {
 }
 
 ## Closes of a symbol over [from, to]: stored, then IBKR, then Yahoo for what is
-## missing. Missing means past the stored range or a hole of more than five days (a
-## holiday leaves a shorter one). What is stored is returned when both sources fail.
-.underlying_closes <- function(symbol, from, to, ib_ok) {
+## missing, including what IBKR does not reach back to. Missing means past the stored
+## range or a hole of more than five days (a holiday leaves a shorter one). What is
+## stored is returned when both sources fail. `assumed_ccy`: the currency of a symbol
+## with no Tickers row.
+.underlying_closes <- function(symbol, from, to, ib_ok, assumed_ccy = NULL) {
   stored <- readLegMarks(symbol, from, to)
   gaps <- diff(sort(c(from - 1, stored$date, to + 1)))
   if (nrow(stored)) {
@@ -209,18 +250,22 @@ writeLegMarks <- function(marks) {
   if (ib_ok()) {
     days <- as.numeric(Sys.Date() - from) + 5
     duration <- if (days <= 360) paste(days, "D") else paste(ceiling(days / 365), "Y")
-    bars <- tryCatch(get_tdata_py()$get_historical_bars(sym = symbol, duration = duration, bar_size = "1 day"),
-                     error = function(e) NULL)
+    args <- list(sym = symbol, duration = duration, bar_size = "1 day")
+    if (!is.null(assumed_ccy)) args <- c(args, list(secType = "STK", currency = assumed_ccy, exchange = "SMART"))
+    bars <- tryCatch(do.call(get_tdata_py()$get_historical_bars, args), error = function(e) NULL)
     if (is.data.frame(bars) && nrow(bars))
       got <- data.frame(leg = symbol, date = as.Date(substr(as.character(bars$datetime), 1, 10)),
                         close = bars$close, iv = NA_real_, source = "bar", stringsAsFactors = FALSE)
   }
-  if (is.null(got)) {
-    yh <- tryCatch(getYahooData(getYahooName(symbol), from_date = from, to_date = to + 1),
-                   error = function(e) NULL)
-    if (is.data.frame(yh) && nrow(yh))
-      got <- data.frame(leg = symbol, date = as.Date(yh$date), close = yh$Close, iv = NA_real_,
-                        source = "yahoo", stringsAsFactors = FALSE)
+  if (is.null(got) || min(got$date) > from + 5) {
+    name <- if (is.null(assumed_ccy)) getYahooName(symbol) else .guess_yahoo_name(symbol, assumed_ccy)
+    yh <- if (is.na(name)) NULL else tryCatch(getYahooData(name, from_date = from, to_date = to + 1),
+                                              error = function(e) NULL)
+    if (is.data.frame(yh) && nrow(yh)) {
+      yh <- data.frame(leg = symbol, date = as.Date(yh$date), close = yh$Close, iv = NA_real_,
+                       source = "yahoo", stringsAsFactors = FALSE)
+      got <- rbind(got, yh[is.null(got) | yh$date < min(got$date, Inf), ])
+    }
   }
   if (is.null(got)) return(stored)
   got <- got[got$date >= from & got$date <= to & !is.na(got$close) & got$close > 0, ]
@@ -264,13 +309,14 @@ writeLegMarks <- function(marks) {
 #' @param div_yield Dividend yield (decimal)
 #' @param as_of Last date included (Date)
 #' @return list(legs, marks) for \code{attributePnL(daily = )}. NULL when the trade
-#'   cannot be completed (a legacy combo row, a futures or cash leg, a symbol not in
-#'   Tickers) or its closes disagree with its recorded prices (a split, another
-#'   quoting unit): its path then stays on the snapshots
+#'   cannot be completed (a legacy combo row, a futures or cash leg) or its closes
+#'   disagree with its recorded prices (a split, another quoting unit, a wrong guess
+#'   for a symbol not in Tickers): its path then stays on the snapshots
 #' @export
 getTradeDailyMarks <- function(snaps, fills, rate = 0, div_yield = 0, as_of = Sys.Date()) {
   if (nrow(fills) == 0) return(NULL)
-  tickers <- .leg_tickers(unique(fills$Symbol))
+  tickers <- .assume_stocks(.leg_tickers(unique(fills$Symbol)), fills)
+  assumed <- attr(tickers, "assumed")
   legs <- .trade_legs(snaps, fills, tickers)
   if (is.null(legs)) return(NULL)
 
@@ -286,12 +332,14 @@ getTradeDailyMarks <- function(snaps, fills, rate = 0, div_yield = 0, as_of = Sy
     ib_state
   }
 
-  closes <- do.call(rbind, lapply(unique(legs$symbol), .underlying_closes,
-                                  from = first, to = last, ib_ok = ib_ok))
+  closes <- do.call(rbind, lapply(unique(legs$symbol), function(sym)
+    .underlying_closes(sym, first, last, ib_ok,
+                       if (sym %in% assumed) tickers$Currency[tickers$Name == sym])))
   if (nrow(closes) == 0) return(NULL)
   s <- .trade_snapshots(snaps, fills, rate, div_yield)
   s <- s[s$day <= as_of, ]
-  if (!.closes_consistent(closes, s, fills)) {
+  checked <- vapply(assumed, .closes_checked, logical(1), closes = closes, s = s, fills = fills)
+  if (!all(checked) || !.closes_consistent(closes, s, fills)) {
     logger::log_warn("Closes disagree with recorded prices of {paste(unique(legs$symbol), collapse = ', ')}: path stays on its snapshots",
                      namespace = "Tdata")
     return(NULL)

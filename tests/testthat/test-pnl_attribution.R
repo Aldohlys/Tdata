@@ -26,16 +26,16 @@ fill <- function(TradeDate, time, Instrument, Pos, Price, Commission = 1,
 C100 <- "XYZ 17DEC26 100 C"
 ALL <- as.Date("2099-01-01")
 
-test_that("stock: every move is delta, residual is zero, total reconciles", {
+test_that("stock: execution is the commissions, all the rest delta, total reconciles", {
   s <- rbind(snap(20260105, "22:00:00", "XYZ", 10, 100, type = "Stock", multiplier = 1),
              snap(20260106, "22:00:00", "XYZ", 10, 103, type = "Stock", multiplier = 1),
              snap(20260107, "22:00:00", "XYZ", 10, 101, type = "Stock", multiplier = 1))
   f <- fill(20260105, "15:00:00", "XYZ", 10, 99.5, multiplier = 1, Strike = NA, Right = "")
   r <- attributePnL(s, f, as_of = ALL)
   expect_equal(nrow(r), 3)
-  expect_equal(r$delta, c(0, 30, -20))
+  expect_equal(r$delta, c(10 * 100 - 995, 30, -20))     # fill to first mark, then the moves
   expect_equal(r$residual, c(0, 0, 0))
-  expect_equal(r$execution[1], 10 * 100 - 995 - 1)      # fill vs first mark
+  expect_equal(r$execution, c(-1, 0, 0))
   expect_equal(sum(r$actual), 10 * 101 + f$Total)        # open trade: value + cash
   expect_true(all(c(r$gamma, r$vega, r$theta) == 0))
 })
@@ -314,21 +314,22 @@ test_that("stock-only trade: one row per session from closes, no snapshot needed
                     daily = list(legs = stock_leg, marks = close_rows(days, c(100, 103, 101, 102))))
   expect_true(attr(r, "stock_only"))
   expect_equal(as.character(r$date), days)
-  expect_equal(r$delta, c(0, 30, -20, 10))
-  expect_equal(r$execution[1], 10 * 100 - 995)
+  expect_equal(r$delta, c(10 * 100 - 995, 30, -20, 10))
+  expect_equal(r$execution, c(0, 0, 0, 0))
   expect_true(all(c(r$gamma, r$vega, r$theta, r$residual) == 0))
   expect_equal(sum(r$actual), 10 * 102 + f$Total)
   expect_true(all(r$flag == ""))
 })
 
-test_that("stock-only: a fill inside an interval is execution, residual stays zero", {
+test_that("stock-only: a fill inside an interval stays in the stock's P&L, residual zero", {
   days <- c("2026-01-05", "2026-01-06", "2026-01-07")
   f <- rbind(stock_fill(20260105, "15:00:00", "XYZ", 10, 100),
              stock_fill(20260106, "15:00:00", "XYZ", 10, 104))
   r <- attributePnL(no_snaps, f, as_of = as.Date("2026-01-07"),
                     daily = list(legs = stock_leg, marks = close_rows(days, c(100, 103, 105))))
   expect_true(all(r$residual == 0))
-  expect_equal(r$delta + r$execution, r$actual)
+  expect_equal(r$execution, c(0, 0, 0))
+  expect_equal(r$delta, r$actual)
   expect_equal(sum(r$actual), 20 * 105 + sum(f$Total))
 })
 
@@ -489,4 +490,70 @@ test_that("bought one day, sold the next: one close and the exit make a path (tr
                     daily = list(legs = stock_leg, marks = close_rows(days, c(101, 103))))
   expect_equal(r$kind, c("entry", "exit"))
   expect_equal(sum(r$actual), sum(f$Total))
+})
+
+test_that(".assume_stocks: a stock in its fills' currency; not cash, not a future", {
+  tk <- data.frame(Name = "ABC", Type = "STK", Currency = "USD", Multiplier = 100,
+                   OptExchange = NA_character_, stringsAsFactors = FALSE)
+  row <- function(inst, sym, ccy, exp = NA_character_, strike = NA) {
+    f <- fill(20260105, "15:00:00", inst, 1, 10, Symbol = sym, Strike = strike, Right = "")
+    f$Currency <- ccy; f$ExpDate <- exp
+    f
+  }
+  stk <- .assume_stocks(tk, row("GLOBAL X HS HIGH DIV YIE", "3110", "HKD"))
+  expect_equal(stk$Currency[stk$Name == "3110"], "HKD")
+  expect_equal(attr(stk, "assumed"), "3110")
+  expect_false("GBP" %in% .assume_stocks(tk, row("CHF", "GBP", "GBP"))$Name)
+  expect_false("MCL" %in% .assume_stocks(tk, row("MCL AUG24", "MCL", "USD", exp = "20.07.2026"))$Name)
+  expect_false("X" %in% .assume_stocks(tk, row("X CORP", "X", NA))$Name)
+})
+
+test_that(".guess_yahoo_name by currency, Hong Kong codes on four digits", {
+  expect_equal(.guess_yahoo_name("3110", "HKD"), "3110.HK")
+  expect_equal(.guess_yahoo_name("700", "HKD"), "0700.HK")
+  expect_equal(.guess_yahoo_name("6382", "JPY"), "6382.T")
+  expect_equal(.guess_yahoo_name("TEVA", "USD"), "TEVA")
+  expect_true(is.na(.guess_yahoo_name("ABC", "EUR")))
+})
+
+test_that("a symbol not in Tickers gets closes, and is rejected when they match nothing it recorded", {
+  f <- rbind(stock_fill(20260105, "15:00:00", "XYZ INC", 10, 100),
+             stock_fill(20260107, "15:00:00", "XYZ INC", -10, 102))
+  f$Symbol <- "XYZ"; f$Currency <- "USD"; f$ExpDate <- NA_character_
+  closes <- close_rows(c("2026-01-05", "2026-01-06", "2026-01-07"), c(100, 101, 102))
+  no_ticker <- data.frame(Name = character(), Type = character(), Currency = character(),
+                          Multiplier = numeric(), OptExchange = character())
+  run <- function(store) with_mocked_bindings(
+    .leg_tickers = function(symbols) no_ticker,
+    readLegMarks = function(legs, from, to) store,
+    writeLegMarks = function(marks) invisible(nrow(marks)),
+    isIBAvailable = function() FALSE,
+    getYahooData = function(...) NULL,
+    getTradeDailyMarks(no_snaps, f, as_of = as.Date("2026-01-07")))
+  expect_equal(run(closes)$legs$type, "Stock")
+  expect_null(run(transform(closes, close = close / 100)))        # pence, or another stock
+  expect_null(run(closes[closes$date == as.Date("2026-01-06"), ])) # nothing to compare with
+})
+
+test_that("a date-only fill after a pre-close snapshot counts in that day's close (trade 775, flip of 17.06)", {
+  days <- c("2026-06-16", "2026-06-17", "2026-06-18")
+  s <- snap(20260617, "17:02:27", "XYZ", 10, 30, type = "Stock", multiplier = 1)
+  f <- rbind(stock_fill(20260616, "04:00:00", "XYZ", 10, 30),
+             stock_fill(20260617, "04:00:00", "XYZ", -20, 30),
+             stock_fill(20260618, "04:00:00", "XYZ", 10, 28))
+  r <- attributePnL(s, f, as_of = ALL,
+                    daily = list(legs = stock_leg, marks = close_rows(days, c(30, 30, 28))))
+  expect_equal(sum(r$delta), 20)           # short 10 from 30 to 28
+  expect_equal(sum(r$execution), 0)
+  expect_equal(sum(r$actual), sum(f$Total))
+})
+
+test_that("stock-only: a flip at the open reads as the day's short, not as execution (trade 775)", {
+  days <- c("2026-06-17", "2026-06-18")
+  f <- rbind(fill(20260617, "15:00:00", "XYZ", 10, 30.74, multiplier = 1, Commission = 1, Strike = NA, Right = ""),
+             fill(20260618, "01:30:00", "XYZ", -20, 30.74, multiplier = 1, Commission = 2, Strike = NA, Right = ""))
+  r <- attributePnL(no_snaps, f, as_of = ALL,
+                    daily = list(legs = stock_leg, marks = close_rows(days, c(30.74, 30.10))))
+  expect_equal(r$delta[2], 10 * (30.74 - 30.10))
+  expect_equal(r$execution, c(-1, -2))
 })

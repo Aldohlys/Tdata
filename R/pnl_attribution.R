@@ -56,7 +56,8 @@ getTradeFills <- function(trade_nr, account) {
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
   DBI::dbGetQuery(conn,
     "SELECT TradeDate, DateTime, TimeZoneSource, Instrument, Symbol, Pos, Price,
-            Commission, Total, Strike, Right, EventType, UnderlyingPrice
+            Commission, Total, Strike, Right, EventType, UnderlyingPrice,
+            Currency, \"Exp.Date\" AS ExpDate
        FROM Trades WHERE TradeNr = ? AND Account = ?",
     params = list(as.integer(trade_nr), account))
 }
@@ -170,7 +171,8 @@ getTradeFills <- function(trade_nr, account) {
 ## Fills stored with a date and no time (00:00:00 UTC, migrated rows; midnight in
 ## New York, the paper account's statement rows) can sit on either side of that
 ## day's snapshot. Per leg and day they go before it
-## when the snapshot position already includes them, after it otherwise. With
+## when the snapshot position already includes them, just after it otherwise:
+## still that day, so before that day's close when the snapshot came earlier. With
 ## no snapshot that day they go before that day's close.
 .place_dateonly_fills <- function(f, s) {
   utc <- lubridate::with_tz(f$ts, "UTC")
@@ -185,7 +187,7 @@ getTradeFills <- function(trade_nr, account) {
     if (nrow(snap)) {
       prior <- sum(f$Pos[f$key == k & f$day < d])
       held <- sum(snap$pos[snap$key == k])
-      if (abs(prior + sum(f$Pos[i]) - held) < 1e-9) late <- min(snap$ts) - 1
+      late <- if (abs(prior + sum(f$Pos[i]) - held) < 1e-9) min(snap$ts) - 1 else max(snap$ts) + 1
     } else {
       late <- as.POSIXct(paste(d, "12:00:00"), tz = "Europe/Zurich")
     }
@@ -389,8 +391,8 @@ getTradeFills <- function(trade_nr, account) {
 #'   underlying move > 25\% (all to residual), \code{noS} no underlying price
 #'   at the exit (all to execution), \code{gap} leg gone without a fill,
 #'   \code{model} an option mark of this interval estimated, not quoted.
-#'   Attribute \code{stock_only} is TRUE for a trade without option legs: its move
-#'   is in delta, what a fill adds in execution, and residual is zero.
+#'   Attribute \code{stock_only} is TRUE for a trade without option legs: execution
+#'   is its commissions, delta all the rest, and residual is zero.
 #'   NULL for a cash-only trade or too few usable days: two from snapshots alone,
 #'   one with daily marks.
 #' @export
@@ -415,7 +417,7 @@ attributePnL <- function(snaps, fills, rate = 0, div_yield = 0, as_of = Sys.Date
   }
   ts_of <- vapply(days, function(d) as.numeric(max(s$ts[s$day == d])), numeric(1))
 
-  row_for <- function(day, kind, legs_res, entry = 0, S = NA_real_, dS = NA_real_) {
+  row_for <- function(day, kind, legs_res, entry = 0, S = NA_real_, dS = NA_real_, comm = 0) {
     sum_of <- function(n) sum(vapply(legs_res, `[[`, numeric(1), n))
     r <- data.frame(date = day, kind = kind, S = S, dS = dS,
                     delta = sum_of("delta"), gamma = sum_of("gamma"),
@@ -423,10 +425,11 @@ attributePnL <- function(snaps, fills, rate = 0, div_yield = 0, as_of = Sys.Date
                     execution = sum_of("execution") + entry,
                     actual = sum_of("actual") + entry)
     r$residual <- r$actual - r$delta - r$gamma - r$vega - r$theta - r$execution
+    r$commission <- comm
     flags <- unique(unlist(strsplit(as.character(unlist(lapply(legs_res, `[[`, "flag"))), " ", fixed = TRUE)))
     r$flag <- paste(flags[flags != ""], collapse = " ")
     r[c("date", "kind", "S", "dS", "delta", "gamma", "vega", "theta", "residual",
-        "execution", "actual", "flag")]
+        "execution", "actual", "flag", "commission")]
   }
   ref_S <- function(legs) if (nrow(legs)) legs$S[which.max(!legs$linear)] else NA_real_
 
@@ -434,7 +437,8 @@ attributePnL <- function(snaps, fills, rate = 0, div_yield = 0, as_of = Sys.Date
   first <- s[s$day == days[1], ]
   before <- f[f$ts <= ts_of[1], ]
   entry <- sum(first$value) + sum(before$Total, na.rm = TRUE)
-  out <- list(row_for(days[1], "entry", list(), entry = entry, S = ref_S(first)))
+  out <- list(row_for(days[1], "entry", list(), entry = entry, S = ref_S(first),
+                      comm = sum(before$Commission)))
 
   ## Intervals between kept snapshots, then the exit after the last one.
   ends <- c(ts_of[-1], Inf)
@@ -477,17 +481,19 @@ attributePnL <- function(snaps, fills, rate = 0, div_yield = 0, as_of = Sys.Date
       se[!is.na(se)][1]
     }
     out[[length(out) + 1]] <- row_for(end_day, if (is.null(B)) "exit" else "day", res,
-                                      S = S_end, dS = S_end - ref_S(A))
+                                      S = S_end, dS = S_end - ref_S(A), comm = sum(in_iv$Commission))
   }
   res <- do.call(rbind, out)
   if (stock_only) {
-    ## Stock has no residual: a fill inside an interval is execution. In a split
-    ## row the whole move stays with the stock, flagged.
-    split <- grepl("split", res$flag, fixed = TRUE)
-    res$execution[!split] <- res$execution[!split] + res$residual[!split]
-    res$delta[split] <- res$delta[split] + res$residual[split]
+    ## Stock has no Greeks to split: execution is the commissions, the stock's P&L
+    ## all the rest. Moving a fill's price gap to execution instead would charge the
+    ## day's move to the opening position: trade 775 flipped from long to short at
+    ## the open, which read as -3,200 stock and +6,277 execution for a +3,077 day.
+    res$execution <- -res$commission
+    res$delta <- res$actual - res$execution
     res$residual <- 0
   }
+  res$commission <- NULL
   attr(res, "stock_only") <- stock_only
   res
 }

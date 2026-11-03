@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.26.1] - 2026-11-03
+
+### Changed
+- **Stock-only split** (`attributePnL`): execution is the commissions, Stock P&L all the rest. Problem: moving a fill's price gap to execution charged the day's move to the opening position. Trade 775, flipped long to short at the open of 18.06: -3,200 stock and +6,277 execution for a +3,077 day. Its totals now read -6,800 stock and -374.32 commissions.
+
+### Added
+- **Stocks with no Tickers row get daily rows** (`.assume_stocks`, `.guess_yahoo_name`, `R/leg_daily_mark.R`). Currency from the fills; IBKR, then Yahoo with the exchange suffix of that currency, also for what IBKR does not reach back to. Cash and futures fills are excluded. The closes must be compared with, and match, a price the trade recorded (`.closes_checked`, `.closes_consistent`). Trade 775: 3 rows to 42. `getTradeFills()` also returns Currency and ExpDate.
+
+### Fixed
+- **Date-only fill after a pre-close snapshot** (`.place_dateonly_fills`): placed just after the snapshot, so still before that day's close, not at 23:59:59.
+
 ## [5.26.0] - 2026-11-03
 
 ### Added
