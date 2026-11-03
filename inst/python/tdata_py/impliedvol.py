@@ -494,6 +494,57 @@ def get_price_at(sym, when_utc, secType=None, currency=None, exchange=None,
     return result
 
 
+def get_option_daily_mids(sym, expiration, strike, right, currency="USD", exchange="SMART",
+                          days=60, timeout=60):
+    """
+    End-of-day mid of one option over its recent sessions.
+
+    IBKR refuses daily bars for options (Error 162) and keeps hourly quote bars
+    for about 38 sessions, so the mid of each session's last hourly bar is the
+    only history there is. An expired contract has no definition and returns None.
+
+    Args:
+        sym: Underlying symbol
+        expiration: 'YYYYMMDD'
+        strike: Strike price
+        right: 'C' or 'P'
+        currency, exchange: of the option
+        days: Calendar days requested (IBKR returns what it still holds)
+        timeout: seconds before the request is abandoned
+
+    Returns:
+        dict(date, close): 'YYYY-MM-DD' strings and mids, oldest first. None on
+        failure or when the contract cannot be qualified.
+    """
+    ib = safe_ib_connect()
+    if not ib.isConnected():
+        logger.error(f"Failed to connect to IBKR for {sym}")
+        return None
+
+    result = None
+    try:
+        contract = Option(sym, expiration, float(strike), right, exchange, currency=currency)
+        ib.qualifyContracts(contract)
+        # An unqualified contract has conId 0: no request is sent for it.
+        if contract.conId:
+            bars = ib.reqHistoricalData(contract, endDateTime='', durationStr=f'{int(days)} D',
+                                        barSizeSetting='1 hour', whatToShow='MIDPOINT',
+                                        useRTH=True, formatDate=1, timeout=timeout)
+            last = {}
+            for b in bars or []:
+                if b.close is not None and b.close > 0:
+                    last[b.date.strftime('%Y-%m-%d')] = float(b.close)
+            if last:
+                dates = sorted(last)
+                result = {'date': dates, 'close': [last[d] for d in dates]}
+    except Exception as e:
+        logger.error(f"Error retrieving option mids of {sym} {expiration} {strike} {right}: {e}")
+    finally:
+        ib.sleep(0.5)
+        ib.disconnect()
+    return result
+
+
 def get_iv_percentile_levels(sym, secType=None, currency=None, exchange=None,
                              expiration_future=None, conId=None, lookback_days=252,
                              levels=[10, 25, 50, 75, 90]):

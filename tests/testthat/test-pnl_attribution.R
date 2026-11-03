@@ -273,3 +273,220 @@ test_that("an underlying price typed on one leg serves every leg closed with it"
   expect_false(grepl("noS", ex$flag))
   expect_equal(ex$S, 102)
 })
+
+## Daily completion: marks instead of a DB, TWS or Yahoo.
+
+close_rows <- function(dates, close, sym = "XYZ", source = "bar") {
+  data.frame(leg = sym, date = as.Date(dates), close = close, iv = NA_real_, source = source,
+             stringsAsFactors = FALSE)
+}
+stock_leg <- data.frame(key = "XYZ", symbol = "XYZ", type = "Stock", strike = NA_real_,
+                        expiry = as.Date(NA), multiplier = 1, currency = "USD",
+                        stringsAsFactors = FALSE)
+call_leg <- data.frame(key = C100, symbol = "XYZ", type = "Call", strike = 100,
+                       expiry = as.Date("2026-12-17"), multiplier = 100, currency = "USD",
+                       stringsAsFactors = FALSE)
+no_snaps <- snap(20260105, "22:00:00", "XYZ", 1, 100, type = "Stock", multiplier = 1)[0, ]
+stock_fill <- function(...) fill(..., Strike = NA, Right = "", multiplier = 1, Commission = 0)
+
+test_that("an option fill no snapshot names stays off the stock leg (trade 737, roll of 31.08)", {
+  stk <- "XYZ"
+  s <- rbind(snap(20260105, "22:00:00", stk, 100, 100, type = "Stock", multiplier = 1),
+             snap(20260105, "22:00:00", C100, -1, 5, uPrice = 100),
+             snap(20260120, "22:00:00", stk, 100, 101, type = "Stock", multiplier = 1),
+             snap(20260120, "22:00:00", C100, -1, 5.5, uPrice = 101))
+  C110 <- "XYZ 18DEC26 110 C"
+  f <- rbind(fill(20260105, "15:00:00", stk, 100, 100, multiplier = 1, Strike = NA, Right = ""),
+             fill(20260105, "15:00:00", C100, -1, 5),
+             fill(20260112, "15:00:00", C110, -1, 10.82, Strike = 110),
+             fill(20260112, "15:00:00", C110, 1, 11.00, Strike = 110))
+  r <- attributePnL(s, f, as_of = ALL)
+  expect_false(any(grepl("split", r$flag)))
+  ## The stock's delta is its own move, not moved by the option's cash.
+  expect_equal(r$delta[2], 100 * 1 + -100 * 0.5 * 1)
+  expect_equal(.fill_keys(f[3, ]), C110)
+})
+
+test_that("stock-only trade: one row per session from closes, no snapshot needed", {
+  days <- c("2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08")
+  f <- stock_fill(20260105, "15:00:00", "XYZ", 10, 99.5)
+  r <- attributePnL(no_snaps, f, as_of = as.Date("2026-01-08"),
+                    daily = list(legs = stock_leg, marks = close_rows(days, c(100, 103, 101, 102))))
+  expect_true(attr(r, "stock_only"))
+  expect_equal(as.character(r$date), days)
+  expect_equal(r$delta, c(0, 30, -20, 10))
+  expect_equal(r$execution[1], 10 * 100 - 995)
+  expect_true(all(c(r$gamma, r$vega, r$theta, r$residual) == 0))
+  expect_equal(sum(r$actual), 10 * 102 + f$Total)
+  expect_true(all(r$flag == ""))
+})
+
+test_that("stock-only: a fill inside an interval is execution, residual stays zero", {
+  days <- c("2026-01-05", "2026-01-06", "2026-01-07")
+  f <- rbind(stock_fill(20260105, "15:00:00", "XYZ", 10, 100),
+             stock_fill(20260106, "15:00:00", "XYZ", 10, 104))
+  r <- attributePnL(no_snaps, f, as_of = as.Date("2026-01-07"),
+                    daily = list(legs = stock_leg, marks = close_rows(days, c(100, 103, 105))))
+  expect_true(all(r$residual == 0))
+  expect_equal(r$delta + r$execution, r$actual)
+  expect_equal(sum(r$actual), 20 * 105 + sum(f$Total))
+})
+
+test_that("option trade: gaps filled, model days flagged, total still reconciles", {
+  days <- c("2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08")
+  s <- rbind(snap(20260105, "22:00:00", C100, 1, 5, uPrice = 100),
+             snap(20260108, "22:00:00", C100, 1, 6, uPrice = 102))
+  f <- fill(20260105, "15:00:00", C100, 1, 4.9)
+  marks <- rbind(close_rows(days, c(100, 101, 100.5, 102)),
+                 data.frame(leg = C100, date = as.Date(days[2:3]), close = c(5.5, 5.2),
+                            iv = c(0.30, 0.31), source = c("bar", "model"), stringsAsFactors = FALSE))
+  r <- attributePnL(s, f, as_of = as.Date("2026-01-08"), daily = list(legs = call_leg, marks = marks))
+  expect_equal(as.character(r$date), days)
+  expect_equal(r$actual[2:4], 100 * c(0.5, -0.3, 0.8))
+  expect_equal(r$flag[2], "")
+  expect_equal(r$flag[3], "model")          # ends on the model mark
+  expect_equal(r$flag[4], "model")          # starts from it
+  expect_equal(sum(r$actual), 100 * 6 + f$Total)
+})
+
+test_that("a Saturday snapshot leaves the path; a day with an unmarked leg is not added", {
+  days <- c("2026-01-09", "2026-01-12", "2026-01-13")
+  s <- rbind(snap(20260109, "22:00:00", C100, 1, 5, uPrice = 100),
+             snap(20260110, "10:00:00", C100, 1, 5.6, uPrice = 100),
+             snap(20260113, "22:00:00", C100, 1, 6, uPrice = 102))
+  f <- fill(20260109, "15:00:00", C100, 1, 5)
+  r <- attributePnL(s, f, as_of = as.Date("2026-01-13"),
+                    daily = list(legs = call_leg, marks = close_rows(days, c(100, 101, 102))))
+  expect_equal(as.character(r$date), c("2026-01-09", "2026-01-13"))
+  expect_equal(sum(r$actual), 100 * 6 + f$Total)
+})
+
+test_that("a closing fill with no underlying price takes the day's close", {
+  days <- c("2026-01-05", "2026-01-06", "2026-01-07")
+  s <- rbind(snap(20260105, "22:00:00", C100, 1, 5, uPrice = 100),
+             snap(20260106, "22:00:00", C100, 1, 5.5, uPrice = 101))
+  f <- rbind(fill(20260105, "15:00:00", C100, 1, 5),
+             fill(20260107, "15:00:00", C100, -1, 6, EventType = "Close"))
+  r <- attributePnL(s, f, as_of = ALL,
+                    daily = list(legs = call_leg, marks = close_rows(days, c(100, 101, 103))))
+  expect_false(grepl("noS", r$flag[nrow(r)]))
+  expect_equal(r$dS[nrow(r)], 2)
+})
+
+test_that(".trade_legs: legs from fills; NULL for what cannot be completed", {
+  tk <- data.frame(Name = c("XYZ", "CL"), Type = c("STK", "FUT"), Currency = "USD",
+                   Multiplier = 100, OptExchange = NA_character_, stringsAsFactors = FALSE)
+  f <- rbind(fill(20260105, "15:00:00", "XYZ INC", 100, 100, Strike = NA, Right = ""),
+             fill(20260105, "15:00:00", C100, -1, 5))
+  legs <- .trade_legs(no_snaps, f, tk)
+  expect_equal(legs$key, c("XYZ", C100))
+  expect_equal(legs$type, c("Stock", "Call"))
+  expect_equal(legs$expiry[2], as.Date("2026-12-17"))
+  expect_equal(legs$multiplier, c(1, 100))
+
+  combo <- fill(20260105, "15:00:00", "XYZ DEC26 100/110 CS", 1, 5)
+  expect_null(.trade_legs(no_snaps, combo, tk))
+  fut <- fill(20260105, "15:00:00", "CL 16OCT25 60 P", 1, 5, Symbol = "CL")
+  expect_null(.trade_legs(no_snaps, fut, tk))
+  unknown <- fill(20260105, "15:00:00", "ABC 17DEC26 100 C", 1, 5, Symbol = "ABC")
+  expect_null(.trade_legs(no_snaps, unknown, tk))
+})
+
+test_that(".closes_consistent rejects a split or another quoting unit", {
+  closes <- close_rows("2026-01-05", 50)
+  s <- data.frame(symbol = "XYZ", day = as.Date("2026-01-05"), S = 100)
+  f <- stock_fill(20260105, "15:00:00", "XYZ", 10, 51)
+  expect_false(.closes_consistent(closes, s, f))
+  expect_true(.closes_consistent(closes, s[0, ], f))
+  expect_false(.closes_consistent(closes, s[0, ], stock_fill(20260105, "15:00:00", "XYZ", 10, 5000)))
+})
+
+test_that(".model_marks interpolates IV between real marks, flat beyond them", {
+  days <- as.Date(c("2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08"))
+  closes <- close_rows(days, rep(100, 4))
+  bars <- data.frame(leg = C100, date = days[c(1, 3)], close = c(5, 6), iv = c(0.20, 0.40),
+                     source = "bar", stringsAsFactors = FALSE)
+  f <- fill(20260105, "15:00:00", C100, 1, 0)   # price 0 gives no anchor
+  s <- data.frame(key = character(), day = as.Date(character()), uPrice = numeric(), mktPrice = numeric())
+  m <- .model_marks(call_leg, days[c(2, 4)], bars, closes, s, f, 0, 0)
+  expect_equal(m$iv, c(0.30, 0.40))
+  expect_equal(m$bracketed, c(TRUE, FALSE))
+  expect_equal(m$close[1], Tbasics::getBSCallPrice(S = 100, K = 100, r = 0, DTE = 345, sig = 0.30, div = 0))
+  expect_null(.model_marks(call_leg, days[2], bars[0, ], closes, s, f, 0, 0))
+})
+
+test_that("getTradeDailyMarks: stored marks need no TWS; expired legs are not asked", {
+  expired <- "XYZ 16JAN26 100 C"
+  f <- rbind(fill(20260105, "15:00:00", expired, 1, 5, UnderlyingPrice = 100),
+             fill(20260112, "15:00:00", expired, -1, 6, UnderlyingPrice = 102, EventType = "Close"))
+  days <- as.Date(c("2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09", "2026-01-12"))
+  store <- close_rows(days, seq(100, 102, length.out = 6))
+  written <- NULL
+  tk <- data.frame(Name = "XYZ", Type = "STK", Currency = "USD", Multiplier = 100,
+                   OptExchange = NA_character_, stringsAsFactors = FALSE)
+  res <- with_mocked_bindings(
+    .leg_tickers = function(symbols) tk,
+    readLegMarks = function(legs, from, to) store[store$leg %in% legs & store$date >= from & store$date <= to, ],
+    writeLegMarks = function(marks) { written <<- rbind(written, marks); invisible(nrow(marks)) },
+    isIBAvailable = function() stop("TWS must not be touched"),
+    getTradeDailyMarks(no_snaps, f, as_of = as.Date("2026-01-12")))
+  m <- res$marks[res$marks$leg == expired, ]
+  expect_equal(m$date, days[1:5])                    # closed on the 12th: not held at that close
+  expect_true(all(m$source == "model"))
+  expect_equal(nrow(written), 5)                     # a closed trade: all of them final
+  expect_true(all(written$source == "model"))
+
+  ## Seen again: everything stored, nothing written.
+  store <- rbind(store, m)
+  written <- NULL
+  with_mocked_bindings(
+    .leg_tickers = function(symbols) tk,
+    readLegMarks = function(legs, from, to) store[store$leg %in% legs & store$date >= from & store$date <= to, ],
+    writeLegMarks = function(marks) { written <<- rbind(written, marks); invisible(nrow(marks)) },
+    isIBAvailable = function() stop("TWS must not be touched"),
+    getTradeDailyMarks(no_snaps, f, as_of = as.Date("2026-01-12")))
+  expect_null(written)
+})
+
+test_that("writeLegMarks: a bar replaces a row, a model mark or a Yahoo close does not", {
+  path <- tempfile(fileext = ".db")
+  on.exit(unlink(path), add = TRUE)
+  conn <- DBI::dbConnect(RSQLite::SQLite(), path)
+  DBI::dbExecute(conn, "CREATE TABLE LegDailyMark (leg TEXT NOT NULL, date INTEGER NOT NULL,
+                        close REAL NOT NULL, iv REAL, source TEXT NOT NULL,
+                        PRIMARY KEY (leg, date)) WITHOUT ROWID")
+  DBI::dbDisconnect(conn)
+  row <- function(close, source) data.frame(leg = C100, date = as.Date("2026-01-05"), close = close,
+                                            iv = 0.3, source = source, stringsAsFactors = FALSE)
+  with_mocked_bindings(safe_db_connect = function(...) DBI::dbConnect(RSQLite::SQLite(), path), {
+    writeLegMarks(row(1, "model"))
+    writeLegMarks(row(2, "bar"))
+    writeLegMarks(row(3, "model"))
+    writeLegMarks(row(4, "yahoo"))
+    r <- readLegMarks(C100, as.Date("2026-01-01"), as.Date("2026-01-31"))
+  })
+  expect_equal(nrow(r), 1)
+  expect_equal(r$close, 2)
+  expect_equal(r$source, "bar")
+  expect_equal(r$date, as.Date("2026-01-05"))
+})
+
+test_that("a fill stamped midnight New York is date-only: placed by the snapshot's position (trade 760)", {
+  s <- rbind(snap(20261019, "22:01:58", "XYZ", 300, 41.29, type = "Stock", multiplier = 1),
+             snap(20261021, "09:16:44", "XYZ", 300, 40.90, type = "Stock", multiplier = 1))
+  f <- rbind(stock_fill(20261019, "04:00:00", "XYZ", 300, 41.32),
+             stock_fill(20261021, "04:00:00", "XYZ", -300, 40.13))
+  r <- attributePnL(s, f, as_of = ALL)
+  expect_equal(sum(r$actual), sum(f$Total))
+  expect_equal(r$kind[nrow(r)], "exit")
+})
+
+test_that("bought one day, sold the next: one close and the exit make a path (trade 769)", {
+  days <- c("2026-01-05", "2026-01-06")
+  f <- rbind(stock_fill(20260105, "15:00:00", "XYZ", 10, 100),
+             stock_fill(20260106, "15:00:00", "XYZ", -10, 102))
+  r <- attributePnL(no_snaps, f, as_of = ALL,
+                    daily = list(legs = stock_leg, marks = close_rows(days, c(101, 103))))
+  expect_equal(r$kind, c("entry", "exit"))
+  expect_equal(sum(r$actual), sum(f$Total))
+})

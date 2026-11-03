@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.26.0] - 2026-11-03
+
+### Added
+- **Daily P&L path** (`R/leg_daily_mark.R`, `R/pnl_attribution.R`). `getTradePnLAttribution()` now returns one row per trading day, not one per snapshot. Problem: trade 737 showed 21 rows over 4.5 months, each gap between snapshots looking like one day's change.
+  - New table `LegDailyMark` (`scripts/migrate_leg_daily_mark.R`): leg, date, close, iv, source. Greeks are recomputed when read. A leg-day is fetched or solved once.
+  - Marks in order: last snapshot taken after the US close; mid of IBKR's last hourly bar (`get_option_daily_mids`, `impliedvol.py`); model mark, Black-Scholes on the underlying's close at the IV interpolated between real marks, flagged `model`. Closes from IBKR daily bars, else Yahoo.
+  - IBKR limits measured 2026-11-03: daily option bars refused (Error 162), hourly quotes reach about 38 sessions, expired contracts have no definition. So `collectLegMarks()` stores open legs daily (`scripts/collect_leg_marks.bat`, task `\RApplication\CollectLegMarks`).
+  - A pre-close snapshot gives way to close marks when every leg has one: its legs carry prices of different moments. Weekend snapshots leave the path.
+- **Stock-only trades:** attribute `stock_only` on the result; move in `delta`, fills in `execution`, `residual` zero. No Greeks stored. A trade without snapshots now has a path.
+
+### Fixed
+- **Option fill taken for the stock leg** (`.fill_keys`). A fill of an option no snapshot held was keyed to its symbol, the stock leg's key: its cash flows went to the stock and its price was read as the underlying. Trade 737, roll of 31.08: 10.82 read as SPY, a false `split` on 21.09.
+- **Date-only fills stamped midnight New York** (`.place_dateonly_fills`). The paper account's statement rows carry 04:00 or 05:00 UTC, which read as a real time placed them before that morning's snapshot. Trade 760: a sale counted while the snapshot still held the shares, +11,909 against -360. All 78 closed 2026 trades with a path now reconcile to their `Trades` total within 1.
+- A closing fill with no underlying price takes the day's close when marks exist, instead of `noS`.
+
+### Validation
+- Closed BOT trades on U1804173: median |residual| / |P&L| 12.3% (99 trades) to 9.1% (106 trades); the 99 keep their actual totals within 1, except open trade 706 marked to a later day.
+
 ## [5.25.0] - 2026-10-26
 
 ### Added

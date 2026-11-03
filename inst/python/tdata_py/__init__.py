@@ -269,6 +269,7 @@ try:
         get_volatility_metrics,
         get_historical_bars,
         get_price_at,
+        get_option_daily_mids,
         get_iv_percentile_levels
     )
 except ImportError as e:
@@ -278,6 +279,8 @@ except ImportError as e:
     def get_historical_bars(*args, **kwargs):
         return None
     def get_price_at(*args, **kwargs):
+        return None
+    def get_option_daily_mids(*args, **kwargs):
         return None
 
 # Spread analysis functions
@@ -362,6 +365,7 @@ __all__ = [
     'get_volatility_metrics',
     'get_historical_bars',
     'get_price_at',
+    'get_option_daily_mids',
     'get_iv_percentile_levels',
 
     # === SPREAD ANALYSIS ===
