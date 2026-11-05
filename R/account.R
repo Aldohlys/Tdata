@@ -459,9 +459,13 @@ getIBKR <- function(account = NULL) {
   ### Otherwise retry once; still missing, store nothing and fail, so the caller
   ### reports the run and the next one takes a complete snapshot.
   ### Tolerance as in check_data_integrity.R (account_identity).
+  ### tdata_py delivers NetLiquidation, TotalCashBalance etc. as strings ("27021.07")
+  as_num <- function(a) dplyr::mutate(a, dplyr::across(
+    dplyr::any_of(c("NetLiquidation", "StockMarketValue", "OptionMarketValue",
+                    "TotalCashBalance", "AccruedDividend")), as.numeric))
   unexplained <- function(l) {
     if (NROW(l[[2]]) > 0) return(NA_real_)
-    a <- l[[1]]
+    a <- as_num(l[[1]])
     resid <- a$NetLiquidation - a$StockMarketValue - dplyr::coalesce(a$OptionMarketValue, 0) -
       a$TotalCashBalance - dplyr::coalesce(a[["AccruedDividend"]], 0)
     if (isTRUE(abs(resid) > max(100, 0.01 * abs(a$NetLiquidation)))) resid else NA_real_
@@ -473,7 +477,7 @@ getIBKR <- function(account = NULL) {
     l2 <- tdata_py$getIBKRData(account)
     resid <- if (typeof(l2) == "list" && nrow(l2[[1]]) == 1) unexplained(l2) else resid
     if (!is.na(resid)) {
-      a <- if (typeof(l2) == "list" && nrow(l2[[1]]) == 1) l2[[1]] else account_data
+      a <- as_num(if (typeof(l2) == "list" && nrow(l2[[1]]) == 1) l2[[1]] else account_data)
       msg <- sprintf("%s: IBKR returned no positions twice; NLV %.0f - stock %.0f - options %.0f - cash %.0f leaves %.0f unexplained - snapshot not stored",
                      a$account, a$NetLiquidation, a$StockMarketValue, dplyr::coalesce(a$OptionMarketValue, 0),
                      a$TotalCashBalance, resid)
@@ -830,49 +834,6 @@ getIBKRActiveCurrencyValues <- function() {
   }
 }
 
-## Realized FX gain/loss (base currency) on closed / partially-closed Gonet
-## trades in one currency. Walks the currency's stock trades chronologically
-## with average-cost lots; on each sell, realized FX =
-##   closed_native_cost * (sell_rate - avg_entry_rate).
-## CASH ledger rows (sym_ibkr == the currency code) are excluded, and base-
-## currency trades net zero (rate == 1 throughout). Returns 0 when there are
-## no closing legs. This is the FX that has actually been banked into cash via
-## trading; open positions keep their unrealized FX inside their own valuation.
-gonet_realized_fx <- function(gonet_trades, ccy) {
-  tr <- gonet_trades[gonet_trades$currency == ccy & gonet_trades$sym_ibkr != ccy, , drop = FALSE]
-  if (nrow(tr) == 0) return(0)
-
-  dates <- as.Date(as.character(tr$orig_date), format = "%d.%m.%Y")
-  ord <- order(dates)
-  tr <- tr[ord, , drop = FALSE]; dates <- dates[ord]
-
-  rfx <- 0
-  for (sym in unique(tr$sym_ibkr)) {
-    idx <- which(tr$sym_ibkr == sym)
-    shares <- 0; nat_cost <- 0; chf_cost <- 0
-    for (i in idx) {
-      n <- tr$init_position[i]
-      if (is.na(n) || n == 0) next
-      if (n > 0) {                                    # buy: add to the lot
-        bcost <- -tr$init_cost[i]                     # native cost of the buy (>= 0)
-        shares   <- shares + n
-        nat_cost <- nat_cost + bcost
-        chf_cost <- chf_cost + bcost * convert_to_base_date(1, ccy, dates[i])
-      } else if (shares > 0) {                        # sell: realize FX on the closed portion
-        frac <- min(1, (-n) / shares)
-        closed_nat <- nat_cost * frac
-        closed_chf <- chf_cost * frac
-        entry_rate <- if (closed_nat != 0) closed_chf / closed_nat else 1
-        rfx <- rfx + closed_nat * (convert_to_base_date(1, ccy, dates[i]) - entry_rate)
-        shares   <- shares + n
-        nat_cost <- nat_cost - closed_nat
-        chf_cost <- chf_cost - closed_chf
-      }
-    }
-  }
-  round(rfx, 2)
-}
-
 ## Which fetched prices are unusable. IBKR does not signal an unsubscribed
 ## instrument with NaN -- getValue returns a plain 0 alongside "Error 354,
 ## Requested market data is not subscribed" -- so a test on is.nan() alone let
@@ -1196,6 +1157,85 @@ gonet_cash_balances <- function(gonet_trades, as_of = NULL) {
   }, numeric(1))
 }
 
+## Base-currency cost and FX of one Gonet cash balance, rolled forward from the
+## ledger baseline over the same flows as gonet_cash_balances.
+##
+## Every leg is a virtual conversion at its own date (see gonet_legs): a sale's
+## proceeds and a dividend arrive in base currency, a buy is paid from it. Cash
+## actually held in a foreign currency is therefore a lot of its own: an inflow
+## adds to it at the day's rate, an outflow relieves the average cost and banks
+## the FX on the part it spent. Its unrealized FX is balance * spot - basis_base.
+## A balance overdrawn below zero is a short lot and is walked the same way.
+##
+## The baseline enters at the baseline date's rate: cash held before it has no
+## recorded flows, so it is taken as converted on that date. An FX conversion
+## booked as a pair of unattributed rows (same TradeNr and date, one of them in
+## base currency) uses the executed rate, not the day's fixing.
+##
+## Returns list(balance, basis_base, realized_base); all zero when there is no
+## baseline. A base-currency balance has basis_base = balance and no FX.
+gonet_cash_fx <- function(gonet_trades, ccy, as_of = NULL) {
+  none <- list(balance = 0, basis_base = 0, realized_base = 0)
+  if (nrow(gonet_trades) == 0) return(none)
+
+  dates <- as.Date(as.character(gonet_trades$orig_date), format = "%d.%m.%Y")
+  if (!is.null(as_of)) {
+    keep  <- !is.na(dates) & dates <= as.Date(as_of)
+    gonet_trades <- gonet_trades[keep, , drop = FALSE]
+    dates <- dates[keep]
+  }
+  if (nrow(gonet_trades) == 0) return(none)
+
+  is_cash   <- !is.na(gonet_trades$sym_ibkr) & !is.na(gonet_trades$currency) &
+               gonet_trades$sym_ibkr == gonet_trades$currency
+  trade_nrs <- unique(gonet_trades$TradeNr[!is_cash])
+  unattr    <- is_cash & !(gonet_trades$TradeNr %in% trade_nrs) & !is.na(dates)
+  if (!any(unattr)) return(none)
+  cut_off   <- min(dates[unattr])
+
+  in_ccy <- !is.na(gonet_trades$currency) & gonet_trades$currency == ccy
+  cash_f <- in_ccy & is_cash & !is.na(gonet_trades$init_position) & gonet_trades$init_position != 0
+  leg_f  <- in_ccy & !is_cash & !is.na(dates) & dates > cut_off & !is.na(gonet_trades$init_cost)
+  idx    <- which(cash_f | leg_f)
+  if (length(idx) == 0) return(none)
+
+  amt  <- ifelse(is_cash[idx], gonet_trades$init_position[idx], gonet_trades$init_cost[idx])
+  fdt  <- dates[idx]
+  ### Same-day inflows first, so a buy settled from that day's proceeds does not
+  ### read as an overdraft.
+  ord  <- order(fdt, -amt)
+  idx  <- idx[ord]; amt <- amt[ord]; fdt <- fdt[ord]
+
+  base_ccy <- getParam("BaseCurrency")
+  if (identical(ccy, base_ccy))
+    return(list(balance = round(sum(amt), 2), basis_base = round(sum(amt), 2), realized_base = 0))
+
+  rate <- convert_to_base_date(rep(1, length(idx)), rep(ccy, length(idx)), fdt)
+  for (k in seq_along(idx)) {
+    i <- idx[k]
+    if (!unattr[i]) next
+    pair <- which(unattr & gonet_trades$TradeNr == gonet_trades$TradeNr[i] &
+                  dates == dates[i] & gonet_trades$currency == base_ccy &
+                  sign(gonet_trades$init_position) == -sign(amt[k]))
+    if (length(pair) == 1) rate[k] <- -gonet_trades$init_position[pair] / amt[k]
+  }
+
+  bal <- 0; cost <- 0; realized <- 0
+  for (k in seq_along(amt)) {
+    f <- amt[k]; r <- rate[k]
+    if (bal != 0 && sign(f) != sign(bal)) {         # spends (or covers) part of the lot
+      closing <- sign(f) * min(abs(f), abs(bal))
+      closed  <- cost * abs(closing) / abs(bal)
+      realized <- realized - closing * r - closed
+      bal  <- bal + closing
+      cost <- cost - closed
+      f    <- f - closing
+    }
+    if (f != 0) { bal <- bal + f; cost <- cost + f * r }
+  }
+  list(balance = round(bal, 2), basis_base = round(cost, 2), realized_base = round(realized, 2))
+}
+
 ## Average-cost lots for Gonet stock positions. Walks each symbol's trades
 ## chronologically: a buy adds shares and cost, a sell relieves the proportional
 ## share of the cost and banks the difference as realized P&L. Returns one row
@@ -1212,15 +1252,19 @@ gonet_cash_balances <- function(gonet_trades, as_of = NULL) {
 ## currency other than the position's -- AMRZ is booked in CHF and pays USD --
 ## is converted at the event date, the rate at which the cash was received.
 ##
+## basis_base / realized_base are the same in base currency (see gonet_legs):
+## the base cost of the open shares, and everything banked, FX included.
+##
 ## The remaining CASH ledger rows (sym_ibkr == the currency code) are excluded;
-## they are valued by gonet_realized_fx instead. as_of restricts the walk to
+## they are valued by gonet_cash_fx instead. as_of restricts the walk to
 ## legs on or before that date, so a historical snapshot can be revalued on the
 ## basis that applied when it was taken.
 gonet_lots <- function(gonet_trades, as_of = NULL) {
   empty <- data.frame(sym_yahoo = character(), TradeNr = integer(),
                       currency = character(), shares = numeric(),
                       basis = numeric(), realized = numeric(),
-                      income = numeric(), stringsAsFactors = FALSE)
+                      income = numeric(), basis_base = numeric(),
+                      realized_base = numeric(), stringsAsFactors = FALSE)
 
   legs <- gonet_legs(gonet_trades, as_of)
   if (nrow(legs) == 0) return(empty)
@@ -1238,6 +1282,8 @@ gonet_lots <- function(gonet_trades, as_of = NULL) {
                shares = if (nrow(st)) st$shares_after[nrow(st)] else 0,
                basis  = if (nrow(st)) st$basis_after[nrow(st)]  else 0,
                realized = sum(l$realized), income = income,
+               basis_base = if (nrow(st)) st$basis_base_after[nrow(st)] else 0,
+               realized_base = sum(l$realized_base),
                stringsAsFactors = FALSE)
   })
   do.call(rbind, rows)
@@ -1258,6 +1304,10 @@ gonet_income_actions <- c("Income", "Grant cash")
 ## buy. shares_after / basis_after are the lot after the leg. Amounts are in
 ## the position's currency; an income paid in another currency is converted at
 ## its own date. `total` is the cash moved (init_cost: negative for a buy).
+## realized_base / basis_base_after are the same in base currency, each leg
+## converted at its own date: the lot's base cost is what the shares cost in
+## CHF when bought, so a sale's realized_base holds its FX as well as its price
+## move.
 ##
 ## Gonet reuses TradeNrs across instruments, so a leg is identified by
 ## (TradeNr, sym_yahoo), never by TradeNr alone.
@@ -1267,7 +1317,8 @@ gonet_legs <- function(gonet_trades, as_of = NULL) {
                       action = character(), pos = numeric(), price = numeric(),
                       total = numeric(), realized = numeric(),
                       shares_after = numeric(), basis_after = numeric(),
-                      currency = character(), stringsAsFactors = FALSE)
+                      currency = character(), realized_base = numeric(),
+                      basis_base_after = numeric(), stringsAsFactors = FALSE)
 
   tr <- gonet_trades[is.na(gonet_trades$sym_ibkr) | is.na(gonet_trades$currency) |
                        gonet_trades$sym_ibkr != gonet_trades$currency, , drop = FALSE]
@@ -1289,6 +1340,15 @@ gonet_legs <- function(gonet_trades, as_of = NULL) {
   if (!is.null(as_of) && nrow(events) > 0)
     events <- events[!is.na(events$date) & events$date <= as.Date(as_of), , drop = FALSE]
 
+  ### Base-currency (CHF) side of the walk. Each leg is a virtual conversion at
+  ### its own date's rate: a buy is paid from base currency, a sale's proceeds
+  ### and a dividend go back to it. So the lot carries a base cost besides its
+  ### native one, and a sale banks price and FX together in base. One lookup for
+  ### the whole walk -- it runs once per snapshot when history is revalued.
+  leg_rate <- convert_to_base_date(rep(1, nrow(tr)), tr$currency, dates)
+  ev_base  <- if (nrow(events) == 0) numeric(0)
+              else convert_to_base_date(events$amount, events$currency, events$date)
+
   rows <- lapply(unique(tr$sym_yahoo), function(sym) {
     ### The precious-metal row carries a literal "NA" sym_yahoo, and `x == NA`
     ### is NA -- which() would drop every one of its legs and hand back a zero
@@ -1297,21 +1357,25 @@ gonet_legs <- function(gonet_trades, as_of = NULL) {
     idx <- if (is.na(sym)) which(is.na(tr$sym_yahoo))
            else which(!is.na(tr$sym_yahoo) & tr$sym_yahoo == sym)
     pos_ccy <- tr$currency[idx[1]]
-    shares <- 0; basis <- 0
+    shares <- 0; basis <- 0; basis_base <- 0
     out <- list()
     for (i in idx) {
       n <- tr$init_position[i]
       if (is.na(n) || n == 0) next
-      banked <- 0
+      banked <- 0; banked_base <- 0
       if (n > 0) {                                  # buy: add to the lot
         shares <- shares + n
         basis  <- basis + (-tr$init_cost[i])        # init_cost is cash out (<= 0)
+        basis_base <- basis_base + (-tr$init_cost[i]) * leg_rate[i]
       } else if (shares > 0) {                      # sell: relieve the closed fraction
         frac        <- min(1, (-n) / shares)        # clamp: never relieve more than held
         closed_cost <- basis * frac
+        closed_base <- basis_base * frac
         banked      <- tr$init_cost[i] - closed_cost
+        banked_base <- tr$init_cost[i] * leg_rate[i] - closed_base
         shares      <- shares + n
         basis       <- basis - closed_cost
+        basis_base  <- basis_base - closed_base
       } else next                                   # a sale with nothing held books nothing
       out[[length(out) + 1]] <- data.frame(
         TradeNr = tr$TradeNr[i], sym_yahoo = sym, symbol = tr$sym_ibkr[i],
@@ -1321,7 +1385,8 @@ gonet_legs <- function(gonet_trades, as_of = NULL) {
         action = if (n < 0) "Sell" else if (isTRUE(tr$init_cost[i] == 0)) "Grant" else "Buy",
         pos = n, price = tr$init_price[i], total = tr$init_cost[i],
         realized = banked, shares_after = shares, basis_after = basis,
-        currency = pos_ccy, stringsAsFactors = FALSE)
+        currency = pos_ccy, realized_base = banked_base,
+        basis_base_after = basis_base, stringsAsFactors = FALSE)
     }
 
     ### Dividends and other attributed cash events, in the position's currency.
@@ -1339,7 +1404,8 @@ gonet_legs <- function(gonet_trades, as_of = NULL) {
         TradeNr = events$TradeNr[j], sym_yahoo = sym, symbol = tr$sym_ibkr[idx[1]],
         date = events$date[j], action = "Income", pos = 0, price = NA_real_,
         total = amt, realized = amt, shares_after = NA_real_, basis_after = NA_real_,
-        currency = pos_ccy, stringsAsFactors = FALSE)
+        currency = pos_ccy, realized_base = ev_base[j], basis_base_after = NA_real_,
+        stringsAsFactors = FALSE)
     }
     if (length(out) == 0) return(NULL)
     l <- do.call(rbind, out)
@@ -1354,8 +1420,9 @@ gonet_legs <- function(gonet_trades, as_of = NULL) {
     for (k in seq_len(nrow(l))) if (is_inc[k]) {
       prev <- which(!is_inc[seq_len(k)])
       if (length(prev)) {
-        l$shares_after[k] <- l$shares_after[max(prev)]
-        l$basis_after[k]  <- l$basis_after[max(prev)]
+        l$shares_after[k]     <- l$shares_after[max(prev)]
+        l$basis_after[k]      <- l$basis_after[max(prev)]
+        l$basis_base_after[k] <- l$basis_base_after[max(prev)]
       }
     }
     l
@@ -1448,6 +1515,15 @@ gonet_open_dates <- function(legs) {
   if (length(rows) == 0) empty else do.call(rbind, rows)
 }
 
+## Adds the base-currency P&L columns to the Gonet table when an older DB lacks
+## them, so the snapshot append does not fail on unknown columns.
+gonet_ensure_base_columns <- function(conn) {
+  have <- DBI::dbGetQuery(conn, "PRAGMA table_info(Gonet)")$name
+  for (col in setdiff(c("unPnL_base", "realizedPnL_base"), have))
+    DBI::dbExecute(conn, paste0("ALTER TABLE Gonet ADD COLUMN ", col, " REAL"))
+  invisible(NULL)
+}
+
 #'   getGonet
 #'
 #' This function loads current Gonet positions, the list of all Gonet trades, and retrieves current price information from IBKR (or end-user).
@@ -1464,11 +1540,13 @@ gonet_open_dates <- function(legs) {
 #' sale's proceeds and a dividend land in cash without GonetPos.csv having to be re-edited.
 #'
 #' It then retrieves last available prices (named \code{mktPrice}) from IBKR - or from end-user- and compute \code{mktValue = mktPrice * pos},
-#' \code{unPnL = mktValue - basis}, \code{realizedPnL = realized}, \code{avgCost = basis / pos}
+#' \code{unPnL = mktValue - basis}, \code{realizedPnL = realized}, \code{avgCost = basis / pos},
+#' and in base currency \code{unPnL_base = mktValue * spot - basis_base}, \code{realizedPnL_base},
+#' where each leg is converted at its own date (FX included).
 #' Finally it stores updated Gonet portfolio positions into DB "Gonet" table.
 #'
 #' Resulting columns in Gonet table are \code{TradeNr, date, heure, symbol,
-#' pos, mktPrice, mktValue, avgCost, unPnL, realizedPnL, currency and type}.
+#' pos, mktPrice, mktValue, avgCost, unPnL, realizedPnL, currency, type, unPnL_base and realizedPnL_base}.
 #'
 #'
 #'@returns No value
@@ -1513,8 +1591,8 @@ getGonet <- function(use_defaults = FALSE) {
 
   ### Split CASH positions out of the price-fetch pipeline. Cash is not a
   ### tradeable IBKR symbol, so it is priced by the FX rate to base and its
-  ### unPnL is the realized FX banked through closed trades (see below); it is
-  ### recombined with the stock rows just before the DB append.
+  ### unPnL is the FX on the balance held (see below); it is recombined with
+  ### the stock rows just before the DB append.
   cash_mask <- !is.na(portf$type) & portf$type == "CASH"
   portf_cash <- portf[cash_mask, , drop = FALSE]
   portf <- portf[!cash_mask, , drop = FALSE]
@@ -1754,26 +1832,29 @@ getGonet <- function(use_defaults = FALSE) {
   portf = dplyr::left_join(portf, last_price, by = c("sym_ibkr"="sym"))
 
   ### Compute all necessary fields for storing in CSV/DB
+  ### unPnL / realizedPnL are in the position's currency (what the bank
+  ### statement shows); the _base pair is in base currency against the lot's
+  ### base cost, so it carries the FX on the cost as well as the price move.
+  spot_now <- convert_to_base_date(rep(1, nrow(portf)), portf$currency, Sys.Date())
   portf <- dplyr::mutate(portf, symbol=sym_ibkr, pos=position,
                     mktPrice=price, mktValue=round(pos*mktPrice,2),
                     unPnL=round(mktValue-basis,2),
                     realizedPnL=round(realized,2),
-                    avgCost=round(basis/pos,2))
+                    avgCost=round(basis/pos,2),
+                    unPnL_base=round(mktValue*spot_now-basis_base,2),
+                    realizedPnL_base=round(realized_base,2))
 
   portf <- dplyr::select(portf, TradeNr, date, heure, symbol, pos, mktPrice, mktValue,
-                         avgCost, unPnL, realizedPnL, currency, type)
+                         avgCost, unPnL, realizedPnL, currency, type,
+                         unPnL_base, realizedPnL_base)
 
   ### Build CASH position rows and recombine with the stock rows. Each cash row
-  ### is valued at the FX spot rate to base; its unPnL is the realized FX banked
-  ### through closed/partial trades in that currency (gonet_realized_fx). Stored
-  ### currency is base, so downstream conversion is identity. avgCost is the
-  ### implied cost rate (mktValue - unPnL)/pos, kept for internal consistency but
-  ### not shown for cash (the Trade tab blanks it — realized FX dwarfs the small
-  ### residual balance, so a per-unit cost would be meaningless).
-  ###
-  ### realizedPnL stays NA for cash: the banked FX is already reported in unPnL
-  ### under Convention A (see reference on cash-FX in totals), so repeating it
-  ### here would double-count it in any unPnL + realizedPnL total.
+  ### is valued at the FX spot rate to base and stored in base currency, so its
+  ### unPnL and unPnL_base are the same figure: the FX on the balance actually
+  ### held, against the rates it came in at (gonet_cash_fx). realizedPnL is the
+  ### FX banked by spending it. FX on the stock legs themselves sits in the
+  ### positions' _base columns, sold positions included. avgCost is the
+  ### average base cost per unit.
   if (nrow(portf_cash) > 0) {
     base_ccy <- getParam("BaseCurrency")
     cash_rows <- lapply(seq_len(nrow(portf_cash)), function(i) {
@@ -1781,7 +1862,8 @@ getGonet <- function(use_defaults = FALSE) {
       balance <- portf_cash$position[i]
       spot    <- convert_to_base_date(1, ccy, Sys.Date())
       mkt     <- round(balance * spot, 2)
-      rfx     <- gonet_realized_fx(gonet_trades, ccy)
+      fx      <- gonet_cash_fx(gonet_trades, ccy)
+      unpl    <- round(mkt - fx$basis_base, 2)
       data.frame(
         TradeNr  = portf_cash$TradeNr[i],
         date     = portf_cash$date[i],
@@ -1790,11 +1872,13 @@ getGonet <- function(use_defaults = FALSE) {
         pos      = balance,
         mktPrice = round(spot, 6),
         mktValue = mkt,
-        avgCost  = if (balance != 0) round((mkt - rfx) / balance, 6) else NA_real_,
-        unPnL    = rfx,
-        realizedPnL = NA_real_,
+        avgCost  = if (balance != 0) round(fx$basis_base / balance, 6) else NA_real_,
+        unPnL    = unpl,
+        realizedPnL = fx$realized_base,
         currency = base_ccy,
         type     = "CASH",
+        unPnL_base = unpl,
+        realizedPnL_base = fx$realized_base,
         stringsAsFactors = FALSE)
     })
     portf <- rbind(portf, do.call(rbind, cash_rows))
@@ -1804,6 +1888,7 @@ getGonet <- function(use_defaults = FALSE) {
   ## Make them available for other functions
   ### Open connection to user DB
   conn <- safe_db_connect()
+  gonet_ensure_base_columns(conn)
   safe_db_append(conn,"Gonet", portf)
   ### Only store newly entered prices (not stored prices retrieved from DB)
   if (nrow(new_price_entries) > 0) {
@@ -1843,15 +1928,18 @@ getAccountGonet <- function(gonet_cash = NULL) {
 
   ### Split CASH positions from stock positions. Cash rows carry currency = base
   ### with mktValue already in base; stocks are in native currency. Cash is
-  ### excluded from StockMarketValue (it becomes the cash balance) but its
-  ### realized-FX unPnL IS included in the account UnrealizedPnL so the equity /
-  ### P&L curve reflects currency gains banked through trading.
+  ### excluded from StockMarketValue (it becomes the cash balance). UnrealizedPnL
+  ### sums unPnL_base, which holds the FX on each position's cost and on the cash
+  ### held; a row without it (written before the column existed) falls back to
+  ### its native unPnL at today's rate.
   is_cash <- !is.na(portf$type) & portf$type == "CASH"
   stock   <- portf[!is_cash, , drop = FALSE]
   cash    <- portf[is_cash, , drop = FALSE]
 
   StockMarketValue <- round(sum(convert_to_base_date(stock$mktValue, stock$currency, Sys.Date()), na.rm = FALSE), 2)
-  UnrealizedPnL    <- round(sum(convert_to_base_date(portf$unPnL,  portf$currency, Sys.Date()), na.rm = FALSE), 2)
+  un_base <- if ("unPnL_base" %in% names(portf)) portf$unPnL_base else rep(NA_real_, nrow(portf))
+  un_base <- ifelse(is.na(un_base), convert_to_base_date(portf$unPnL, portf$currency, Sys.Date()), un_base)
+  UnrealizedPnL    <- round(sum(un_base, na.rm = FALSE), 2)
   acc <- data.frame(StockMarketValue = StockMarketValue, UnrealizedPnL = UnrealizedPnL)
   if (any(is.na(acc))) {
     warning("Could not get a complete portfolio record - some prices are missing -> no account recorded")

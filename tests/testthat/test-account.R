@@ -654,8 +654,9 @@ test_that("getIBKR writes the AccruedDividend it receives", {
 # arrived, the positions did not.
 make_incomplete_account <- function() {
   acc <- make_fake_account("U25343478")
-  acc$NetLiquidation <- 27367.57; acc$StockMarketValue <- 0; acc$OptionMarketValue <- 0
-  acc$TotalCashBalance <- 4426.85
+  # tdata_py sends these two as strings (2026-11-05: "non-numeric argument" in the guard)
+  acc$NetLiquidation <- "27367.57"; acc$StockMarketValue <- 0; acc$OptionMarketValue <- 0
+  acc$TotalCashBalance <- "4426.85"
   acc$AccruedDividend <- 201.61
   acc
 }
@@ -1183,8 +1184,10 @@ test_that("gonet_lots returns an empty frame when there are no stock legs", {
 ## Deterministic FX stub: the rate depends only on the date (amount * rate).
 .gonet_fx_stub <- function(rates_by_date) {
   function(amount, currency, convert_date) {
-    if (identical(currency, "CHF")) return(amount)
-    amount * rates_by_date[[format(convert_date, "%Y%m%d")]]
+    key  <- format(as.Date(convert_date), "%Y%m%d")
+    rate <- vapply(key, function(k) if (is.null(rates_by_date[[k]])) NA_real_ else rates_by_date[[k]],
+                   numeric(1), USE.NAMES = FALSE)
+    amount * ifelse(currency == "CHF", 1, rate)
   }
 }
 
@@ -1631,4 +1634,104 @@ test_that("gonet_legs labels a zero-cost buy as Grant and its same-day cash as G
   lots <- gonet_lots(tr)
   expect_equal(lots$shares, 196)
   expect_equal(lots$income, 424.57 + 50.25)
+})
+
+### ---------------------------------------------------------------------------
+### Base-currency (CHF) side of the lot walk: each leg converted at its date
+### ---------------------------------------------------------------------------
+
+test_that("gonet_lots carries a base cost and banks FX with the price on a sale", {
+  ### buy 100 for EUR 1000 at 1.10 (CHF 1100), sell 40 for EUR 480 at 0.90
+  legs <- gonet_fixture("X.PA", "X", c("01.01.2024", "01.06.2024"),
+                        c(100, -40), c(-1000, 480), "EUR")
+  with_mocked_bindings(
+    convert_to_base_date = .gonet_fx_stub(list("20240101" = 1.10, "20240601" = 0.90)), {
+      res <- gonet_lots(legs)
+      expect_equal(res$basis, 600)
+      expect_equal(res$basis_base, 660)                 # 60% of CHF 1100
+      expect_equal(res$realized, 80)                    # 480 - 400
+      expect_equal(res$realized_base, 480 * 0.90 - 440) # -8: FX loss beats the price gain
+    })
+})
+
+test_that("gonet_lots books a dividend in base at its payment date", {
+  legs <- rbind(gonet_fixture("X.PA", "X", "01.01.2024", 100, -1000, "EUR"),
+                gonet_fixture("EUR", "EUR", "01.06.2024", 0, 50, "EUR"))
+  with_mocked_bindings(
+    convert_to_base_date = .gonet_fx_stub(list("20240101" = 1.10, "20240601" = 0.90)), {
+      res <- gonet_lots(legs)
+      expect_equal(res$realized, 50)
+      expect_equal(res$realized_base, 45)
+      expect_equal(res$basis_base, 1100)
+    })
+})
+
+test_that("gonet_lots: a base-currency position has base figures equal to native", {
+  legs <- gonet_fixture("ABBN.SW", "ABBN", c("01.01.2024", "01.06.2024"),
+                        c(500, -200), c(-16460, 17198), "CHF")
+  with_mocked_bindings(
+    convert_to_base_date = .gonet_fx_stub(list()), {
+      res <- gonet_lots(legs)
+      expect_equal(res$basis_base, res$basis)
+      expect_equal(res$realized_base, res$realized)
+    })
+})
+
+### gonet_cash_fx(): base cost of a foreign cash balance since the baseline
+
+.cash_ledger <- function() {
+  rbind(
+    gonet_fixture("X.PA", "X", "01.01.2024", 100, -1000, "EUR", TradeNr = 1L),
+    ## baseline EUR 500 at 10.07.2026, then a sale and a buy after it
+    gonet_fixture("EUR", "EUR", "10.07.2026", 500, -500, "EUR", TradeNr = 28L),
+    gonet_fixture("X.PA", "X", "01.08.2026", -50, 600, "EUR", TradeNr = 1L),
+    gonet_fixture("Y.PA", "Y", "01.09.2026", 10, -800, "EUR", TradeNr = 2L))
+}
+.cash_rates <- list("20240101" = 1.10, "20260710" = 0.95, "20260801" = 0.94, "20260901" = 0.92)
+
+test_that("gonet_cash_fx: balance matches gonet_cash_balances", {
+  with_mocked_bindings(
+    convert_to_base_date = .gonet_fx_stub(.cash_rates),
+    getParam = function(name, ...) "CHF", {
+      tr <- .cash_ledger()
+      expect_equal(gonet_cash_fx(tr, "EUR")$balance, gonet_cash_balances(tr)[["EUR"]])
+    })
+})
+
+test_that("gonet_cash_fx: inflows add at their rate, an outflow banks FX on what it spends", {
+  with_mocked_bindings(
+    convert_to_base_date = .gonet_fx_stub(.cash_rates),
+    getParam = function(name, ...) "CHF", {
+      fx <- gonet_cash_fx(.cash_ledger(), "EUR")
+      ## lot after the sale: 1100 EUR costing 500*0.95 + 600*0.94 = 1039 CHF
+      avg <- 1039 / 1100
+      expect_equal(fx$balance, 300)
+      expect_equal(fx$realized_base, round(800 * 0.92 - 800 * avg, 2))
+      expect_equal(fx$basis_base, round(300 * avg, 2))
+    })
+})
+
+test_that("gonet_cash_fx: an FX conversion pair uses the executed rate", {
+  tr <- rbind(gonet_fixture("CHF", "CHF", "10.07.2026", 1000, -1000, "CHF", TradeNr = 26L),
+              gonet_fixture("USD", "USD", "10.07.2026", 0, 0, "USD", TradeNr = 27L),
+              gonet_fixture("CHF", "CHF", "23.09.2026", -836, 836, "CHF", TradeNr = 31L),
+              gonet_fixture("USD", "USD", "23.09.2026", 1000, -1000, "USD", TradeNr = 31L))
+  with_mocked_bindings(
+    convert_to_base_date = .gonet_fx_stub(list("20260710" = 0.80, "20260923" = 0.79)),
+    getParam = function(name, ...) "CHF", {
+      fx <- gonet_cash_fx(tr, "USD")
+      expect_equal(fx$balance, 1000)
+      expect_equal(fx$basis_base, 836)
+    })
+})
+
+test_that("gonet_cash_fx: the base currency has no FX", {
+  with_mocked_bindings(
+    convert_to_base_date = .gonet_fx_stub(list()),
+    getParam = function(name, ...) "CHF", {
+      tr <- gonet_fixture("CHF", "CHF", "10.07.2026", 1000, -1000, "CHF", TradeNr = 26L)
+      fx <- gonet_cash_fx(tr, "CHF")
+      expect_equal(fx$basis_base, 1000)
+      expect_equal(fx$realized_base, 0)
+    })
 })

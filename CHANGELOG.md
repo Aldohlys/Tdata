@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.27.0] - 2026-11-05
+
+### Changed
+- **Gonet P&L in base currency, FX included** (`gonet_legs`, `gonet_lots`, `getGonet`, `getAccountGonet`). Each leg is a virtual conversion at its own date: a buy is paid from CHF, a sale's proceeds and a dividend go back to CHF. Lots carry a CHF cost (`basis_base`); a sale banks price and FX together (`realized_base`). New Gonet table columns `unPnL_base`, `realizedPnL_base` (CHF), added by `gonet_ensure_base_columns`; `unPnL` / `realizedPnL` stay in the position's currency. Account `UnrealizedPnL` sums `unPnL_base`. Problem: the EUR cash row showed -4,375.74 CHF of "unrealized" P&L, the FX realized by the AI, OR and MC sales of 2023–2024, while about -10.9k CHF of FX on the cost of open EUR and USD positions appeared in no P&L column (only in NLV).
+- **Gonet cash rows** (`gonet_cash_fx`, replaces `gonet_realized_fx`): unPnL is the FX on the balance held, against the rates it came in at since the ledger baseline; realizedPnL is the FX banked by spending it. An FX conversion pair (TradeNr 31) is taken at its executed rate. History: `scripts/backfill_gonet_base_pnl.R`.
+
+### Fixed
+- **getIBKR no-positions guard**: tdata_py sends `NetLiquidation` and `TotalCashBalance` as strings, so the check failed with "non-numeric argument to binary operator" whenever IBKR returned no positions (U25343478, 2026-11-05). The guard now converts them to numbers.
+
 ## [5.26.1] - 2026-11-03
 
 ### Changed
