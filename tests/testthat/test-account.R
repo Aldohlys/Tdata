@@ -52,7 +52,8 @@ test_that("readLastPortfolio Gonet returns some data and columns are all authori
     expect_true(identical(colnames(portf),
                           c("TradeNr","date", "heure", "symbol", "pos", "mktPrice",
                             "mktValue", "avgCost", "unPnL",
-                            "currency", "type", "margin", "realizedPnL")))
+                            "currency", "type", "margin", "realizedPnL",
+                            "unPnL_base", "realizedPnL_base")))
     expect_true(nrow(portf) >=1)
   })
 })
