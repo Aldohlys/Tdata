@@ -387,3 +387,42 @@ test_that("get_cash_positions filters correctly (unit test)", {
     }
   )
 })
+
+# --- Rate guard on CASH rows ---
+
+test_that("cash_rate_checked keeps a plausible rate", {
+  recent <- c(0.005117, 0.005123, 0.005132, 0.00514)
+  expect_equal(cash_rate_checked(0.005127, "JPY", recent), 0.005127)
+})
+
+test_that("cash_rate_checked replaces an inverted rate by the recent median", {
+  recent <- c(0.005117, 0.005123, 0.005132, 0.00514)
+  expect_equal(cash_rate_checked(195.9632, "JPY", recent), stats::median(recent))
+  expect_equal(cash_rate_checked(NA_real_, "JPY", recent), stats::median(recent))
+})
+
+test_that("cash_rate_checked keeps the rate with too little history", {
+  expect_equal(cash_rate_checked(195.9632, "JPY", c(0.0051, NA)), 195.9632)
+})
+
+test_that("create_cash_portfolio_row values JPY cash with the median when the lookup is inverted", {
+  skip_if(is.null(try(getParam("BaseCurrency"), silent = TRUE)),
+          "BaseCurrency not configured")
+  skip_if(getParam("BaseCurrency") != "CHF", "Test designed for CHF base currency")
+
+  with_mocked_bindings(
+    convert_to_base_date = function(amount, currency, convert_date) 195.9632 * amount,
+    recent_base_rates = function(currency, rate_date, n = 10) rep(0.0051, 5),
+    weighted_cash_cost_basis = function(account_table, currency, convert_date = Sys.Date()) 0.0049563,
+    getCashTradeForCurrency = function(account_table, currency)
+      data.frame(TradeNr = 720L, Price = 201.665, Instrument = "CHF", Currency = "JPY"), {
+      result <- create_cash_portfolio_row(
+        currency = "JPY", balance = -3087936.1,
+        snapshot_date = 20260809L, snapshot_heure = "06:59:13",
+        account_table = "U25343478")
+      expect_equal(result$mktPrice, 0.0051)
+      expect_equal(result$mktValue, -3087936.1 * 0.0051, tolerance = 1e-6)
+      expect_true(abs(result$unPnL) < 1000)
+    }
+  )
+})

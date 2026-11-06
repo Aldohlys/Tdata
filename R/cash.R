@@ -287,6 +287,54 @@ resolve_cash_cost_basis <- function(trade_result, position_currency) {
   }
 }
 
+#' Last stored base-currency rates of a currency up to a date
+#'
+#' @param currency Currency code
+#' @param rate_date Date (inclusive upper bound)
+#' @param n Number of stored dates to return
+#' @return Numeric vector of rates (base currency per unit), newest first
+#' @keywords internal
+recent_base_rates <- function(currency, rate_date, n = 10) {
+  base_currency <- getParam("BaseCurrency")
+  if (identical(currency, base_currency)) return(1)
+  tbl <- if (base_currency == "USD") "ConvertToUSD" else "ConvertToCHF"
+  col <- if (base_currency == "USD") "usd_value" else "chf_value"
+  tryCatch({
+    conn <- safe_db_connect()
+    on.exit(DBI::dbDisconnect(conn))
+    DBI::dbGetQuery(conn,
+      sprintf("SELECT %s AS v FROM %s WHERE currency = ? AND date <= ? ORDER BY date DESC LIMIT ?",
+              col, tbl),
+      params = list(currency, as.numeric(format(rate_date, "%Y%m%d")), n))$v
+  }, error = function(e) {
+    logger::log_warn("Recent {currency} rates unavailable: {e$message}", namespace = "Tdata")
+    numeric(0)
+  })
+}
+
+#' Check a CASH row rate against recent stored rates
+#'
+#' The 2026-08-09 06:59 snapshot (a Sunday) stored JPY cash at 195.9632, the
+#' inverted rate, so U25343478 showed a -605M CHF cash row. A rate more than
+#' `max_jump` from the median of the recent stored rates is replaced by that
+#' median, with a warning. With fewer than 3 stored rates the rate is kept.
+#'
+#' @param rate Rate returned by the lookup (base currency per unit)
+#' @param currency Currency code, for the log
+#' @param recent Recent stored rates of the same currency
+#' @param max_jump Largest accepted relative distance to the median
+#' @return The rate to use
+#' @keywords internal
+cash_rate_checked <- function(rate, currency, recent, max_jump = 0.10) {
+  recent <- recent[is.finite(recent) & recent > 0]
+  if (length(recent) < 3) return(rate)
+  ref <- stats::median(recent)
+  if (is.finite(rate) && rate > 0 && abs(rate / ref - 1) <= max_jump) return(rate)
+  logger::log_warn("CASH {currency}: rate {rate} is off the median {ref} of the last {length(recent)} stored rates - median used",
+                   namespace = "Tdata")
+  ref
+}
+
 #' Create CASH portfolio row from currency balance
 #'
 #' @param currency Currency code (e.g., "CHF", "USD", "EUR")
@@ -318,6 +366,8 @@ create_cash_portfolio_row <- function(currency, balance, snapshot_date, snapshot
   # Get current exchange rate using existing function from currency.R
   # Convert 1 unit of currency to base currency
   exchange_rate <- convert_to_base_date(amount = 1, currency = currency, convert_date = rate_date)
+  exchange_rate <- cash_rate_checked(exchange_rate, currency,
+                                     recent_base_rates(currency, rate_date))
 
   # Calculate market value in base currency
   mkt_value <- balance * exchange_rate
