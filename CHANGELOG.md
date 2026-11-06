@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [5.27.1] - 2026-11-06
 
 ### Fixed
 - **CASH row rate guard** (`create_cash_portfolio_row`, new `cash_rate_checked`, `recent_base_rates`). A rate more than 10% from the median of the last 10 stored rates of the currency is replaced by that median, with a warning. Problem: the 2026-08-09 06:59 snapshot (a Sunday) stored JPY cash at 195.9632 (inverted), so U25343478 showed a -605M CHF cash row and U1804173 a -228k CHF one. The 5% guard on FX table writes (5.20.9) protects the table, not the row built from the lookup. Both rows were repaired in the DB on 2026-11-06.
@@ -1562,7 +1562,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Applied to lines 207 and 223
   - Updated for automated CI/CD workflows
 
-## [Unreleased]
+## [5.27.1] - 2026-11-06
 
 ### Housekeeping
 - **Environment sync**: Updated renv from 1.0.11 to 1.1.5 (configured version)
