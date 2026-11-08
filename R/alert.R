@@ -103,10 +103,16 @@ getAllAlerts <- function(active_only = TRUE) {
 #'   \item Gonet weight: \code{{"gonet_weight": "PM_15606539", "weight_lte": 0.09}} and/or
 #'     \code{"weight_gte"}: the symbol's share of the Gonet NLV in the last Gonet snapshot,
 #'     as a fraction.
-#'   \item currency hedge band: \code{{"fx_coverage": "U25343478", "band_min": 0.9, "band_max": 1.1}},
-#'     optional \code{"orphan_max"} (base currency, default 50). Met when, in the last snapshot of
-#'     that IBKR account, a foreign currency's loan / stock market value is outside the band, or a
-#'     currency with no stock carries a cash balance worth more than \code{orphan_max}.
+#'   \item account metric: \code{{"metric": "fx_coverage", "account": "U25343478",
+#'     "outside": [0.9, 1.1]}}. Tests \code{"lte"}, \code{"gte"} (one number) and
+#'     \code{"outside"} (two numbers); several tests in one node must all hold. A metric
+#'     with one value per currency or symbol is met when any value is, unless \code{"key"}
+#'     names one. Metrics (\code{ALERT_METRICS}), read from the account's last snapshot:
+#'     \code{fx_coverage} (per foreign currency: loan / stock market value; a currency with
+#'     no stock whose cash exceeds \code{"orphan_max"}, base, default 50, reads Inf),
+#'     \code{fx_exposure} (per foreign currency: cash + positions, base),
+#'     \code{margin_cushion} (excess liquidity / NLV, from the Account table) and
+#'     \code{weight} (per symbol: market value / NLV). Ratios are fractions.
 #'   \item relative to an index: \code{{"yahoo": "SLHN.SW", "base": 929.6, "index": "^SSMI",
 #'     "index_base": 12500, "beta": 1.47, "rel_lte": -5}}. The stock's return since \code{base}
 #'     minus \code{beta} times the index's return since \code{index_base}, in percentage points;
@@ -272,9 +278,8 @@ getUpcomingAlerts <- function(days_ahead = 1) {
 #'@param today Date used by \code{date_gte} conditions. Default \code{Sys.Date()}.
 #'@param weights Function returning \code{list(w, asof)}, \code{w} the NLV share of each
 #'  symbol of the last Gonet snapshot, or NULL. Default \code{alert_gonet_weights}.
-#'@param coverage Function taking an IBKR account and returning \code{list(cov, asof)},
-#'  \code{cov} one row per foreign currency of its last snapshot, or NULL.
-#'  Default \code{alert_fx_coverage}.
+#'@param metric Function taking a parsed metric node and returning
+#'  \code{list(values, asof, note)} or NULL. Default \code{alert_metric_read}.
 #'@return A data frame of the triggered alerts with an added \code{ConditionDetail}
 #'  column (one clause per condition leaf, e.g. "NUCL.L close 41.5 (20261027) <= 41.9: TRUE"),
 #'  and attribute \code{"unevaluated"} holding the alerts that could not be evaluated.
@@ -285,7 +290,7 @@ getUpcomingAlerts <- function(days_ahead = 1) {
 #'}
 #'@export
 getTriggeredAlerts <- function(fetch = gonet_fetch_yahoo_close, today = Sys.Date(),
-                               weights = alert_gonet_weights, coverage = alert_fx_coverage) {
+                               weights = alert_gonet_weights, metric = alert_metric_read) {
   conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
   alert_ensure_columns(conn)
@@ -320,11 +325,12 @@ getTriggeredAlerts <- function(fetch = gonet_fetch_yahoo_close, today = Sys.Date
     })
   }
 
-  accounts <- unique(unlist(lapply(Filter(Negate(is.null), conds), alert_condition_accounts)))
-  fx <- stats::setNames(lapply(accounts, function(a) tryCatch(coverage(a), error = function(e) {
-    logger::log_warn("Alert condition: currency coverage of {a} not read: {conditionMessage(e)}", namespace = "Tdata")
+  mnodes <- unlist(lapply(Filter(Negate(is.null), conds), alert_condition_metric_nodes), recursive = FALSE)
+  mnodes <- mnodes[!duplicated(vapply(mnodes, alert_metric_id, character(1)))]
+  fx <- stats::setNames(lapply(mnodes, function(m) tryCatch(metric(m), error = function(e) {
+    logger::log_warn("Alert condition: {alert_metric_id(m)} not read: {conditionMessage(e)}", namespace = "Tdata")
     NULL
-  })), accounts)
+  })), vapply(mnodes, alert_metric_id, character(1)))
 
   met <- rep(NA, nrow(alerts))
   for (i in seq_len(nrow(alerts))) {
@@ -398,22 +404,27 @@ alert_condition_check <- function(node) {
     return(invisible(TRUE))
   }
 
-  if ("fx_coverage" %in% keys) {
-    if (!is.character(node$fx_coverage) || length(node$fx_coverage) != 1 ||
-        !grepl("^[A-Za-z0-9_]+$", node$fx_coverage))
-      stop("Alert condition: fx_coverage must be the IBKR account, e.g. U25343478")
-    unknown <- setdiff(keys, c("fx_coverage", "band_min", "band_max", "orphan_max"))
+  if ("metric" %in% keys) {
+    if (!is.character(node$metric) || length(node$metric) != 1 || !node$metric %in% names(ALERT_METRICS))
+      stop(paste("Alert condition: metric must be one of", paste(names(ALERT_METRICS), collapse = ", ")))
+    if (!is.character(node$account) || length(node$account) != 1 || !grepl("^[A-Za-z0-9_]+$", node$account))
+      stop("Alert condition: a metric needs account, e.g. U25343478")
+    unknown <- setdiff(keys, c("metric", "account", "key", "lte", "gte", "outside", ALERT_METRICS[[node$metric]]$args))
     if (length(unknown) > 0)
       stop(paste("Alert condition: unknown key(s)", paste(unknown, collapse = ", ")))
-    for (k in c("band_min", "band_max")) {
-      v <- node[[k]]
-      if (!is.numeric(v) || length(v) != 1 || !is.finite(v) || v <= 0 || v > 3)
-        stop(paste("Alert condition:", k, "must be one coverage ratio, e.g. 0.9"))
-    }
-    if (node$band_min >= node$band_max) stop("Alert condition: band_min must be below band_max")
-    v <- node$orphan_max
-    if (!is.null(v) && (!is.numeric(v) || length(v) != 1 || !is.finite(v) || v < 0))
-      stop("Alert condition: orphan_max must be one non-negative amount")
+    if (!is.null(node$key) && (!is.character(node$key) || length(node$key) != 1 || !nzchar(node$key)))
+      stop("Alert condition: key must be one currency or symbol")
+    tests <- intersect(keys, c("lte", "gte", "outside"))
+    if (length(tests) == 0) stop("Alert condition: a metric needs lte, gte and/or outside")
+    one_num <- function(v) is.numeric(v) && length(v) == 1 && is.finite(v)
+    for (k in setdiff(tests, "outside"))
+      if (!one_num(node[[k]])) stop(paste("Alert condition:", k, "must be one number"))
+    o <- unlist(node$outside)
+    if ("outside" %in% tests && (!is.numeric(o) || length(o) != 2 || any(!is.finite(o)) || o[1] >= o[2]))
+      stop("Alert condition: outside must be [low, high] with low below high")
+    for (k in ALERT_METRICS[[node$metric]]$args)
+      if (!is.null(node[[k]]) && (!one_num(node[[k]]) || node[[k]] < 0))
+        stop(paste("Alert condition:", k, "must be one non-negative number"))
     return(invisible(TRUE))
   }
 
@@ -465,42 +476,115 @@ alert_condition_uses_gonet <- function(node) {
   !is.null(node$gonet_weight)
 }
 
-## IBKR accounts read by the currency-coverage conditions of a parsed condition.
-alert_condition_accounts <- function(node) {
+## Metric leaves of a parsed condition, each as its own node.
+alert_condition_metric_nodes <- function(node) {
   kids <- if (!is.null(node$all_of)) node$all_of else node$any_of
-  if (!is.null(kids)) return(unique(unlist(lapply(kids, alert_condition_accounts))))
-  node$fx_coverage
+  if (!is.null(kids)) return(unlist(lapply(kids, alert_condition_metric_nodes), recursive = FALSE))
+  if (is.null(node$metric)) list() else list(node)
 }
 
-## Currency hedge of an IBKR account in its last portfolio snapshot (table named
-## after the account): list(cov, asof), cov one row per foreign currency with
-## loan (minus the cash balance, native), stock (market value, native),
-## coverage = loan / stock (NA without stock) and cash_base (cash row in base).
-## NULL when there is no snapshot or it is more than 5 days old, so a dead
-## snapshot task shows as "not evaluated" instead of a stale all-clear.
-alert_fx_coverage <- function(account) {
+## What a metric read depends on: one read per id per getTriggeredAlerts run.
+alert_metric_id <- function(node) {
+  args <- ALERT_METRICS[[node$metric]]$args
+  paste(c(node$metric, node$account, vapply(args, function(a) format(node[[a]] %||% NA), character(1))),
+        collapse = "|")
+}
+
+## Reads the metric of a parsed metric node: list(values = named numeric,
+## asof, unit = "ratio" or "base", note = named strings shown next to values)
+## or NULL when the data is missing or more than 5 days old, so a dead snapshot
+## task shows as "not evaluated" instead of a stale all-clear.
+alert_metric_read <- function(node) {
   conn <- safe_db_connect()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  ALERT_METRICS[[node$metric]]$fun(conn, node)
+}
+
+## Last snapshot rows of an account table, with attr asof; NULL when absent or stale.
+alert_snapshot <- function(conn, account) {
   tbl <- DBI::dbQuoteIdentifier(conn, account)
   last <- DBI::dbGetQuery(conn, paste("SELECT date, heure FROM", tbl, "ORDER BY date DESC, heure DESC LIMIT 1"))
-  if (nrow(last) == 0) return(NULL)
-  if (as.numeric(Sys.Date() - as.Date(as.character(last$date), "%Y%m%d")) > 5) return(NULL)
+  if (nrow(last) == 0 || alert_stale(last$date)) return(NULL)
   rows <- DBI::dbGetQuery(conn, paste("SELECT symbol, pos, mktValue, currency, type FROM", tbl,
-                                      "WHERE date = ? AND heure = ?"),
-                          params = list(last$date, last$heure))
+                                      "WHERE date = ? AND heure = ?"), params = list(last$date, last$heure))
+  attr(rows, "asof") <- paste(last$date, last$heure)
+  rows
+}
+
+## Last Account row of an account; NULL when absent or stale.
+alert_account_row <- function(conn, account) {
+  r <- DBI::dbGetQuery(conn, "SELECT date, heure, NetLiquidation, FullExcessLiquidity FROM Account
+                                WHERE account = ? ORDER BY date DESC, heure DESC LIMIT 1", params = list(account))
+  if (nrow(r) == 0 || alert_stale(r$date)) NULL else r
+}
+
+alert_stale <- function(date) as.numeric(Sys.Date() - as.Date(as.character(date), "%Y%m%d")) > 5
+
+## Per foreign currency: loan (minus the cash balance, native) / market value of
+## the positions in that currency. A currency with no position whose cash is
+## worth more than orphan_max (base) reads Inf; below that it is left out.
+## Dividends receivable are not in the snapshot.
+alert_metric_fx_coverage <- function(conn, node) {
+  rows <- alert_snapshot(conn, node$account)
+  if (is.null(rows)) return(NULL)
   base <- getParam("BaseCurrency")
   cash <- rows[rows$type == "CASH" & rows$symbol != base, , drop = FALSE]
-  stk  <- rows[rows$type != "CASH" & rows$currency != base, , drop = FALSE]
-  ccys <- sort(union(cash$symbol, stk$currency))
-  if (length(ccys) == 0) return(list(cov = data.frame(), asof = paste(last$date, last$heure)))
-  stock <- vapply(ccys, function(k) sum(stk$mktValue[stk$currency == k]), numeric(1))
+  pos  <- rows[rows$type != "CASH" & rows$currency != base, , drop = FALSE]
+  ccys <- sort(union(cash$symbol, pos$currency))
+  stock <- vapply(ccys, function(k) sum(pos$mktValue[pos$currency == k]), numeric(1))
   loan  <- vapply(ccys, function(k) -sum(cash$pos[cash$symbol == k]), numeric(1))
   cash_base <- vapply(ccys, function(k) sum(cash$mktValue[cash$symbol == k]), numeric(1))
-  cov <- data.frame(currency = ccys, loan = loan, stock = stock,
-                    coverage = ifelse(stock > 0, loan / stock, NA_real_),
-                    cash_base = cash_base, row.names = NULL, stringsAsFactors = FALSE)
-  list(cov = cov, asof = paste(last$date, last$heure))
+  orphan_max <- node$orphan_max %||% 50
+  keep <- stock > 0 | abs(cash_base) > orphan_max
+  values <- ifelse(stock > 0, loan / stock, Inf)[keep]
+  note <- ifelse(stock > 0, "", sprintf("no position, cash %.0f", cash_base))[keep]
+  list(values = stats::setNames(values, ccys[keep]), asof = attr(rows, "asof"), unit = "ratio",
+       note = stats::setNames(note, ccys[keep]))
 }
+
+## Per foreign currency: cash plus market value of positions in it, in base.
+alert_metric_fx_exposure <- function(conn, node) {
+  rows <- alert_snapshot(conn, node$account)
+  if (is.null(rows)) return(NULL)
+  base <- getParam("BaseCurrency")
+  ccy <- ifelse(rows$type == "CASH", rows$symbol, rows$currency)
+  ## cash rows are already in base, position rows are in their own currency
+  val <- ifelse(rows$type == "CASH", rows$mktValue,
+                convert_to_base_date(rows$mktValue, rows$currency, Sys.Date()))
+  if (any(is.na(val))) return(NULL)
+  agg <- tapply(val, ccy, sum)
+  agg <- agg[names(agg) != base]
+  list(values = stats::setNames(as.numeric(agg), names(agg)), asof = attr(rows, "asof"), unit = "base")
+}
+
+## Excess liquidity / net liquidation value, from the last Account row.
+alert_metric_margin_cushion <- function(conn, node) {
+  r <- alert_account_row(conn, node$account)
+  if (is.null(r) || !is.finite(r$FullExcessLiquidity) || !isTRUE(r$NetLiquidation > 0)) return(NULL)
+  list(values = c(cushion = r$FullExcessLiquidity / r$NetLiquidation), asof = paste(r$date, r$heure),
+       unit = "ratio")
+}
+
+## Per symbol: market value in base / NLV of the last Account row.
+alert_metric_weight <- function(conn, node) {
+  rows <- alert_snapshot(conn, node$account)
+  r <- alert_account_row(conn, node$account)
+  if (is.null(rows) || is.null(r) || !isTRUE(r$NetLiquidation > 0)) return(NULL)
+  rows <- rows[rows$type != "CASH", , drop = FALSE]
+  val <- convert_to_base_date(rows$mktValue, rows$currency, Sys.Date())
+  if (any(is.na(val))) return(NULL)
+  agg <- tapply(val, rows$symbol, sum) / r$NetLiquidation
+  list(values = stats::setNames(as.numeric(agg), names(agg)), asof = attr(rows, "asof"), unit = "ratio")
+}
+
+## Metrics a condition can test: reader and the extra keys it accepts.
+## A new metric is one reader here, no grammar change.
+ALERT_METRICS <- list(
+  fx_coverage    = list(fun = alert_metric_fx_coverage, args = "orphan_max"),
+  fx_exposure    = list(fun = alert_metric_fx_exposure, args = character()),
+  margin_cushion = list(fun = alert_metric_margin_cushion, args = character()),
+  weight         = list(fun = alert_metric_weight, args = character())
+)
 
 ## Share of the Gonet NLV held by each symbol in the last Gonet snapshot:
 ## list(w = named fractions, asof = "date heure"), or NULL when there is no
@@ -520,8 +604,8 @@ alert_gonet_weights <- function() {
 
 ## Evaluates a parsed condition. `closes` is a list named by Yahoo symbol of
 ## list(price, asof), NULL where the fetch failed; `gonet` is the result of
-## alert_gonet_weights (NULL when not read); `fx` a list named by account of
-## alert_fx_coverage results. Returns list(met, detail): met is
+## alert_gonet_weights (NULL when not read); `fx` the
+## metric reads keyed by alert_metric_id. Returns list(met, detail): met is
 ## TRUE, FALSE or NA (not evaluable), detail one string per leaf.
 alert_condition_eval <- function(node, closes, today = Sys.Date(), gonet = NULL, fx = list()) {
   kids <- if (!is.null(node$all_of)) node$all_of else node$any_of
@@ -555,23 +639,32 @@ alert_condition_eval <- function(node, closes, today = Sys.Date(), gonet = NULL,
                                             paste(checks, collapse = " and "), res)))
   }
 
-  if (!is.null(node$fx_coverage)) {
-    a <- node$fx_coverage
-    f <- fx[[a]]
-    if (is.null(f))
-      return(list(met = NA, detail = sprintf("%s currency coverage: no snapshot of the last 5 days", a)))
-    orphan_max <- if (is.null(node$orphan_max)) 50 else node$orphan_max
-    cov <- f$cov
-    out_band <- !is.na(cov$coverage) & (cov$coverage < node$band_min | cov$coverage > node$band_max)
-    orphan <- is.na(cov$coverage) & abs(cov$cash_base) > orphan_max
-    res <- any(out_band | orphan)
-    lines <- ifelse(is.na(cov$coverage),
-                    sprintf("%s no stock, cash %.0f (base)%s", cov$currency, cov$cash_base,
-                            ifelse(orphan, " OUT", "")),
-                    sprintf("%s %.1f%%%s", cov$currency, 100 * cov$coverage, ifelse(out_band, " OUT", "")))
-    return(list(met = res, detail = sprintf("%s coverage (%s), band %.0f-%.0f%%: %s: %s", a, f$asof,
-                                            100 * node$band_min, 100 * node$band_max,
-                                            paste(lines, collapse = ", "), res)))
+  if (!is.null(node$metric)) {
+    m <- fx[[alert_metric_id(node)]]
+    label <- paste(node$account, node$metric)
+    if (is.null(m) || length(m$values) == 0)
+      return(list(met = NA, detail = sprintf("%s: no data of the last 5 days", label)))
+    v <- m$values
+    if (!is.null(node$key)) {
+      if (!node$key %in% names(v))
+        return(list(met = NA, detail = sprintf("%s %s: not in the data (%s)", label, node$key, m$asof)))
+      v <- v[node$key]
+    }
+    hit <- rep(TRUE, length(v)); checks <- character()
+    fmt <- function(x) if (m$unit == "ratio") sprintf("%.1f%%", 100 * x) else format(round(x), big.mark = "'")
+    if (!is.null(node$lte)) { hit <- hit & v <= node$lte; checks <- c(checks, paste("<=", fmt(node$lte))) }
+    if (!is.null(node$gte)) { hit <- hit & v >= node$gte; checks <- c(checks, paste(">=", fmt(node$gte))) }
+    if (!is.null(node$outside)) {
+      o <- unlist(node$outside)
+      hit <- hit & (v < o[1] | v > o[2]); checks <- c(checks, sprintf("outside %s-%s", fmt(o[1]), fmt(o[2])))
+    }
+    res <- any(hit)
+    note <- if (is.null(m$note)) rep("", length(v)) else m$note[names(v)]
+    vals <- ifelse(nzchar(note), paste0(names(v), " ", note),
+                   paste(names(v), vapply(v, fmt, character(1))))
+    vals <- paste0(vals, ifelse(hit, " HIT", ""))
+    return(list(met = res, detail = sprintf("%s (%s) %s: %s: %s", label, m$asof,
+                                            paste(checks, collapse = " and "), paste(vals, collapse = ", "), res)))
   }
 
   q <- closes[[node$yahoo]]

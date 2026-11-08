@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.29.0] - 2026-11-09
+
+### Changed
+- **Generic account-metric condition** replaces the 5.28.0 `fx_coverage` leaf (no alert used it). Leaf `{"metric": <name>, "account": <account>, "key"?: <currency or symbol>, "lte" / "gte" / "outside": [low, high]}`; tests in one node must all hold; a metric with one value per currency or symbol is met when any value hits, unless `key` names one. Registry `ALERT_METRICS` (reader + extra keys): `fx_coverage` (per foreign currency, loan / position value; a currency with no position whose cash exceeds `orphan_max`, default 50 base, reads Inf), `fx_exposure` (per foreign currency, cash + positions in base), `margin_cushion` (FullExcessLiquidity / NetLiquidation of the last Account row), `weight` (per symbol, value in base / NLV). New helpers `alert_metric_read`, `alert_metric_id` (one read per metric and account per run), `alert_snapshot`, `alert_account_row`, `alert_condition_metric_nodes`; `getTriggeredAlerts(coverage =)` becomes `metric =`. Data older than 5 days leaves the alert unevaluated. The e-mail detail lists every value and marks hits HIT. Why: each new kind of check needed a new leaf type, grammar and test; a new metric is now one reader, and new alerts or levels are data only. `gonet_weight` stays as it was.
+
 ## [5.28.0] - 2026-11-08
 
 ### Added

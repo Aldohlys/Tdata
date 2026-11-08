@@ -532,8 +532,9 @@ test_that("alert_gonet_weights converts each line to base and divides by the sna
   expect_equal(sum(g$w), 1)
 })
 
-test_that("alert_fx_coverage reads loan and stock per currency from the last account snapshot", {
-  tmp <- tempfile(fileext = ".db"); withr::defer(unlink(tmp))
+## An Account + U25343478 snapshot DB dated today, for the metric readers.
+local_metric_db <- function(env = parent.frame()) {
+  tmp <- tempfile(fileext = ".db"); withr::defer(unlink(tmp), envir = env)
   conn <- DBI::dbConnect(RSQLite::SQLite(), tmp)
   d <- as.numeric(format(Sys.Date(), "%Y%m%d"))
   DBI::dbWriteTable(conn, "U25343478", data.frame(
@@ -543,36 +544,76 @@ test_that("alert_fx_coverage reads loan and stock per currency from the last acc
     mktValue = c(-1, -1814.73, 2606614.26, 1.73, 480712.32, -18636.43),
     currency = c("CHF", "CHF", "KRW", "CHF", "JPY", "CHF"),
     type = c("CASH", "CASH", "Stock", "CASH", "Stock", "CASH")))
+  DBI::dbWriteTable(conn, "Account", data.frame(
+    account = "U25343478", date = d, heure = "22:01:45",
+    NetLiquidation = 26401.68, FullExcessLiquidity = 5794.97))
   DBI::dbDisconnect(conn)
+  tmp
+}
 
-  with_mocked_bindings(
-    safe_db_connect = mock_connect(tmp), getParam = function(p) "CHF", {
-      f <- alert_fx_coverage("U25343478")
-    })
-  expect_equal(f$cov$currency, c("EUR", "JPY", "KRW"))
-  expect_equal(f$cov$coverage[3], 3034659.21 / 2606614.26)
-  expect_true(is.na(f$cov$coverage[1]))
-  expect_equal(f$cov$cash_base[1], 1.73)
+test_that("metric readers compute coverage, exposure, cushion and weight from the last snapshot", {
+  db <- local_metric_db()
+  rate <- c(KRW = 0.000598, JPY = 0.005147, CHF = 1)
+  read <- function(json) with_mocked_bindings(
+    safe_db_connect = mock_connect(db), getParam = function(p) "CHF",
+    convert_to_base_date = function(x, ccy, d) x * rate[ccy],
+    alert_metric_read(alert_condition_parse(json)))
+
+  cov <- read('{"metric":"fx_coverage","account":"U25343478","outside":[0.9,1.1]}')
+  expect_equal(names(cov$values), c("JPY", "KRW"))          # EUR +1.73: under orphan_max, left out
+  expect_equal(unname(cov$values["KRW"]), 3034659.21 / 2606614.26)
+  cov0 <- read('{"metric":"fx_coverage","account":"U25343478","outside":[0.9,1.1],"orphan_max":1}')
+  expect_equal(unname(cov0$values["EUR"]), Inf)
+
+  exp <- read('{"metric":"fx_exposure","account":"U25343478","lte":0}')
+  expect_equal(unname(exp$values["KRW"]), -1814.73 + 2606614.26 * 0.000598)
+
+  cush <- read('{"metric":"margin_cushion","account":"U25343478","lte":0.25}')
+  expect_equal(unname(cush$values), 5794.97 / 26401.68)
+
+  w <- read('{"metric":"weight","account":"U25343478","key":"9273","gte":0.1}')
+  expect_equal(unname(w$values["9273"]), 480712.32 * 0.005147 / 26401.68)
 })
 
-test_that("fx_coverage conditions are validated and met outside the band or on an orphan balance", {
-  cov <- function(coverage, cash_base = c(1, -100, -200))
-    list(U25343478 = list(asof = "20261108 22:01:47", cov = data.frame(
-      currency = c("EUR", "JPY", "KRW"), coverage = coverage, cash_base = cash_base)))
-  json <- '{"fx_coverage":"U25343478","band_min":0.9,"band_max":1.1}'
-  ev <- function(fx) alert_condition_eval(alert_condition_parse(json), list(), Sys.Date(), NULL, fx)
+test_that("metric conditions are validated and evaluated with lte, gte, outside and key", {
+  m <- list(values = c(JPY = 1.057, KRW = 1.164), asof = "20261108 22:01:47", unit = "ratio")
+  ev <- function(json, read = m) {
+    node <- alert_condition_parse(json)
+    alert_condition_eval(node, list(), Sys.Date(), NULL, stats::setNames(list(read), alert_metric_id(node)))
+  }
+  band <- '{"metric":"fx_coverage","account":"U25343478","outside":[0.9,1.1]}'
+  expect_true(ev(band)$met)
+  expect_match(ev(band)$detail, "KRW 116.4% HIT")
+  expect_false(ev(band, list(values = c(JPY = 1.057, KRW = 1.0), asof = "x", unit = "ratio"))$met)
+  expect_true(ev(band, list(values = c(EUR = Inf), asof = "x", unit = "ratio",
+                            note = c(EUR = "no position, cash -290")))$met)
+  expect_false(ev('{"metric":"fx_coverage","account":"U25343478","key":"JPY","outside":[0.9,1.1]}')$met)
+  expect_true(is.na(ev('{"metric":"fx_coverage","account":"U25343478","key":"CAD","outside":[0.9,1.1]}')$met))
+  expect_true(is.na(ev(band, NULL)$met))
+  expect_true(ev('{"metric":"margin_cushion","account":"U25343478","lte":0.25}',
+                 list(values = c(cushion = 0.219), asof = "x", unit = "ratio"))$met)
 
-  expect_true(ev(cov(c(NA, 1.057, 1.164)))$met)
-  expect_match(ev(cov(c(NA, 1.057, 1.164)))$detail, "KRW 116.4% OUT")
-  expect_false(ev(cov(c(NA, 1.057, 1.0)))$met)
-  expect_true(ev(cov(c(NA, 0.85, 1.0)))$met)
-  ## a currency with no stock left: met only when its cash is worth more than orphan_max
-  expect_true(ev(cov(c(NA, 1, 1), cash_base = c(-290, -100, -200)))$met)
-  expect_true(is.na(ev(list())$met))
+  expect_error(alert_condition_parse('{"metric":"nope","account":"U25343478","lte":1}'), "metric must be")
+  expect_error(alert_condition_parse('{"metric":"weight","account":"U25; DROP","lte":1}'), "account")
+  expect_error(alert_condition_parse('{"metric":"weight","account":"U25343478"}'), "lte, gte")
+  expect_error(alert_condition_parse('{"metric":"weight","account":"U25343478","outside":[1.1,0.9]}'), "low below")
+  expect_error(alert_condition_parse('{"metric":"weight","account":"U25343478","lte":1,"orphan_max":5}'), "unknown")
+})
 
-  expect_error(alert_condition_parse('{"fx_coverage":"U25343478","band_min":1.1,"band_max":0.9}'), "below")
-  expect_error(alert_condition_parse('{"fx_coverage":"U25; DROP","band_min":0.9,"band_max":1.1}'), "account")
-  expect_error(alert_condition_parse('{"fx_coverage":"U25343478","band_min":0.9}'), "band_max")
+test_that("getTriggeredAlerts reads each metric once and fires the alerts whose metric hits", {
+  db <- local_alert_db()
+  seed_condition_alerts(db, list(
+    list(asset = "U25", type = "Condition", cond = '{"metric":"fx_coverage","account":"U25343478","outside":[0.9,1.1]}'),
+    list(asset = "U25", type = "Condition", cond = '{"metric":"fx_coverage","account":"U25343478","key":"JPY","outside":[0.9,1.1]}')))
+  calls <- 0
+  with_mocked_bindings(
+    safe_db_connect = mock_connect(db), {
+      out <- getTriggeredAlerts(fetch = function(s) stop("not called"), weights = function() stop("not called"),
+                                metric = function(node) { calls <<- calls + 1
+                                  list(values = c(JPY = 1.057, KRW = 1.164), asof = "x", unit = "ratio") })
+    })
+  expect_equal(calls, 1)
+  expect_equal(nrow(out), 1)
 })
 
 test_that("relative-to-index condition separates a market fall from a stock-specific lag", {
