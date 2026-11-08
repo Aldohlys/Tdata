@@ -434,7 +434,9 @@ test_that("getTriggeredAlerts returns the alerts whose price condition is met", 
     })
 
   expect_equal(out$Asset, c("NUCL", "SPY"))
-  expect_equal(out$ConditionDetail[1], "NUCL.L close 41.5 (20261026) <= 41.9: TRUE")
+  r <- jsonlite::fromJSON(out$ConditionResult[1], simplifyVector = FALSE)[[1]]
+  expect_equal(r[c("kind", "symbol", "close", "lte", "met")],
+               list(kind = "price", symbol = "NUCL.L", close = 41.5, lte = 41.9, met = TRUE))
   expect_equal(nrow(attr(out, "unevaluated")), 0)
   expect_equal(attr(fetch, "calls")$n, 3)   # one fetch per symbol, inactive rows not read
 })
@@ -453,7 +455,8 @@ test_that("getTriggeredAlerts reports conditions it cannot evaluate instead of d
   expect_equal(nrow(out), 0)
   unev <- attr(out, "unevaluated")
   expect_equal(unev$Asset, c("NUCL", "BAD"))
-  expect_equal(unev$ConditionDetail, c("NUCL.L: no Yahoo close", "invalid Condition JSON"))
+  reasons <- vapply(unev$ConditionResult, function(j) jsonlite::fromJSON(j, simplifyVector = FALSE)[[1]]$reason, "")
+  expect_equal(unname(reasons), c("no_close", "invalid_condition_json"))
 })
 
 test_that("getTriggeredAlerts on a table without condition alerts returns an empty frame", {
@@ -473,8 +476,8 @@ test_that("Gonet weight conditions are validated and evaluated against the snaps
 
   expect_false(ev('{"gonet_weight":"PM_15606539","weight_lte":0.09}')$met)
   expect_true(ev('{"gonet_weight":"PM_15606539","weight_lte":0.11}')$met)
-  expect_equal(ev('{"gonet_weight":"PM_15606539","weight_lte":0.09}')$detail,
-               "Gonet weight PM_15606539 10.5% (20261026 16:52:29) <= 9.0%: FALSE")
+  expect_equal(ev('{"gonet_weight":"PM_15606539","weight_lte":0.09}')$leaves[[1]][c("value", "lte", "asof")],
+               list(value = 0.105, lte = 0.09, asof = "20261026 16:52:29"))
   expect_true(ev('{"gonet_weight":"QQQ","weight_gte":0.09,"weight_lte":0.12}')$met)
   ## symbol missing from the snapshot, or weights not read -> not evaluable
   expect_true(is.na(ev('{"gonet_weight":"XXX","weight_lte":0.09}')$met))
@@ -583,10 +586,16 @@ test_that("metric conditions are validated and evaluated with lte, gte, outside 
   }
   band <- '{"metric":"fx_coverage","account":"U25343478","outside":[0.9,1.1]}'
   expect_true(ev(band)$met)
-  expect_match(ev(band)$detail, "KRW 116.4% HIT")
+  vals <- ev(band)$leaves[[1]]$values
+  expect_equal(vapply(vals, function(x) x$met, TRUE), c(FALSE, TRUE))
+  expect_equal(vals[[2]]$broke, "above")
+  expect_equal(ev(band)$leaves[[1]]$outside, c(0.9, 1.1))
+  orphan <- ev(band, list(values = c(EUR = Inf), asof = "x", unit = "ratio", orphan_cash = c(EUR = -290)))
+  expect_null(orphan$leaves[[1]]$values[[1]]$value)
+  expect_equal(orphan$leaves[[1]]$values[[1]]$orphan_cash, -290)
   expect_false(ev(band, list(values = c(JPY = 1.057, KRW = 1.0), asof = "x", unit = "ratio"))$met)
   expect_true(ev(band, list(values = c(EUR = Inf), asof = "x", unit = "ratio",
-                            note = c(EUR = "no position, cash -290")))$met)
+                            orphan_cash = c(EUR = -290)))$met)
   expect_false(ev('{"metric":"fx_coverage","account":"U25343478","key":"JPY","outside":[0.9,1.1]}')$met)
   expect_true(is.na(ev('{"metric":"fx_coverage","account":"U25343478","key":"CAD","outside":[0.9,1.1]}')$met))
   expect_true(is.na(ev(band, NULL)$met))
@@ -627,7 +636,8 @@ test_that("relative-to-index condition separates a market fall from a stock-spec
   expect_true(ev(79, 900)$met)
   ## market flat, stock -6% -> met
   expect_true(ev(94, 1000)$met)
-  expect_equal(ev(94, 1000)$detail, "SLHN.SW -6.0% vs ^SSMI +0.0% x beta 1.50 = -6.0 pts (<= -5): TRUE")
+  expect_equal(ev(94, 1000)$leaves[[1]][c("stock_ret", "index_ret", "rel", "rel_lte")],
+               list(stock_ret = -6, index_ret = 0, rel = -6, rel_lte = -5))
   ## index missing -> not evaluable
   expect_true(is.na(alert_condition_eval(alert_condition_parse(rel),
                                          list(SLHN.SW = list(price = 94, asof = "x")))$met))

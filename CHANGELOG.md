@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.29.1] - 2026-11-09
+
+### Changed
+- **Condition results returned as data, wording moved to Tuser** (`alert_condition_eval`, `getTriggeredAlerts`). `getTriggeredAlerts()` replaces the `ConditionDetail` text column with `ConditionResult`: a JSON array, one record per condition leaf, with `kind` (price, relative, date, gonet_weight, metric, invalid), `met` (true / false / null = not evaluable), the values read, the limits, the data date and, when not evaluable, a `reason` code (no_close, no_index_close, not_in_snapshot, no_recent_data, key_not_in_data, invalid_condition_json). Metric records list every value with `met` and `broke` (above, below, lte, gte); fx_coverage gives `orphan_cash` and `base_currency` for a currency with no position left instead of a text note. The sentences ("OUTSIDE LIMITS: KRW 116.4% (above 110.0%) ...") are built by `format_condition()` in `Tuser/alert/logic/alertf.R`, used by `scripts/check_alerts.R`. Why: a change of wording in the alert e-mail required a Tdata build and deploy; it is now an edit in Tuser, picked up at the next run.
+
 ## [5.29.0] - 2026-11-09
 
 ### Changed

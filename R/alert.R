@@ -269,7 +269,7 @@ getUpcomingAlerts <- function(days_ahead = 1) {
 #'
 #' A condition that cannot be evaluated (Yahoo returned nothing, invalid JSON) is
 #' neither met nor dropped silently: those alerts are returned in the
-#' \code{"unevaluated"} attribute, with the reason in \code{ConditionDetail}.
+#' \code{"unevaluated"} attribute, with the reason in \code{ConditionResult}.
 #' In \code{all_of}, one leaf that is false makes the node false even when another
 #' could not be evaluated; in \code{any_of}, one true leaf makes it true.
 #'
@@ -279,10 +279,13 @@ getUpcomingAlerts <- function(days_ahead = 1) {
 #'@param weights Function returning \code{list(w, asof)}, \code{w} the NLV share of each
 #'  symbol of the last Gonet snapshot, or NULL. Default \code{alert_gonet_weights}.
 #'@param metric Function taking a parsed metric node and returning
-#'  \code{list(values, asof, note)} or NULL. Default \code{alert_metric_read}.
-#'@return A data frame of the triggered alerts with an added \code{ConditionDetail}
-#'  column (one clause per condition leaf, e.g. "NUCL.L close 41.5 (20261027) <= 41.9: TRUE"),
-#'  and attribute \code{"unevaluated"} holding the alerts that could not be evaluated.
+#'  \code{list(values, asof, unit)} or NULL. Default \code{alert_metric_read}.
+#'@return A data frame of the triggered alerts with an added \code{ConditionResult}
+#'  column: a JSON array, one record per condition leaf, with its kind ("price",
+#'  "relative", "date", "gonet_weight", "metric", "invalid"), \code{met}, the values
+#'  read, the limits and, when not evaluable, a \code{reason} code. Data only: the
+#'  wording is \code{format_condition} in Tuser/alert/logic/alertf.R. Attribute
+#'  \code{"unevaluated"} holds the alerts that could not be evaluated.
 #'@examples
 #'\dontrun{
 #'getTriggeredAlerts()
@@ -298,7 +301,7 @@ getTriggeredAlerts <- function(fetch = gonet_fetch_yahoo_close, today = Sys.Date
   alerts <- DBI::dbGetQuery(conn,
     "SELECT * FROM Alerts WHERE Active = 1 AND TriggerType IN ('Condition', 'Both')
        AND Condition IS NOT NULL ORDER BY id ASC")
-  alerts$ConditionDetail <- rep(NA_character_, nrow(alerts))
+  alerts$ConditionResult <- rep(NA_character_, nrow(alerts))
   if (nrow(alerts) == 0) {
     attr(alerts, "unevaluated") <- alerts
     return(alerts)
@@ -333,20 +336,23 @@ getTriggeredAlerts <- function(fetch = gonet_fetch_yahoo_close, today = Sys.Date
   })), vapply(mnodes, alert_metric_id, character(1)))
 
   met <- rep(NA, nrow(alerts))
+  reason <- rep(NA_character_, nrow(alerts))
   for (i in seq_len(nrow(alerts))) {
-    if (is.null(conds[[i]])) {
-      alerts$ConditionDetail[i] <- "invalid Condition JSON"
-      next
+    leaves <- if (is.null(conds[[i]])) {
+      list(list(met = NA, kind = "invalid", reason = "invalid_condition_json"))
+    } else {
+      ev <- alert_condition_eval(conds[[i]], closes, today, gonet, fx)
+      met[i] <- ev$met
+      ev$leaves
     }
-    ev <- alert_condition_eval(conds[[i]], closes, today, gonet, fx)
-    met[i] <- ev$met
-    alerts$ConditionDetail[i] <- paste(ev$detail, collapse = "; ")
+    alerts$ConditionResult[i] <- as.character(jsonlite::toJSON(leaves, auto_unbox = TRUE, digits = NA,
+                                                               null = "null", na = "null"))
+    reason[i] <- paste(unique(unlist(lapply(leaves, function(l) l$reason))), collapse = ", ")
   }
 
   unevaluated <- alerts[is.na(met), , drop = FALSE]
-  for (i in seq_len(nrow(unevaluated)))
-    logger::log_warn("Alert {unevaluated$id[i]} ({unevaluated$Asset[i]}) not evaluated: {unevaluated$ConditionDetail[i]}",
-                     namespace = "Tdata")
+  for (i in which(is.na(met)))
+    logger::log_warn("Alert {alerts$id[i]} ({alerts$Asset[i]}) not evaluated: {reason[i]}", namespace = "Tdata")
 
   out <- alerts[met %in% TRUE, , drop = FALSE]
   attr(out, "unevaluated") <- unevaluated
@@ -537,9 +543,9 @@ alert_metric_fx_coverage <- function(conn, node) {
   orphan_max <- node$orphan_max %||% 50
   keep <- stock > 0 | abs(cash_base) > orphan_max
   values <- ifelse(stock > 0, loan / stock, Inf)[keep]
-  note <- ifelse(stock > 0, "", sprintf("no position, cash %.0f", cash_base))[keep]
-  list(values = stats::setNames(values, ccys[keep]), asof = attr(rows, "asof"), unit = "ratio",
-       note = stats::setNames(note, ccys[keep]))
+  orphan <- ifelse(stock > 0, NA_real_, cash_base)[keep]
+  list(values = stats::setNames(values, ccys[keep]), asof = attr(rows, "asof"), unit = "ratio", base = base,
+       orphan_cash = stats::setNames(orphan, ccys[keep]))
 }
 
 ## Per foreign currency: cash plus market value of positions in it, in base.
@@ -554,7 +560,8 @@ alert_metric_fx_exposure <- function(conn, node) {
   if (any(is.na(val))) return(NULL)
   agg <- tapply(val, ccy, sum)
   agg <- agg[names(agg) != base]
-  list(values = stats::setNames(as.numeric(agg), names(agg)), asof = attr(rows, "asof"), unit = "base")
+  list(values = stats::setNames(as.numeric(agg), names(agg)), asof = attr(rows, "asof"), unit = "base",
+       base = base)
 }
 
 ## Excess liquidity / net liquidation value, from the last Account row.
@@ -604,9 +611,10 @@ alert_gonet_weights <- function() {
 
 ## Evaluates a parsed condition. `closes` is a list named by Yahoo symbol of
 ## list(price, asof), NULL where the fetch failed; `gonet` is the result of
-## alert_gonet_weights (NULL when not read); `fx` the
-## metric reads keyed by alert_metric_id. Returns list(met, detail): met is
-## TRUE, FALSE or NA (not evaluable), detail one string per leaf.
+## alert_gonet_weights (NULL when not read); `fx` the metric reads keyed by
+## alert_metric_id. Returns list(met, leaves): met is TRUE, FALSE or NA (not
+## evaluable); leaves one record per leaf with the values, limits and outcome,
+## as data. Wording is left to the reader (Tuser/alert/logic/alertf.R).
 alert_condition_eval <- function(node, closes, today = Sys.Date(), gonet = NULL, fx = list()) {
   kids <- if (!is.null(node$all_of)) node$all_of else node$any_of
   if (!is.null(kids)) {
@@ -614,83 +622,73 @@ alert_condition_eval <- function(node, closes, today = Sys.Date(), gonet = NULL,
     met <- vapply(ev, function(e) e$met, logical(1))
     ## all()/any() on TRUE/FALSE/NA give the three-valued result wanted here.
     res <- if (!is.null(node$all_of)) all(met) else any(met)
-    return(list(met = res, detail = unlist(lapply(ev, function(e) e$detail))))
+    return(list(met = res, leaves = unlist(lapply(ev, function(e) e$leaves), recursive = FALSE)))
   }
+  leaf <- function(met, ...) list(met = met, leaves = list(c(list(met = met), list(...))))
 
   if (!is.null(node$date_gte)) {
-    d   <- as.Date(node$date_gte)
-    res <- as.Date(today) >= d
-    return(list(met = res, detail = sprintf("date %s >= %s: %s", as.Date(today), d, res)))
+    d <- as.Date(node$date_gte)
+    return(leaf(as.Date(today) >= d, kind = "date", today = as.character(as.Date(today)),
+                date_gte = as.character(d)))
   }
 
   if (!is.null(node$gonet_weight)) {
     s <- node$gonet_weight
     w <- if (is.null(gonet)) NA_real_ else unname(gonet$w[s])
     if (length(w) != 1 || is.na(w))
-      return(list(met = NA, detail = sprintf("Gonet weight %s: not in the last snapshot", s)))
-    checks <- character(); res <- TRUE
-    if (!is.null(node$weight_lte)) {
-      checks <- c(checks, sprintf("<= %.1f%%", 100 * node$weight_lte)); res <- res && w <= node$weight_lte
-    }
-    if (!is.null(node$weight_gte)) {
-      checks <- c(checks, sprintf(">= %.1f%%", 100 * node$weight_gte)); res <- res && w >= node$weight_gte
-    }
-    return(list(met = res, detail = sprintf("Gonet weight %s %.1f%% (%s) %s: %s", s, 100 * w, gonet$asof,
-                                            paste(checks, collapse = " and "), res)))
+      return(leaf(NA, kind = "gonet_weight", symbol = s, reason = "not_in_snapshot"))
+    res <- (is.null(node$weight_lte) || w <= node$weight_lte) && (is.null(node$weight_gte) || w >= node$weight_gte)
+    return(leaf(res, kind = "gonet_weight", symbol = s, value = w, asof = gonet$asof,
+                lte = node$weight_lte, gte = node$weight_gte))
   }
 
   if (!is.null(node$metric)) {
     m <- fx[[alert_metric_id(node)]]
-    label <- paste(node$account, node$metric)
+    base <- list(kind = "metric", metric = node$metric, account = node$account, lte = node$lte,
+                 gte = node$gte, outside = unlist(node$outside))
     if (is.null(m) || length(m$values) == 0)
-      return(list(met = NA, detail = sprintf("%s: no data of the last 5 days", label)))
+      return(do.call(leaf, c(list(NA), base, list(reason = "no_recent_data"))))
     v <- m$values
     if (!is.null(node$key)) {
       if (!node$key %in% names(v))
-        return(list(met = NA, detail = sprintf("%s %s: not in the data (%s)", label, node$key, m$asof)))
+        return(do.call(leaf, c(list(NA), base, list(key = node$key, asof = m$asof, reason = "key_not_in_data"))))
       v <- v[node$key]
     }
-    hit <- rep(TRUE, length(v)); checks <- character()
-    fmt <- function(x) if (m$unit == "ratio") sprintf("%.1f%%", 100 * x) else format(round(x), big.mark = "'")
-    if (!is.null(node$lte)) { hit <- hit & v <= node$lte; checks <- c(checks, paste("<=", fmt(node$lte))) }
-    if (!is.null(node$gte)) { hit <- hit & v >= node$gte; checks <- c(checks, paste(">=", fmt(node$gte))) }
-    if (!is.null(node$outside)) {
-      o <- unlist(node$outside)
-      hit <- hit & (v < o[1] | v > o[2]); checks <- c(checks, sprintf("outside %s-%s", fmt(o[1]), fmt(o[2])))
-    }
-    res <- any(hit)
-    note <- if (is.null(m$note)) rep("", length(v)) else m$note[names(v)]
-    vals <- ifelse(nzchar(note), paste0(names(v), " ", note),
-                   paste(names(v), vapply(v, fmt, character(1))))
-    vals <- paste0(vals, ifelse(hit, " HIT", ""))
-    return(list(met = res, detail = sprintf("%s (%s) %s: %s: %s", label, m$asof,
-                                            paste(checks, collapse = " and "), paste(vals, collapse = ", "), res)))
+    o <- unlist(node$outside)
+    above <- if (is.null(o)) rep(FALSE, length(v)) else v > o[2]
+    below <- if (is.null(o)) rep(FALSE, length(v)) else v < o[1]
+    at_lte <- if (is.null(node$lte)) rep(NA, length(v)) else v <= node$lte
+    at_gte <- if (is.null(node$gte)) rep(NA, length(v)) else v >= node$gte
+    hit <- (is.na(at_lte) | at_lte) & (is.na(at_gte) | at_gte) & (is.null(o) | above | below)
+    orphan <- if (is.null(m$orphan_cash)) rep(NA_real_, length(v)) else unname(m$orphan_cash[names(v)])
+    values <- lapply(seq_along(v), function(i) {
+      broke <- c(if (above[i]) "above", if (below[i]) "below",
+                 if (isTRUE(at_lte[i])) "lte", if (isTRUE(at_gte[i])) "gte")
+      list(name = names(v)[i], value = if (is.finite(v[i])) unname(v[i]) else NULL,
+           orphan_cash = if (is.na(orphan[i])) NULL else orphan[i], met = hit[i],
+           broke = if (hit[i]) broke else character())
+    })
+    return(do.call(leaf, c(list(any(hit)), base, list(unit = m$unit, base_currency = m$base, asof = m$asof,
+                                                       values = values))))
   }
 
   q <- closes[[node$yahoo]]
   if (is.null(q) || length(q$price) != 1 || !is.finite(q$price))
-    return(list(met = NA, detail = sprintf("%s: no Yahoo close", node$yahoo)))
+    return(leaf(NA, kind = "price", symbol = node$yahoo, reason = "no_close"))
 
   if (!is.null(node$index)) {
     iq <- closes[[node$index]]
     if (is.null(iq) || length(iq$price) != 1 || !is.finite(iq$price))
-      return(list(met = NA, detail = sprintf("%s: no Yahoo close", node$index)))
+      return(leaf(NA, kind = "relative", symbol = node$yahoo, index = node$index, reason = "no_index_close"))
     beta <- if (is.null(node$beta)) 1 else node$beta
     s_ret <- 100 * (q$price / node$base - 1)
     i_ret <- 100 * (iq$price / node$index_base - 1)
     rel <- s_ret - beta * i_ret
-    res <- rel <= node$rel_lte
-    return(list(met = res, detail = sprintf(
-      "%s %+.1f%% vs %s %+.1f%% x beta %.2f = %+.1f pts (<= %s): %s",
-      node$yahoo, s_ret, node$index, i_ret, beta, rel, node$rel_lte, res)))
+    return(leaf(rel <= node$rel_lte, kind = "relative", symbol = node$yahoo, stock_ret = s_ret,
+                index = node$index, index_ret = i_ret, beta = beta, rel = rel, rel_lte = node$rel_lte,
+                asof = q$asof))
   }
-  checks <- character(); res <- TRUE
-  if (!is.null(node$close_lte)) {
-    checks <- c(checks, sprintf("<= %s", node$close_lte)); res <- res && q$price <= node$close_lte
-  }
-  if (!is.null(node$close_gte)) {
-    checks <- c(checks, sprintf(">= %s", node$close_gte)); res <- res && q$price >= node$close_gte
-  }
-  list(met = res, detail = sprintf("%s close %s (%s) %s: %s", node$yahoo, q$price, q$asof,
-                                   paste(checks, collapse = " and "), res))
+  res <- (is.null(node$close_lte) || q$price <= node$close_lte) && (is.null(node$close_gte) || q$price >= node$close_gte)
+  leaf(res, kind = "price", symbol = node$yahoo, close = q$price, asof = q$asof,
+       lte = node$close_lte, gte = node$close_gte)
 }
