@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.28.0] - 2026-11-08
+
+### Added
+- **Currency hedge band condition** (`alert_condition_check`, `alert_condition_eval`, new `alert_fx_coverage`, `alert_condition_accounts`; `getTriggeredAlerts` gains `coverage`). Leaf `{"fx_coverage":"U25343478","band_min":0.9,"band_max":1.1}`, optional `orphan_max` (base, default 50): met when, in the account's last portfolio snapshot, a foreign currency's loan (minus its cash balance) / stock market value in that currency is outside the band, or a currency with no stock left carries cash worth more than `orphan_max`. The detail lists every currency with its coverage and marks the breaches OUT. A snapshot older than 5 days leaves the alert unevaluated. Dividends receivable are not in the snapshot, so a currency about to receive one reads slightly over-hedged (JPY 106.7% vs 105.7% in TWS, 08.11). Problem: the U25xx account currency hedge (rule agreed 31.10, rebalance outside 90-110%) was only checked by hand at the weekly review; KRW sat at 116.4% and a EUR loan stayed open after the EUR stock was sold.
+
 ## [5.27.1] - 2026-11-06
 
 ### Fixed

@@ -532,6 +532,49 @@ test_that("alert_gonet_weights converts each line to base and divides by the sna
   expect_equal(sum(g$w), 1)
 })
 
+test_that("alert_fx_coverage reads loan and stock per currency from the last account snapshot", {
+  tmp <- tempfile(fileext = ".db"); withr::defer(unlink(tmp))
+  conn <- DBI::dbConnect(RSQLite::SQLite(), tmp)
+  d <- as.numeric(format(Sys.Date(), "%Y%m%d"))
+  DBI::dbWriteTable(conn, "U25343478", data.frame(
+    date = c(d - 1, d, d, d, d, d), heure = c("22:00:00", rep("22:01:47", 5)),
+    symbol = c("KRW", "KRW", "192440", "EUR", "9273", "JPY"),
+    pos = c(-1, -3034659.21, 100, 1.9, 600, -3620832.8),
+    mktValue = c(-1, -1814.73, 2606614.26, 1.73, 480712.32, -18636.43),
+    currency = c("CHF", "CHF", "KRW", "CHF", "JPY", "CHF"),
+    type = c("CASH", "CASH", "Stock", "CASH", "Stock", "CASH")))
+  DBI::dbDisconnect(conn)
+
+  with_mocked_bindings(
+    safe_db_connect = mock_connect(tmp), getParam = function(p) "CHF", {
+      f <- alert_fx_coverage("U25343478")
+    })
+  expect_equal(f$cov$currency, c("EUR", "JPY", "KRW"))
+  expect_equal(f$cov$coverage[3], 3034659.21 / 2606614.26)
+  expect_true(is.na(f$cov$coverage[1]))
+  expect_equal(f$cov$cash_base[1], 1.73)
+})
+
+test_that("fx_coverage conditions are validated and met outside the band or on an orphan balance", {
+  cov <- function(coverage, cash_base = c(1, -100, -200))
+    list(U25343478 = list(asof = "20261108 22:01:47", cov = data.frame(
+      currency = c("EUR", "JPY", "KRW"), coverage = coverage, cash_base = cash_base)))
+  json <- '{"fx_coverage":"U25343478","band_min":0.9,"band_max":1.1}'
+  ev <- function(fx) alert_condition_eval(alert_condition_parse(json), list(), Sys.Date(), NULL, fx)
+
+  expect_true(ev(cov(c(NA, 1.057, 1.164)))$met)
+  expect_match(ev(cov(c(NA, 1.057, 1.164)))$detail, "KRW 116.4% OUT")
+  expect_false(ev(cov(c(NA, 1.057, 1.0)))$met)
+  expect_true(ev(cov(c(NA, 0.85, 1.0)))$met)
+  ## a currency with no stock left: met only when its cash is worth more than orphan_max
+  expect_true(ev(cov(c(NA, 1, 1), cash_base = c(-290, -100, -200)))$met)
+  expect_true(is.na(ev(list())$met))
+
+  expect_error(alert_condition_parse('{"fx_coverage":"U25343478","band_min":1.1,"band_max":0.9}'), "below")
+  expect_error(alert_condition_parse('{"fx_coverage":"U25; DROP","band_min":0.9,"band_max":1.1}'), "account")
+  expect_error(alert_condition_parse('{"fx_coverage":"U25343478","band_min":0.9}'), "band_max")
+})
+
 test_that("relative-to-index condition separates a market fall from a stock-specific lag", {
   rel <- '{"yahoo":"SLHN.SW","base":100,"index":"^SSMI","index_base":1000,"beta":1.5,"rel_lte":-5}'
   ev <- function(s, i) alert_condition_eval(alert_condition_parse(rel),
