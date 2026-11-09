@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.29.1] - 2026-11-09
+## [5.30.0] - 2026-11-09
+
+### Added
+- **Stored order book** (`storeOpenOrders`, `readStoredOrders`, R/orders.R). Every successful TWS read in `getOpenOrders()` replaces that account's rows in two new tables, created on first write: `OpenOrders` (the `getOpenOrders()` columns, one row per order or combo leg) and `OpenOrdersRead` (account, read_at, n_orders; one row per account, so "read, no orders" differs from "never read"). An empty read clears cancelled and filled orders. A failed store is logged and never fails the read. Agreed with the user 2026-11-09 (two tables).
+
+### Changed
+- **`getOpenOrders(account, use_stored = TRUE)`** — when TWS cannot be asked for `account` (down, or a paper account under a live login: DU5221795 since 30.10), returns the last stored read: attributes `orders_source = "db"`, `read_at`; `tws_available` stays FALSE. New attribute `orders_source` ("tws", "db", "none") on every result. With `account = NULL` (all accounts, as `scripts/sync_stop_risk.R` calls it) there is no fallback, so Trades.Risk is never synced from stored orders.
+- **`getTradeOrderCoverage()`** — passes `orders_source` and `read_at` through; rows from a stored book get " (stored dd.mm HH:MM)" appended to State.
 
 ### Changed
 - **Condition results returned as data, wording moved to Tuser** (`alert_condition_eval`, `getTriggeredAlerts`). `getTriggeredAlerts()` replaces the `ConditionDetail` text column with `ConditionResult`: a JSON array, one record per condition leaf, with `kind` (price, relative, date, gonet_weight, metric, invalid), `met` (true / false / null = not evaluable), the values read, the limits, the data date and, when not evaluable, a `reason` code (no_close, no_index_close, not_in_snapshot, no_recent_data, key_not_in_data, invalid_condition_json). Metric records list every value with `met` and `broke` (above, below, lte, gte); fx_coverage gives `orphan_cash` and `base_currency` for a currency with no position left instead of a text note. The sentences ("OUTSIDE LIMITS: KRW 116.4% (above 110.0%) ...") are built by `format_condition()` in `Tuser/alert/logic/alertf.R`, used by `scripts/check_alerts.R`. Why: a change of wording in the alert e-mail required a Tdata build and deploy; it is now an edit in Tuser, picked up at the next run.

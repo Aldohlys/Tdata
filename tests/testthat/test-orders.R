@@ -33,6 +33,13 @@ order_row <- function(symbol, instrument, account = "U1804173", secType = "OPT",
 
 no_orders <- function() order_row("X", "X")[0, ]
 
+### getOpenOrders stores every successful read (storeOpenOrders): point the whole
+### file at a throwaway SQLite file so no test ever writes mydb.db.
+orders_db <- tempfile(fileext = ".db")
+withr::defer(unlink(orders_db), envir = teardown_env())
+local_mocked_bindings(
+  safe_db_connect = function(...) DBI::dbConnect(RSQLite::SQLite(), orders_db))
+
 
 test_that("a held position with a matching order is reported as covered", {
   positions <- position_row(742, "KO", "KO 18SEP26 90 C", 1, expdate = 20260918L)
@@ -379,4 +386,108 @@ test_that("an unrecognised status is passed through unchanged", {
   cv <- buildTradeOrderCoverage(positions, orders)
 
   expect_equal(cv$State, "PendingCancel")
+})
+
+
+### --- Stored order book (storeOpenOrders / readStoredOrders) ----------------
+
+### Raw TWS rows as getOpenOrderQuery returns them: a STP + LMT bracket.
+raw_bracket <- function(account = "DU5221795") {
+  data.frame(
+    account = account, permId = c(11, 12), orderId = 0, parentId = 0,
+    ocaGroup = "oca1", isCombo = FALSE, legCount = 1,
+    legIndex = NaN, legRatio = NaN, legAction = NA_character_,
+    secType = "STK", symbol = "NUE", localSymbol = "NUE",
+    tradingClass = NA_character_, expiry = NA_character_,
+    strike = NaN, right = NA_character_, multiplier = NaN,
+    currency = "USD", exchange = "SMART",
+    action = "BUY", quantity = 72,
+    orderType = c("STP", "LMT"), algoStrategy = NA_character_,
+    lmtPrice = c(0, 235.40), auxPrice = c(253.88, 0), trailStopPrice = NaN,
+    tif = "GTC", status = c("PreSubmitted", "Submitted"), whyHeld = c("trigger", NA),
+    filled = 0, remaining = 72, stringsAsFactors = FALSE)
+}
+
+test_that("an account TWS cannot see falls back to its last stored read", {
+  with_mocked_bindings(getOpenOrderQuery = function(account) raw_bracket(), {
+    live <- getOpenOrders("DU5221795")
+    expect_identical(attr(live, "orders_source"), "tws")
+  })
+  with_mocked_bindings(getOpenOrderQuery = function(account) NULL, {
+    stored <- getOpenOrders("DU5221795")
+
+    expect_equal(nrow(stored), 2)
+    expect_identical(attr(stored, "orders_source"), "db")
+    expect_false(attr(stored, "tws_available"))
+    expect_s3_class(attr(stored, "read_at"), "POSIXct")
+    expect_equal(stored$price, c(253.88, 235.40))
+    expect_identical(names(stored), names(emptyOpenOrders()))
+  })
+})
+
+test_that("an empty read replaces the stored book: cancelled orders do not come back", {
+  with_mocked_bindings(getOpenOrderQuery = function(account) raw_bracket(), {
+    getOpenOrders("DU5221795")
+  })
+  with_mocked_bindings(getOpenOrderQuery = function(account) raw_bracket()[0, ], {
+    getOpenOrders("DU5221795")
+  })
+  with_mocked_bindings(getOpenOrderQuery = function(account) NULL, {
+    stored <- getOpenOrders("DU5221795")
+
+    ### Read, no orders - not "never read"
+    expect_equal(nrow(stored), 0)
+    expect_identical(attr(stored, "orders_source"), "db")
+  })
+})
+
+test_that("an account never read stays 'not read', and use_stored = FALSE skips the store", {
+  with_mocked_bindings(getOpenOrderQuery = function(account) NULL, {
+    expect_identical(attr(getOpenOrders("U0000000"), "orders_source"), "none")
+
+    getOpenOrders("DU5221795")   # make sure something is stored for it
+    expect_identical(attr(getOpenOrders("DU5221795", use_stored = FALSE), "orders_source"),
+                     "none")
+  })
+})
+
+test_that("a read of one account leaves another account's stored book alone", {
+  with_mocked_bindings(getOpenOrderQuery = function(account) raw_bracket(account), {
+    getOpenOrders("DU5221795")
+    getOpenOrders("U1804173")
+  })
+  with_mocked_bindings(getOpenOrderQuery = function(account) raw_bracket(account)[0, ], {
+    getOpenOrders("U1804173")
+  })
+  with_mocked_bindings(getOpenOrderQuery = function(account) NULL, {
+    expect_equal(nrow(getOpenOrders("DU5221795")), 2)
+    expect_equal(nrow(getOpenOrders("U1804173")), 0)
+  })
+})
+
+test_that("coverage from a stored book carries its source and read time on each order row", {
+  with_mocked_bindings(getOpenOrderQuery = function(account) raw_bracket(), {
+    getOpenOrders("DU5221795")
+  })
+  with_mocked_bindings(
+    getOpenOrderQuery = function(account) NULL,
+    getLatestPositions = function(account)
+      position_row(777, "NUE", "NUCOR CORP", -72, type = "STK"),
+    getActiveTrades = function(account) trade_row(777, "NUE", "NUCOR CORP"), {
+      cv <- getTradeOrderCoverage("DU5221795")
+
+      expect_identical(attr(cv, "orders_source"), "db")
+      expect_equal(sum(cv$Flag == "NO ORDER"), 0)
+      expect_true(all(grepl("[(]stored [0-9]{2}[.][0-9]{2} [0-9]{2}:[0-9]{2}[)]$", cv$State)))
+    })
+})
+
+test_that("a failed store never fails the read", {
+  with_mocked_bindings(
+    getOpenOrderQuery = function(account) raw_bracket(),
+    safe_db_connect = function(...) stop("database is locked"), {
+      orders <- getOpenOrders("DU5221795")
+      expect_equal(nrow(orders), 2)
+      expect_identical(attr(orders, "orders_source"), "tws")
+    })
 })

@@ -59,10 +59,15 @@ getOpenOrderQuery <- function(account) {
 #' displaying coverage must distinguish the two - "no resting orders" and "could
 #' not ask" look identical otherwise.
 #'
+#' Every successful read is stored (\code{storeOpenOrders}). When TWS cannot be
+#' asked for \code{account}, the last stored read is returned instead:
+#' \code{orders_source = "db"}, \code{read_at} = when it was read.
+#'
 #' Note \code{orderId} is 0 for orders placed from TWS itself or another API
 #' client; \code{permId} is the only stable order identifier.
 #'@param account string, IBKR account code. NULL (default) returns every account
-#' visible to the TWS session.
+#' visible to the TWS session (no stored fallback).
+#'@param use_stored logical, fall back to the stored read when TWS cannot be asked
 #'@returns a data frame of open orders (see \code{emptyOpenOrders} for the
 #' columns), with \code{price} holding the order's operative price (stop trigger
 #' for STP/TRAIL, limit for LMT) and \code{instrument} the IBKR-format contract
@@ -73,18 +78,30 @@ getOpenOrderQuery <- function(account) {
 #'getOpenOrders("U1804173")
 #'}
 #'@export
-getOpenOrders <- function(account = NULL) {
+getOpenOrders <- function(account = NULL, use_stored = TRUE) {
   orders <- getOpenOrderQuery(account)
 
   if (is.null(orders)) {
+    ### TWS could not be asked for this account: down, or a paper account under
+    ### a live login. Fall back to the last read stored for it (storeOpenOrders).
+    if (use_stored && !is.null(account)) {
+      stored <- readStoredOrders(account)
+      if (!is.null(stored)) return(stored)
+    }
     empty <- emptyOpenOrders()
     attr(empty, "tws_available") <- FALSE
+    attr(empty, "orders_source") <- "none"
     return(empty)
   }
 
   if (nrow(orders) == 0) {
     empty <- emptyOpenOrders()
     attr(empty, "tws_available") <- TRUE
+    attr(empty, "orders_source") <- "tws"
+    attr(empty, "read_at") <- Sys.time()
+    ### An account with no resting order is stored too: it clears the orders
+    ### cancelled or filled since its last read.
+    if (!is.null(account)) storeOpenOrders(empty, account)
     return(empty)
   }
 
@@ -118,7 +135,102 @@ getOpenOrders <- function(account = NULL) {
 
   orders <- orders[, names(emptyOpenOrders())]
   attr(orders, "tws_available") <- TRUE
+  attr(orders, "orders_source") <- "tws"
+  attr(orders, "read_at") <- Sys.time()
+  storeOpenOrders(orders, account)
   orders
+}
+
+### Stored order book: one read per account, replaced by every successful TWS
+### read of that account. Lets the order book of an account TWS cannot see right
+### now (DU5221795 under a live login) still be shown, with its age.
+OPEN_ORDERS_DDL <- c(
+  "CREATE TABLE IF NOT EXISTS OpenOrders (
+     account TEXT NOT NULL, permId INTEGER, orderId INTEGER, parentId INTEGER,
+     ocaGroup TEXT, isCombo INTEGER, legCount INTEGER, legIndex INTEGER,
+     legRatio REAL, legAction TEXT, secType TEXT, symbol TEXT, localSymbol TEXT,
+     tradingClass TEXT, expiry TEXT, strike REAL, right TEXT, multiplier REAL,
+     currency TEXT, exchange TEXT, action TEXT, quantity REAL, orderType TEXT,
+     algoStrategy TEXT, lmtPrice REAL, auxPrice REAL, trailStopPrice REAL,
+     price REAL, instrument TEXT, tif TEXT, status TEXT, whyHeld TEXT,
+     filled REAL, remaining REAL)",
+  "CREATE INDEX IF NOT EXISTS idx_OpenOrders_account ON OpenOrders(account)",
+  ### One row per account read, so 'read, no orders' differs from 'never read'.
+  "CREATE TABLE IF NOT EXISTS OpenOrdersRead (
+     account TEXT PRIMARY KEY, read_at TEXT NOT NULL, n_orders INTEGER NOT NULL)")
+
+
+#' storeOpenOrders
+#'
+#' Replaces the stored order book of each account in \code{orders} (and of
+#' \code{account}, even with no order) by this read. Called by
+#' \code{getOpenOrders} after every successful TWS read; a failure is logged and
+#' never fails the read.
+#'@param orders data frame as \code{getOpenOrders} returns
+#'@param account string or NULL; when given, stored even if it has no order
+#'@returns invisible number of accounts stored
+#'@keywords internal
+storeOpenOrders <- function(orders, account = NULL) {
+  accounts <- unique(c(account, orders$account))
+  if (length(accounts) == 0) return(invisible(0L))
+  read_at <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  rows <- orders
+  rows$expiryDate <- NULL
+  rows$isCombo <- as.integer(rows$isCombo)
+  tryCatch({
+    conn <- safe_db_connect()
+    on.exit(DBI::dbDisconnect(conn), add = TRUE)
+    for (ddl in OPEN_ORDERS_DDL) DBI::dbExecute(conn, ddl)
+    DBI::dbWithTransaction(conn, {
+      for (acc in accounts) {
+        DBI::dbExecute(conn, "DELETE FROM OpenOrders WHERE account = ?", params = list(acc))
+        acc_rows <- rows[rows$account %in% acc, , drop = FALSE]
+        if (nrow(acc_rows)) DBI::dbAppendTable(conn, "OpenOrders", acc_rows)
+        DBI::dbExecute(conn,
+          "INSERT OR REPLACE INTO OpenOrdersRead (account, read_at, n_orders) VALUES (?, ?, ?)",
+          params = list(acc, read_at, nrow(acc_rows)))
+      }
+    })
+    invisible(length(accounts))
+  }, error = function(e) {
+    logger::log_warn("storeOpenOrders failed: {e$message}", namespace = "Tdata")
+    invisible(0L)
+  })
+}
+
+
+#' readStoredOrders
+#'
+#' The last stored order book of an account (see \code{storeOpenOrders}).
+#'@param account string, IBKR account code
+#'@returns NULL when the account was never read; otherwise a data frame shaped
+#' as \code{getOpenOrders}, with attributes \code{tws_available = FALSE},
+#' \code{orders_source = "db"} and \code{read_at} (POSIXct)
+#'@export
+readStoredOrders <- function(account) {
+  tryCatch({
+    conn <- safe_db_connect()
+    on.exit(DBI::dbDisconnect(conn), add = TRUE)
+    if (!DBI::dbExistsTable(conn, "OpenOrdersRead")) return(NULL)
+    read <- DBI::dbGetQuery(conn, "SELECT read_at FROM OpenOrdersRead WHERE account = ?",
+                            params = list(account))
+    if (nrow(read) == 0) return(NULL)
+    rows <- DBI::dbGetQuery(conn, "SELECT * FROM OpenOrders WHERE account = ?",
+                            params = list(account))
+    out <- emptyOpenOrders()
+    if (nrow(rows)) {
+      rows$isCombo <- as.logical(rows$isCombo)
+      rows$expiryDate <- as.Date(rows$expiry, format = "%Y%m%d")
+      out <- dplyr::bind_rows(out, rows)[, names(emptyOpenOrders())]
+    }
+    attr(out, "tws_available") <- FALSE
+    attr(out, "orders_source") <- "db"
+    attr(out, "read_at") <- as.POSIXct(read$read_at[1], format = "%Y-%m-%d %H:%M:%S")
+    out
+  }, error = function(e) {
+    logger::log_warn("readStoredOrders failed: {e$message}", namespace = "Tdata")
+    NULL
+  })
 }
 
 
@@ -448,6 +560,13 @@ getTradeOrderCoverage <- function(account) {
   orders <- getOpenOrders(account)
   coverage <- buildTradeOrderCoverage(
     getLatestPositions(account), orders, getActiveTrades(account), account)
-  attr(coverage, "tws_available") <- attr(orders, "tws_available")
+  for (a in c("tws_available", "orders_source", "read_at")) attr(coverage, a) <- attr(orders, a)
+  ### Orders from the stored book carry their read time on every row, so a
+  ### merged view (Live: one account live, one stored) tells them apart.
+  if (identical(attr(orders, "orders_source"), "db")) {
+    with_order <- !is.na(coverage$State)
+    coverage$State[with_order] <- paste0(coverage$State[with_order], " (stored ",
+                                         format(attr(orders, "read_at"), "%d.%m %H:%M"), ")")
+  }
   coverage
 }
