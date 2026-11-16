@@ -83,7 +83,11 @@ atr_pct <- function(sym, n = 14, lookback_years = 2) {
 #' @param n ATR window (default 14)
 #' @param lookback_years history to fetch (default 8)
 #' @param spot optional live spot to project around; defaults to last close
-#' @return list(sym, spot, horizon_sessions, atr_pct, n_obs, standardized) or NULL
+#' @return list(sym, spot, horizon_sessions, atr_pct, n_obs, standardized, raw,
+#'   date, atr_pct_t) or NULL. \code{standardized}, \code{raw}, \code{date}
+#'   and \code{atr_pct_t} are aligned, one element per window, oldest first:
+#'   \code{date} is the window's start day, \code{atr_pct_t} the ATR\% (in
+#'   percent) on that day, \code{raw} the signed N-session move (fraction).
 #' @export
 atr_move_distribution <- function(sym, horizon_sessions, n = 14,
                                   lookback_years = 8, spot = NULL) {
@@ -114,6 +118,10 @@ atr_move_distribution <- function(sym, horizon_sessions, n = 14,
   ok <- is.finite(standardized_all)
   standardized <- standardized_all[ok]
   raw <- fwd[ok]
+  # Per-window start day and its ATR% - lets a caller plot each move against
+  # the volatility it started from
+  win_date <- ohlc$date[ok]
+  win_atr_pct <- atr_pct_series[ok] * 100
 
   cur_atr_pct <- utils::tail(atr_pct_series[is.finite(atr_pct_series)], 1)
   last_close <- utils::tail(close, 1)
@@ -124,7 +132,9 @@ atr_move_distribution <- function(sym, horizon_sessions, n = 14,
     atr_pct = round(cur_atr_pct * 100, 3),
     n_obs = length(standardized),
     standardized = standardized,
-    raw = raw
+    raw = raw,
+    date = win_date,
+    atr_pct_t = win_atr_pct
   )
 }
 

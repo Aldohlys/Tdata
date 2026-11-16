@@ -125,3 +125,24 @@ test_that("wider raw moves -> divergence > 1 (current ATR below historical norm)
   r <- atr_expected_move_from_dist(d, 0.80)
   expect_equal(r$regime_divergence, 1.5, tolerance = 0.01)
 })
+
+test_that("atr_move_distribution returns start date and ATR% aligned with each window", {
+  set.seed(7)
+  m <- 300
+  close <- 100 * cumprod(1 + rnorm(m, 0, 0.01))
+  ohlc <- list(date = as.Date("2024-01-01") + seq_len(m) - 1,
+               high = close * 1.01, low = close * 0.99, close = close)
+  N <- 5
+  d <- with_mocked_bindings(.fetch_adjusted_ohlc = function(sym, lookback_years) ohlc,
+                            atr_move_distribution("XYZ", horizon_sessions = N))
+  expect_equal(length(d$date), d$n_obs)
+  expect_equal(length(d$atr_pct_t), d$n_obs)
+  expect_s3_class(d$date, "Date")
+  # Each window: raw = move from its start day, standardized = raw / (ATR% * sqrt(N))
+  i <- match(d$date, ohlc$date)
+  expect_equal(d$raw, close[i + N] / close[i] - 1)
+  expect_equal(d$standardized, d$raw / (d$atr_pct_t / 100 * sqrt(N)))
+  # Windows run oldest first and stop N sessions before the last close
+  expect_true(all(diff(d$date) > 0))
+  expect_equal(max(i), m - N)
+})

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.30.1] - 2026-11-16
+
+### Added
+- **atr_move.R**: `atr_move_distribution()` also returns `date` (start day of each window) and `atr_pct_t` (ATR% on that day, in percent), aligned with `standardized` and `raw`. Used by the Tuser expected-move scatter plot (each N-session move against the ATR% it started from, hover gives the date). Backward compatible: existing fields unchanged.
+
+### Removed
+- **spread.py**: five `print("DEBUG SPREAD: ...")` calls (added in 5.8.28) and the unused `spread_debug` logger. They wrote the strike list and the full option table to the console on every spread enumeration. The "no pairs with width" case already had its own `log.warning`; the end-of-run count of spreads found and NaN-skipped is kept as `log.debug`.
+
 ## [5.30.0] - 2026-11-09
 
 ### Added
