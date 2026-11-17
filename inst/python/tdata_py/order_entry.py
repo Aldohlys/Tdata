@@ -97,9 +97,16 @@ def _connect(account):
     if not ib.isConnected():
         return None, "TWS not reachable (or client id 0 already in use)."
     ib.RequestTimeout = REQUEST_TIMEOUT
-    if account not in ib.managedAccounts():
+    # TWS sends the account list just after the handshake: it can still be
+    # empty right after connect (seen from a Shiny session)
+    for _ in range(15):
+        if ib.managedAccounts():
+            break
+        ib.sleep(0.2)
+    accounts = ib.managedAccounts()
+    if account not in accounts:
         ib.disconnect()
-        return None, f"Account {account} is not managed by this TWS session ({', '.join(ib.managedAccounts())})."
+        return None, f"Account {account} is not managed by this TWS session ({', '.join(accounts) or 'no account received'})."
     return ib, None
 
 

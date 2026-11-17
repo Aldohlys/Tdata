@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.31.1] - 2026-11-17
+
+### Fixed
+- **tdata_py/order_entry.py**: `preview_stock_order` / `stage_stock_order` wait up to 3 s for TWS's account list after connecting. From the RPreTrade Order tab it was still empty right after connect, so every preview was refused with "Account U1804173 is not managed by this TWS session ()".
+
 ## [5.31.0] - 2026-11-17
 
 ### Added
