@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.31.0] - 2026-11-17
+
+### Added
+- **order_entry.R / tdata_py/order_entry.py**: `quoteStock()`, `previewStockOrder()`, `stageStockOrder()` for the RPreTrade Order tab.
+  - `quoteStock(sym)`: bid / ask / last / close / mid of a stock from TWS (live, IBKR falls back to frozen), with the market data type served.
+  - `previewStockOrder(account, sym, action, quantity, order_type, limit, take_profit, stop_loss)`: IBKR whatIfOrder of the entry order - margin change, equity with loan after, commission (max estimate when not exact), warning. Nothing is placed. The whatIf order is marked transmit=True because TWS does not answer a whatIf for an untransmitted order (it timed out).
+  - `stageStockOrder(...)`: places the order(s) with transmit=False under client id 0 (TWS's own), so they wait in TWS for the user to transmit, modify or cancel. market = MKT Adaptive, limit = LMT Adaptive, bracket = LMT entry + LMT take profit + STP stop loss (prices, children linked by parentId). All GTC. The account must be managed by the TWS session.
+  - Python validates side, quantity (whole > 0), prices and bracket order (BUY: stop < limit < take profit; SELL: take profit < limit < stop) before connecting; R passes NA as None, never NaN.
+  - Adapted from Tuser/order/logic/IButilities.py (order types, Adaptive algo, transmit=False), with an explicit account and a plain STP stop (STP PRT is a CME futures order type).
+- **tests/testthat/test-order-entry.R**: argument passing (NA -> NULL, account, bracket prices), unavailable Python, quote NA handling, programming contracts.
+
 ## [5.30.1] - 2026-11-16
 
 ### Added

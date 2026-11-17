@@ -229,6 +229,22 @@ except ImportError as e:
     def get_open_orders(*args, **kwargs):
         return None
 
+# Order entry: quote, preview (whatIf) and stage (transmit=False) stock orders
+try:
+    from .order_entry import (
+        quote_stock,
+        preview_stock_order,
+        stage_stock_order
+    )
+except ImportError as e:
+    print(f"Error importing order_entry: {e}")
+    def quote_stock(*args, **kwargs):
+        return None
+    def preview_stock_order(*args, **kwargs):
+        return dict(ok=False, message="order_entry module not available")
+    def stage_stock_order(*args, **kwargs):
+        return dict(ok=False, message="order_entry module not available", order_ids=[], statuses=[])
+
 # ============================================================================
 # SPECIALIZED UTILITY FUNCTIONS
 # ============================================================================
