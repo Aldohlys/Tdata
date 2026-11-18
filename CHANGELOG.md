@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.31.2] - 2026-11-18
+
+### Changed
+- **R/currency.R**: `convert_to_chf_date` / `convert_to_usd_date` find the nearest-date rate in R (`nearest_rate()`, rates read once per currency by `readRateSeries()`) instead of a SQLite `ROW_NUMBER()` ranking over every stored rate per lookup.
+  - Problem: ~1.1 s per call for the 719 lookups of U1804173's trades; the Account tab's strategy chart made three such calls at startup. 5,582 lookups: 4.5 s → 0.06 s (CHF), 1.2 s → 0.03 s (USD).
+  - Same rule: distance = difference of YYYYMMDD numbers, tie to the earlier date, NA date → earliest rate. Results identical on all 5,582 CHF lookups.
+  - Dates stored twice (same-day snapshots, 23 in `ConvertToUSD`) now take the last stored row, the day's latest rate; the old query picked either row depending on the plan. 3 of 5,582 USD lookups differ, by < 0.4 %.
+- **tests/test-currency.R**: nearest-date matching tests with `readRateSeries` mocked.
+
 ## [5.31.1] - 2026-11-17
 
 ### Fixed

@@ -663,6 +663,49 @@ convert_to_base_date <- function(amount, currency, convert_date = Sys.Date()) {
 }
 
 
+### Not exported. Rate of the stored date nearest to each lookup date, from an
+### append-only rate table (ConvertToCHF / ConvertToUSD; dates YYYYMMDD
+### integers). The distance is the difference of the YYYYMMDD numbers; a tie
+### goes to the earlier date; of two rows with the same date (same-day
+### snapshots) the last stored, the day's latest rate, wins. NA lookup date -> earliest rate (as SQLite sorted a NULL distance first).
+### NA when the currency has no rate. Reads each currency's series once and
+### matches in R: the former per-lookup ranking query took ~1 s for 700 lookups.
+nearest_rate <- function(table, value_col, lookups) {
+  out <- rep(NA_real_, nrow(lookups))
+  ccys <- unique(lookups$currency[!is.na(lookups$currency)])
+  if (length(ccys) == 0) return(out)
+
+  rates <- readRateSeries(table, value_col, ccys)
+
+  for (ccy in ccys) {
+    r <- rates[rates$currency == ccy, ]
+    r <- r[!duplicated(r$date, fromLast = TRUE), ]
+    if (nrow(r) == 0) next
+    idx <- which(lookups$currency == ccy)
+    d <- lookups$date[idx]
+    lo <- pmax(findInterval(d, r$date), 1L)   # last stored date <= d
+    hi <- pmin(lo + 1L, nrow(r))              # first stored date > d
+    pick <- ifelse(abs(r$date[hi] - d) < abs(r$date[lo] - d), hi, lo)
+    pick[is.na(d)] <- 1L
+    out[idx] <- r$value[pick]
+  }
+  out
+}
+
+### Not exported. Stored rates of the currencies, ordered by currency, date,
+### then storage order: data.frame(currency, date, value).
+readRateSeries <- function(table, value_col, ccys) {
+  stopifnot(table %in% c("ConvertToCHF", "ConvertToUSD"),
+            value_col %in% c("chf_value", "usd_value"))
+  conn <- safe_db_connect()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  DBI::dbGetQuery(conn,
+    sprintf("SELECT currency, date, %s AS value FROM %s WHERE currency IN (%s) ORDER BY currency, date, rowid",
+            value_col, table, paste(rep("?", length(ccys)), collapse = ",")),
+    params = as.list(ccys))
+}
+
+
 #' convert_to_chf_date
 #'
 #' Converts currency amounts to CHF for specific date(s). Can be vectorized using \link{vctrs}, i.e. tidyverse rules.
@@ -705,38 +748,10 @@ convert_to_chf_date <- function(amount, currency, convert_date = Sys.Date()) {
 
   logger::log_debug("Unique lookups: {nrow(unique_lookups)} rows", namespace="Tdata")
 
-  # Connect to database and execute optimized SQL query
-  conn <- safe_db_connect()
-  on.exit(DBI::dbDisconnect(conn))  # Ensure connection cleanup
-
-  # Alternative approach: Use temp table which is more reliable
-  temp_table_name <- paste0("temp_lookup_", as.integer(Sys.time()), "_", sample(1000:9999, 1))
-  DBI::dbWriteTable(conn, temp_table_name, unique_lookups, temporary = TRUE)
-
-  logger::log_debug("Created temp table: {temp_table_name}", namespace="Tdata")
-
-  # Use simple query with temp table
-  query <- sprintf("
-    WITH ranked_rates AS (
-      SELECT
-        l.currency,
-        l.date as lookup_date,
-        c.chf_value,
-        ROW_NUMBER() OVER (
-          PARTITION BY l.currency, l.date
-          ORDER BY ABS(c.date - l.date), c.date
-        ) as rn
-      FROM %s l
-      JOIN ConvertToCHF c ON c.currency = l.currency
-    )
-    SELECT currency, lookup_date, chf_value
-    FROM ranked_rates
-    WHERE rn = 1",
-                   temp_table_name)
-
-  logger::log_debug("Generated query: {query}", namespace="Tdata")
-
-  chf_rates <- DBI::dbGetQuery(conn, query)
+  chf_rates <- data.frame(currency = unique_lookups$currency,
+                          lookup_date = unique_lookups$date,
+                          chf_value = nearest_rate("ConvertToCHF", "chf_value", unique_lookups))
+  chf_rates <- chf_rates[!is.na(chf_rates$chf_value), ]
 
   # Create lookup table with CHF hardcoded
   lookup_table <- chf_rates |>
@@ -832,35 +847,10 @@ convert_to_usd_date <- function(amount, currency, convert_date = Sys.Date()) {
   if (nrow(unique_lookups) == 0) {
     return(numeric(0))
   }
-  # Connect to database and execute optimized SQL query
-  conn <- safe_db_connect()
-  on.exit(DBI::dbDisconnect(conn))  # Ensure connection cleanup
-
-
-  # Alternative approach: Use temp table which is more reliable
-  temp_table_name <- paste0("temp_lookup_", as.integer(Sys.time()), "_", sample(1000:9999, 1))
-  DBI::dbWriteTable(conn, temp_table_name, unique_lookups, temporary = TRUE)
-
-  # Use simple query with temp table
-  query <- sprintf("
-    WITH ranked_rates AS (
-      SELECT
-        l.currency,
-        l.date as lookup_date,
-        c.usd_value,
-        ROW_NUMBER() OVER (
-          PARTITION BY l.currency, l.date
-          ORDER BY ABS(c.date - l.date), c.date
-        ) as rn
-      FROM %s l
-      JOIN ConvertToUSD c ON c.currency = l.currency
-    )
-    SELECT currency, lookup_date, usd_value
-    FROM ranked_rates
-    WHERE rn = 1",
-  temp_table_name)
-
-  usd_rates <- DBI::dbGetQuery(conn, query)
+  usd_rates <- data.frame(currency = unique_lookups$currency,
+                          lookup_date = unique_lookups$date,
+                          usd_value = nearest_rate("ConvertToUSD", "usd_value", unique_lookups))
+  usd_rates <- usd_rates[!is.na(usd_rates$usd_value), ]
 
   # Create lookup table with USD hardcoded
   lookup_table <- usd_rates |>

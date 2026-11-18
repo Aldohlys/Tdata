@@ -338,3 +338,41 @@ test_that("convert_to_base_date handles base currency switching and complex scen
   expect_true(all(is.numeric(result_all_currencies)))
   expect_true(all(!is.na(result_all_currencies)))
 })
+
+#### Nearest-date rate matching (nearest_rate) ########
+# Rate series stored as YYYYMMDD integers, ordered by currency, date, storage
+fake_series <- data.frame(
+  currency = c("EUR", "EUR", "EUR", "EUR", "GBP"),
+  date     = c(20240101, 20240105, 20240105, 20240110, 20240103),
+  value    = c(0.90, 0.91, 0.92, 0.95, 1.10),
+  stringsAsFactors = FALSE)
+
+test_that("nearest_rate picks the nearest stored date, ties to the earlier date", {
+  lookups <- data.frame(
+    currency = c("EUR",    "EUR",    "EUR",    "EUR",    "EUR",    "GBP",    "XYZ"),
+    date     = c(20240101, 20240103, 20240107, 20240108, 20240201, 20231201, 20240101))
+  with_mocked_bindings(
+    readRateSeries = function(table, value_col, ccys) fake_series[fake_series$currency %in% ccys, ], {
+      r <- nearest_rate("ConvertToCHF", "chf_value", lookups)
+      # exact; tie 01 vs 05 -> 01; 07 nearer 05 (last stored of the day);
+      # 08 nearer 10; after the series -> last; before the series -> first; unknown -> NA
+      expect_equal(r, c(0.90, 0.90, 0.92, 0.95, 0.95, 1.10, NA))
+    })
+})
+
+test_that("nearest_rate: NA date takes the earliest rate, no currency gives NA", {
+  lookups <- data.frame(currency = c("EUR", NA), date = c(NA, 20240101))
+  with_mocked_bindings(
+    readRateSeries = function(table, value_col, ccys) fake_series[fake_series$currency %in% ccys, ], {
+      expect_equal(nearest_rate("ConvertToUSD", "usd_value", lookups), c(0.90, NA))
+    })
+})
+
+test_that("convert_to_chf_date keeps input order and length, CHF is 1", {
+  with_mocked_bindings(
+    readRateSeries = function(table, value_col, ccys) fake_series[fake_series$currency %in% ccys, ], {
+      r <- convert_to_chf_date(c(100, 10, 5, 1), c("EUR", "CHF", "GBP", "EUR"),
+                               c(20240110, 20240110, 20240103, 20240101))
+      expect_equal(r, c(95, 10, 5.5, 0.90))
+    })
+})
